@@ -1,0 +1,139 @@
+"""생성된 코드를 실행하는 유일한 지점. 여기가 가장 위험한 곳이다.
+
+방어 수단과, 그것이 막지 못하는 것을 정직하게 적어둔다.
+
+막는 것:
+  - API 키 유출: 환경변수를 세탁해서 넘긴다 (KEY/TOKEN/SECRET/PASSWORD 계열 제거)
+  - 자동 로딩 우회: PYTHONNOUSERSITE로 usercustomize, -p no:cacheprovider,
+    고정 pytest.ini(-c)로 프로젝트 내 설정 파일 무시, PYTHONDONTWRITEBYTECODE
+  - 좀비 프로세스: 프로세스 그룹/작업 단위로 트리 전체 종료
+  - 무한 루프: 타임아웃
+
+막지 못하는 것 (정직하게):
+  - 네트워크 송신. 생성된 코드가 로컬 파일을 읽어 외부로 보내는 것을 OS 수준에서
+    막으려면 컨테이너나 방화벽 규칙이 필요하다. 이건 subprocess로는 불가능하다.
+  - 홈 디렉터리 읽기. 프로세스는 사용자 권한을 그대로 갖는다.
+  정말로 신뢰할 수 없는 요구사항을 돌릴 거라면 컨테이너 안에서 이 앱을 통째로 실행해라.
+"""
+import os
+import re
+import subprocess
+import sys
+
+import config
+
+TIMEOUT = int(os.getenv("TEST_TIMEOUT", "120"))
+
+# 이 조각이 이름에 들어가면 자식 프로세스에 넘기지 않는다
+SECRET_HINTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL",
+                "ANTHROPIC", "GEMINI", "GOOGLE", "OPENAI", "AWS", "AZURE")
+
+# 오케스트레이터가 소유하는 고정 설정. 프로젝트 안의 어떤 설정 파일도 무시된다.
+PYTEST_INI = """[pytest]
+testpaths = tests
+pythonpath = src
+addopts = -q --no-header -p no:cacheprovider
+"""
+
+
+def _clean_env() -> dict:
+    env = {}
+    for k, v in os.environ.items():
+        if any(h in k.upper() for h in SECRET_HINTS):
+            continue
+        env[k] = v
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["PYTHONNOUSERSITE"] = "1"        # usercustomize.py 자동 import 차단
+    env["PYTHONUNBUFFERED"] = "1"
+    env.pop("PYTHONSTARTUP", None)
+    env.pop("PYTHONPATH", None)          # pytest.ini의 pythonpath만 쓰게 한다
+    return env
+
+
+def _popen_kwargs() -> dict:
+    """프로세스 트리를 통째로 죽일 수 있도록 그룹을 만든다."""
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    try:
+        if sys.platform == "win32":
+            # taskkill /T 가 자식까지 정리한다. proc.kill()은 직계만 죽인다.
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                           capture_output=True, timeout=15)
+        else:
+            os.killpg(os.getpgid(proc.pid), 9)
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=10)
+    except Exception:
+        pass
+
+
+_SUMMARY = re.compile(r"(\d+) (passed|failed|error|errors|skipped)")
+
+
+def _parse(out: str, returncode: int, timed_out: bool) -> dict:
+    counts = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0}
+    for n, kind in _SUMMARY.findall(out):
+        key = "errors" if kind.startswith("error") else kind
+        counts[key] = int(n)
+    failures = re.findall(r"^(?:FAILED|ERROR) (.+)$", out, re.M)
+    return {
+        "ok": returncode == 0 and not timed_out,
+        "timed_out": timed_out,
+        "returncode": returncode,
+        **counts,
+        "failed_tests": failures[:40],
+        # 앞뒤를 모두 남긴다. 뒤에서만 자르면 실패 원인이 통째로 사라진다.
+        "output": _clip(out),
+    }
+
+
+def _clip(s: str, head: int = 2500, tail: int = 2500) -> str:
+    if len(s) <= head + tail:
+        return s
+    return f"{s[:head]}\n\n... (중략 {len(s) - head - tail}자) ...\n\n{s[-tail:]}"
+
+
+def run(project_dir) -> dict:
+    """프로젝트의 tests/ 를 실행하고 구조화된 리포트를 돌려준다."""
+    tests = project_dir / "tests"
+    if not any(tests.glob("test_*.py")):
+        return {"ok": False, "skipped_run": True, "timed_out": False,
+                "returncode": -1, "passed": 0, "failed": 0, "errors": 0,
+                "skipped": 0, "failed_tests": [],
+                "output": "(테스트 파일 없음 — 실행 생략)"}
+
+    ini = project_dir / "pytest.ini"      # 오케스트레이터가 매번 덮어쓴다
+    ini.write_text(PYTEST_INI, encoding="utf-8")
+
+    proc = subprocess.Popen(
+        [sys.executable, "-I", "-m", "pytest", "-c", str(ini),
+         "--rootdir", str(project_dir)],
+        cwd=project_dir, env=_clean_env(), text=True, encoding="utf-8",
+        errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        **_popen_kwargs(),
+    )
+    timed_out = False
+    try:
+        out, _ = proc.communicate(timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        _kill_tree(proc)
+        out, _ = proc.communicate()
+        out = (out or "") + f"\n\n[타임아웃 {TIMEOUT}초 — 프로세스 트리 강제 종료]"
+
+    return _parse(out or "", proc.returncode or 0, timed_out)
+
+
+def summary_line(r: dict) -> str:
+    if r.get("skipped_run"):
+        return "테스트 없음"
+    if r["timed_out"]:
+        return f"타임아웃 ({TIMEOUT}초)"
+    bad = r["failed"] + r["errors"]
+    return f"{r['passed']}통과·{bad}실패"

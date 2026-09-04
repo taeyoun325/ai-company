@@ -1,0 +1,25 @@
+# 에이전트가 생성한 산출물 — 실행할 때마다 새로 쌓인다
+projects/
+
+# 실행 로그
+logs/
+
+# 파이썬 부산물
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# 비밀값 — 절대 커밋하지 않는다. 키는 환경변수로만 넣는다.
+.env
+.env.*
+*.key
+secrets.json
+
+# 편집기·OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
