@@ -17,9 +17,11 @@ import attachments
 import bus
 import config
 import orchestrator
+import scheduler
 import screen
 import secrets_broker
 import store
+import timeline
 
 secrets_broker.init()   # 기동 즉시 환경변수에서 키를 꺼내 지운다
 
@@ -38,6 +40,20 @@ class DecisionReq(BaseModel):
 
 class ToggleReq(BaseModel):
     on: bool
+
+
+class ScheduleReq(BaseModel):
+    requirement: str
+    at: str                       # "HH:MM"
+    days: list[int] = []          # 0=월 … 6=일. 비우면 매일
+    enabled: bool = True
+
+
+class SchedulePatch(BaseModel):
+    requirement: str | None = None
+    at: str | None = None
+    days: list[int] | None = None
+    enabled: bool | None = None
 
 
 class KeysReq(BaseModel):
@@ -344,6 +360,52 @@ def set_auto_approve(req: ToggleReq):
     return {"auto_approve_low_risk": approvals.set_auto_approve(req.on)}
 
 
+# ── 협업 타임라인 (B5) ──────────────────────────────────────────────
+@app.get("/api/projects/{slug}/timeline")
+def project_timeline(slug: str):
+    if not store.meta(slug):
+        raise HTTPException(404, "없는 프로젝트")
+    tl = timeline.build(slug)
+    tl["summary"] = timeline.summary(slug)
+    return tl
+
+
+# ── 예약 실행 (B6) ──────────────────────────────────────────────────
+@app.get("/api/schedules")
+def list_schedules():
+    from datetime import datetime
+    now = datetime.now()
+    items = [{**i, "when": scheduler.next_due(i, now)} for i in scheduler.listing()]
+    return {"schedules": items, "mock": MOCK}
+
+
+@app.post("/api/schedules")
+def add_schedule(req: ScheduleReq):
+    try:
+        return scheduler.add(req.requirement, req.at, req.days, req.enabled)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.patch("/api/schedules/{sid}")
+def patch_schedule(sid: str, req: SchedulePatch):
+    fields = {k: v for k, v in req.model_dump().items() if v is not None}
+    try:
+        it = scheduler.update(sid, **fields)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not it:
+        raise HTTPException(404, "없는 예약")
+    return it
+
+
+@app.delete("/api/schedules/{sid}")
+def delete_schedule(sid: str):
+    if not scheduler.remove(sid):
+        raise HTTPException(404, "없는 예약")
+    return {"ok": True}
+
+
 @app.get("/api/stream")
 def stream():
     def gen():
@@ -363,6 +425,17 @@ def stream():
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
                                       "X-Accel-Buffering": "no"})
+
+
+def _scheduled_start(requirement: str) -> str:
+    """예약이 착수할 때 쓰는 경로. 몰래 실제 모델을 부르지 않게 같은 검사를 통과시킨다."""
+    if not MOCK and not secrets_broker.ready():
+        raise RuntimeError("API 키가 없어 예약을 실행하지 않았습니다")
+    return orchestrator.start(requirement, mock=MOCK)
+
+
+scheduler.configure(_scheduled_start)
+scheduler.start()
 
 
 if __name__ == "__main__":

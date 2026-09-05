@@ -220,6 +220,49 @@ button:disabled{opacity:.35;cursor:not-allowed}
 .file:hover{color:var(--cy);background:transparent;box-shadow:none}
 .empty{font:11px var(--mono);color:var(--faint)}
 
+/* ── 타임라인 ─────────────────────────────────────────────────── */
+.tl{width:min(880px,94vw);max-height:86vh;overflow:auto;padding:16px 20px;
+    background:var(--deep);border:1px solid var(--line-hot);
+    box-shadow:0 0 60px -20px var(--cy)}
+.tl h2{margin:0 0 4px;font:600 13px var(--mono);letter-spacing:.12em;color:var(--cy)}
+.tl .sum{font:11px var(--mono);color:var(--dim);margin:0 0 14px}
+.tl-lane{display:grid;grid-template-columns:74px 1fr;gap:9px;align-items:center;
+         margin-bottom:7px}
+.tl-who{font:10px var(--mono);letter-spacing:.06em;text-align:right;color:var(--c)}
+.tl-track{position:relative;height:22px;background:rgba(255,255,255,.035);
+          border:1px solid var(--line)}
+.tl-seg{position:absolute;top:0;bottom:0;background:var(--c);opacity:.55;
+        border-left:2px solid var(--c);overflow:hidden;white-space:nowrap;
+        font:9.5px/22px var(--mono);color:#04070f;padding-left:4px;font-weight:700}
+.tl-seg:hover{opacity:.85}
+.tl-mark{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--qa)}
+.tl-mark.fail{background:var(--bad)} .tl-mark.pass{background:var(--dev)}
+.tl-mark.done{background:var(--cy);width:3px}
+.tl-axis{display:flex;justify-content:space-between;font:9.5px var(--mono);
+         color:var(--faint);margin:4px 0 12px;padding-left:83px}
+.tl-hand{font:11px var(--mono);color:var(--dim);line-height:1.7}
+.tl-hand b{color:var(--text)}
+
+/* ── 예약 ─────────────────────────────────────────────────────── */
+.sch-row{display:flex;gap:8px;align-items:center;padding:7px 0;
+         border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap}
+.sch-row:last-of-type{border-bottom:0}
+.sch-when{font:11px var(--mono);color:var(--cy);flex:none;min-width:88px}
+.sch-req{flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sch-note{font:10px var(--mono);color:var(--faint);width:100%}
+.sch-form{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:12px;
+          padding-top:12px;border-top:1px solid var(--line)}
+.sch-form input[type=text]{flex:1;min-width:150px;padding:7px 9px;border:1px solid var(--line);
+          background:rgba(4,10,20,.7);color:var(--text);font:12px var(--mono)}
+.sch-form input[type=time]{padding:6px 8px;border:1px solid var(--line);
+          background:rgba(4,10,20,.7);color:var(--text);font:12px var(--mono)}
+.sch-days{display:flex;gap:3px}
+.sch-days label{display:flex;align-items:center;justify-content:center;width:24px;height:24px;
+          border:1px solid var(--line);font:10px var(--mono);color:var(--dim);cursor:pointer}
+.sch-days input{position:absolute;opacity:0;width:0;height:0}
+.sch-days input:checked + span{color:var(--cy)}
+.sch-days label:focus-within{outline:2px solid var(--cy);outline-offset:1px}
+
 /* ── 첨부 ─────────────────────────────────────────────────────── */
 .att{display:flex;gap:7px;align-items:center;padding:0 16px 8px;flex-wrap:wrap}
 .att:empty{display:none}
@@ -379,6 +422,7 @@ button:disabled{opacity:.35;cursor:not-allowed}
       <span class="tag" id="mode">연결 중</span>
       <p class="vh" id="phase-status" role="status">대기 중</p>
       <p class="proj" id="proj"></p>
+      <button class="tag cfg-btn" id="sch-open" type="button">예약</button>
       <button class="tag cfg-btn" id="cfg-open" type="button">설정</button>
     </header>
     <h2 class="vh">작업공간</h2>
@@ -415,12 +459,45 @@ button:disabled{opacity:.35;cursor:not-allowed}
       <div id="files"><p class="empty">(비어 있음)</p></div>
       <button class="tag cfg-btn" id="pv-open" type="button"
               style="margin-top:9px;width:100%" disabled>미리보기</button>
+      <button class="tag cfg-btn" id="tl-open" type="button"
+              style="margin-top:6px;width:100%" disabled>협업 타임라인</button>
     </section>
     <section class="panel sec">
       <h2>저장소</h2>
       <div id="repos"><p class="empty">아직 없음</p></div>
     </section>
   </aside>
+</div>
+
+<div class="modal" id="tl-modal">
+  <div class="tl" role="dialog" aria-modal="true" aria-labelledby="tl-title">
+    <h2 id="tl-title">협업 타임라인</h2>
+    <p class="sum" id="tl-sum">—</p>
+    <div id="tl-body"></div>
+    <div style="margin-top:14px"><button type="button" id="tl-close">닫기</button></div>
+  </div>
+</div>
+
+<div class="modal" id="sch-modal">
+  <div class="cfg" role="dialog" aria-modal="true" aria-labelledby="sch-title">
+    <h2 id="sch-title">예약 실행</h2>
+    <p class="lede">정해진 시각에 요구사항을 자동으로 착수시킵니다.
+      서버가 MOCK 모드면 예약도 MOCK으로 돕니다 — 예약이 몰래 실제 모델을 부르지 않습니다.</p>
+    <div id="sch-list"><p class="empty">예약 없음</p></div>
+    <div class="sch-form">
+      <label class="vh" for="sch-req">예약할 요구사항</label>
+      <input type="text" id="sch-req" placeholder="예: 매일 아침 리포트 생성기 만들기">
+      <label class="vh" for="sch-at">시각</label>
+      <input type="time" id="sch-at" value="09:00">
+      <div class="sch-days" id="sch-days"></div>
+      <button type="button" id="sch-add">추가</button>
+    </div>
+    <p class="note">요일을 하나도 고르지 않으면 매일 실행됩니다.</p>
+    <div class="row" style="margin-top:12px">
+      <button type="button" id="sch-close">닫기</button>
+      <span class="state" id="sch-msg" role="status"></span>
+    </div>
+  </div>
 </div>
 
 <div class="modal" id="pv-modal">
@@ -699,6 +776,7 @@ function openProject(slug){
 function renderFiles(files, slug){
   const box = $('files');
   $('pv-open').disabled = !(slug || curSlug) || !files.length;
+  $('tl-open').disabled = !(slug || curSlug);
   if (!files.length){ box.innerHTML = '<p class="empty">(비어 있음)</p>'; return; }
   box.innerHTML = '<ul class="plain">' + files.map(f=>
     `<li><button class="file" data-f="${esc(f)}" type="button"
@@ -794,6 +872,131 @@ $('vrevert').onclick = () => {
 };
 // 모달을 열기 전에 어디서 왔는지 기억해 뒀다가, 닫을 때 그 자리로 돌려보낸다.
 let lastFocus = null;
+
+/* ── 타임라인 ── */
+const LANE_COLOR = {PM:'var(--pm)', DEV:'var(--dev)', QA:'var(--qa)', SYSTEM:'var(--dim)'};
+const LANE_NAME  = {PM:'PM', DEV:'DEVELOPER', QA:'VERIFIER', SYSTEM:'SYSTEM'};
+
+function tlOpen(){
+  if (!curSlug) return;
+  lastFocus = document.activeElement;
+  $('tl-modal').dataset.open = '1';
+  $('tl-close').focus();
+  fetch(`/api/projects/${encodeURIComponent(curSlug)}/timeline`)
+    .then(r=>r.json()).then(renderTimeline)
+    .catch(()=> $('tl-body').innerHTML = '<p class="empty">불러오지 못했습니다.</p>');
+}
+function tlClose(){
+  if ($('tl-modal').dataset.open !== '1') return;
+  $('tl-modal').dataset.open = '0';
+  if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+  lastFocus = null;
+}
+
+function renderTimeline(tl){
+  const total = tl.duration || 1;
+  const sum = tl.summary || {};
+  const per = Object.entries(sum.per_agent || {})
+    .map(([a,v])=>`${LANE_NAME[a]||a} ${v}초`).join(' · ');
+  $('tl-sum').textContent =
+    `총 ${tl.duration}초 · 핸드오프 ${sum.handoffs||0}회 · 재작업 ${sum.reworks||0}회` +
+    (per ? ` · ${per}` : '');
+
+  if (!tl.segments.length){
+    $('tl-body').innerHTML = '<p class="empty">기록이 없습니다.</p>'; return;
+  }
+
+  const lanes = ['PM','QA','DEV','SYSTEM'];
+  let html = lanes.map(a => {
+    const segs = tl.segments.filter(s=>s.agent===a).map(s=>{
+      const l = (s.start/total*100).toFixed(2), w = Math.max((s.dur/total*100), 0.6).toFixed(2);
+      return `<span class="tl-seg" style="left:${l}%;width:${w}%"
+                title="${esc(s.label)} #${s.nth} · ${s.dur}초${s.detail ? ' · ' + esc(s.detail) : ''}"
+              >${esc(s.label)}</span>`;
+    }).join('');
+    const marks = a === 'QA' ? tl.markers.map(m=>
+      `<span class="tl-mark ${m.kind}" style="left:${(m.t/total*100).toFixed(2)}%"
+             title="${esc(m.label)}"></span>`).join('') : '';
+    return `<div class="tl-lane" style="--c:${LANE_COLOR[a]}">
+              <span class="tl-who">${LANE_NAME[a]}</span>
+              <span class="tl-track">${segs}${marks}</span>
+            </div>`;
+  }).join('');
+
+  html += `<div class="tl-axis"><span>0초</span><span>${tl.duration}초</span></div>`;
+  html += '<div class="tl-hand">' + (tl.handoffs.length
+    ? tl.handoffs.map(h=>`<div><b>${h.t.toFixed(1)}초</b> ${LANE_NAME[h.from]} → ${LANE_NAME[h.to]} · ${esc(h.label)}</div>`).join('')
+    : '핸드오프 없음') + '</div>';
+  $('tl-body').innerHTML = html;
+}
+
+$('tl-open').onclick = tlOpen;
+$('tl-close').onclick = tlClose;
+$('tl-modal').onclick = e => { if (e.target === $('tl-modal')) tlClose(); };
+
+/* ── 예약 ── */
+const DAY_NAMES = ['월','화','수','목','금','토','일'];
+
+function schOpen(){
+  lastFocus = document.activeElement;
+  $('sch-modal').dataset.open = '1';
+  loadSchedules();
+  $('sch-req').focus();
+}
+function schClose(){
+  if ($('sch-modal').dataset.open !== '1') return;
+  $('sch-modal').dataset.open = '0';
+  if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+  lastFocus = null;
+}
+
+$('sch-days').innerHTML = DAY_NAMES.map((d,i)=>
+  `<label><input type="checkbox" value="${i}"><span>${d}</span></label>`).join('');
+
+function loadSchedules(){
+  fetch('/api/schedules').then(r=>r.json()).then(d=>{
+    const box = $('sch-list');
+    box.innerHTML = d.schedules.length ? d.schedules.map(it=>`
+      <div class="sch-row">
+        <span class="sch-when">${esc(it.when)}</span>
+        <span class="sch-req" title="${esc(it.requirement)}">${esc(it.requirement)}</span>
+        <button type="button" data-id="${it.id}" data-a="toggle">${it.enabled ? '끄기' : '켜기'}</button>
+        <button type="button" data-id="${it.id}" data-a="del">삭제</button>
+        ${it.last_note ? `<span class="sch-note">마지막: ${esc(it.last_note)}</span>` : ''}
+      </div>`).join('') : '<p class="empty">예약 없음</p>';
+
+    box.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+      if (b.dataset.a === 'del'){
+        fetch('/api/schedules/'+b.dataset.id, {method:'DELETE'}).then(loadSchedules);
+      } else {
+        const on = b.textContent === '켜기';
+        fetch('/api/schedules/'+b.dataset.id, {method:'PATCH',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({enabled: on})}).then(loadSchedules);
+      }
+    });
+  });
+}
+
+$('sch-add').onclick = () => {
+  const req = $('sch-req').value.trim();
+  if (!req){ $('sch-msg').textContent = '요구사항을 입력하세요'; return; }
+  const days = [...$('sch-days').querySelectorAll('input:checked')].map(i=>+i.value);
+  fetch('/api/schedules', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({requirement: req, at: $('sch-at').value, days})})
+    .then(r => r.ok ? r.json() : r.json().then(e=>{throw new Error(e.detail);}))
+    .then(()=>{
+      $('sch-req').value = '';
+      $('sch-msg').textContent = '예약 추가됨';
+      $('sch-msg').className = 'state ok';
+      loadSchedules();
+    })
+    .catch(err => { $('sch-msg').textContent = err.message; $('sch-msg').className = 'state no'; });
+};
+
+$('sch-open').onclick = schOpen;
+$('sch-close').onclick = schClose;
+$('sch-modal').onclick = e => { if (e.target === $('sch-modal')) schClose(); };
 
 /* ── 첨부 ── */
 let attached = [];      // {id,name,kind,bytes,source,data_url?}
@@ -1136,7 +1339,7 @@ $('vx').onclick = closeModal;
 $('modal').onclick = e => { if (e.target === $('modal')) closeModal(); };
 
 addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeModal(); cfgClose(); pvClose(); return; }
+  if (e.key === 'Escape') { closeModal(); cfgClose(); pvClose(); tlClose(); schClose(); return; }
   // 포커스 트랩: 모달이 열린 동안 Tab이 뒤 페이지로 새지 않게 가둔다.
   // 열려 있는 모달이면 무엇이든 트랩한다 — 모달을 추가할 때마다 목록을 고치지 않게.
   const open = document.querySelector('.modal[data-open="1"]');

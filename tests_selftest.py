@@ -700,3 +700,158 @@ def test_no_periodic_screen_capture_in_source():
     src = (config.ROOT / "screen.py").read_text(encoding="utf-8")
     for bad in ("setInterval", "while True", "schedule.every", "Timer("):
         assert bad not in src, f"screen.py에 반복 캡처로 보이는 코드가 있다: {bad}"
+
+
+# ── 협업 타임라인 (B5) ─────────────────────────────────────────────
+@pytest.fixture
+def trace(tmp_path, monkeypatch):
+    """가짜 trace.jsonl 을 만들어 타임라인 계산만 검증한다."""
+    import timeline
+    monkeypatch.setattr(config, "LOGS", tmp_path)
+    rows = [
+        {"type": "phase", "ts": 100.0, "run": "r1", "name": "PLAN", "detail": ""},
+        {"type": "phase", "ts": 102.0, "run": "r1", "name": "WRITE_TESTS"},
+        {"type": "phase", "ts": 104.0, "run": "r1", "name": "IMPLEMENT"},
+        {"type": "phase", "ts": 107.0, "run": "r1", "name": "REVIEW"},
+        {"type": "message", "ts": 108.0, "run": "r1", "agent": "QA",
+         "kind": "verdict", "text": "**반려 (major)** — 고쳐라"},
+        {"type": "phase", "ts": 109.0, "run": "r1", "name": "IMPLEMENT"},
+        {"type": "phase", "ts": 111.0, "run": "r1", "name": "REVIEW"},
+        {"type": "message", "ts": 112.0, "run": "r1", "agent": "QA",
+         "kind": "verdict", "text": "**통과** — 좋다"},
+        {"type": "done", "ts": 113.0, "run": "r1", "ok": True, "score": 100},
+        # 다른 실행의 줄 — 섞이면 안 된다
+        {"type": "phase", "ts": 105.0, "run": "r2", "name": "PLAN"},
+    ]
+    (tmp_path / "trace.jsonl").write_text(
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+    return timeline
+
+
+def test_timeline_only_includes_its_own_run(trace):
+    tl = trace.build("r1")
+    assert all(s["phase"] != "PLAN" or s["nth"] == 1 for s in tl["segments"])
+    assert len([s for s in tl["segments"] if s["phase"] == "PLAN"]) == 1
+
+
+def test_timeline_assigns_phases_to_owners(trace):
+    tl = trace.build("r1")
+    owners = {s["phase"]: s["agent"] for s in tl["segments"]}
+    assert owners["PLAN"] == "PM"
+    assert owners["WRITE_TESTS"] == "QA"
+    assert owners["IMPLEMENT"] == "DEV"
+    assert owners["REVIEW"] == "QA"
+
+
+def test_timeline_numbers_repeated_phases(trace):
+    """같은 단계가 반복되면 몇 번째인지 보여야 재작업이 눈에 보인다."""
+    tl = trace.build("r1")
+    impls = [s["nth"] for s in tl["segments"] if s["phase"] == "IMPLEMENT"]
+    assert impls == [1, 2]
+
+
+def test_timeline_marks_rework(trace):
+    tl = trace.build("r1")
+    kinds = [m["kind"] for m in tl["markers"]]
+    assert "fail" in kinds and "pass" in kinds and "done" in kinds
+    assert trace.summary("r1")["reworks"] == 1
+
+
+def test_timeline_counts_handoffs(trace):
+    tl = trace.build("r1")
+    assert tl["handoffs"], "에이전트가 바뀌는 지점을 못 잡았다"
+    assert all(h["from"] != h["to"] for h in tl["handoffs"])
+
+
+def test_timeline_survives_truncated_last_line(trace, tmp_path):
+    """로그를 쓰는 도중에 읽으면 마지막 줄이 잘릴 수 있다."""
+    path = tmp_path / "trace.jsonl"
+    path.write_text(path.read_text(encoding="utf-8") + '\n{"type": "pha',
+                    encoding="utf-8")
+    tl = trace.build("r1")
+    assert tl["segments"], "잘린 줄 하나에 타임라인 전체가 무너졌다"
+
+
+def test_timeline_empty_for_unknown_run(trace):
+    assert trace.build("없는실행")["segments"] == []
+
+
+# ── 예약 실행 (B6) ─────────────────────────────────────────────────
+@pytest.fixture
+def sched(tmp_path, monkeypatch):
+    import scheduler
+    monkeypatch.setattr(scheduler, "STORE", tmp_path / "schedules.json")
+    monkeypatch.setattr(scheduler, "_items", {}, raising=False)
+    return scheduler
+
+
+def test_schedule_add_and_list(sched):
+    it = sched.add("리포트 만들기", "09:30", [0, 2, 4])
+    assert it["at"] == "09:30" and it["days"] == [0, 2, 4]
+    assert len(sched.listing()) == 1
+
+
+@pytest.mark.parametrize("bad", ["25:00", "9:70", "아침", "", "09-30"])
+def test_schedule_rejects_bad_time(sched, bad):
+    with pytest.raises(ValueError):
+        sched.add("무언가", bad)
+
+
+def test_schedule_rejects_empty_requirement(sched):
+    with pytest.raises(ValueError):
+        sched.add("   ", "09:00")
+
+
+def test_schedule_due_respects_day_and_time(sched):
+    from datetime import datetime
+    it = sched.add("주중 작업", "09:00", [0])          # 월요일만
+    mon = datetime(2026, 9, 7, 9, 0)                   # 월
+    tue = datetime(2026, 9, 8, 9, 0)                   # 화
+    assert sched._due(it, mon)
+    assert not sched._due(it, tue)
+    assert not sched._due(it, datetime(2026, 9, 7, 9, 1))
+
+
+def test_schedule_does_not_fire_twice_in_same_minute(sched):
+    from datetime import datetime
+    it = sched.add("한 번만", "09:00")
+    now = datetime(2026, 9, 7, 9, 0)
+    assert sched._due(it, now)
+    fired = []
+    sched.configure(lambda r: fired.append(r) or "slug-1")
+    sched._fire(it, now)
+    assert not sched._due(it, now), "같은 분에 두 번 발화한다"
+    assert fired == ["한 번만"]
+
+
+def test_schedule_records_skip_reason(sched):
+    from datetime import datetime
+    it = sched.add("실패할 것", "09:00")
+
+    def boom(_):
+        raise RuntimeError("API 키가 없어 예약을 실행하지 않았습니다")
+
+    sched.configure(boom)
+    sched._fire(it, datetime(2026, 9, 7, 9, 0))
+    assert "건너뜀" in it["last_note"] and "키" in it["last_note"]
+
+
+def test_schedule_disabled_never_due(sched):
+    from datetime import datetime
+    it = sched.add("꺼진 것", "09:00", enabled=False)
+    assert not sched._due(it, datetime(2026, 9, 7, 9, 0))
+
+
+def test_schedules_are_gitignored():
+    ignore = (config.ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "schedules.json" in ignore
+
+
+@pytest.mark.parametrize("needle, why", [
+    ('id="tl-modal"',  "타임라인 다이얼로그"),
+    ('id="tl-open"',   "타임라인 열기 버튼"),
+    ('id="sch-modal"', "예약 다이얼로그"),
+    ('id="sch-open"',  "예약 열기 버튼"),
+])
+def test_timeline_and_schedule_ui_present(html, needle, why):
+    assert needle in html, f"요소가 사라졌다: {why}"
