@@ -117,7 +117,8 @@ def _board(plan: Plan, done: set[str], current: str | None) -> list[dict]:
     return rows
 
 
-def start(requirement: str, mock: bool = False) -> str:
+def start(requirement: str, mock: bool = False,
+          attachment_ids: list[str] | None = None) -> str:
     """새 실행을 시작하고 프로젝트 slug를 돌려준다.
 
     동시 실행 수를 제한하는 이유: 각 실행이 LLM을 호출하므로 무제한이면
@@ -133,7 +134,8 @@ def start(requirement: str, mock: bool = False) -> str:
                 f"진행 중인 작업이 끝난 뒤에 시작하세요.")
 
     slug = store.new_project(requirement)
-    t = threading.Thread(target=_run, args=(requirement, slug), daemon=True,
+    t = threading.Thread(target=_run, args=(requirement, slug, attachment_ids or []),
+                         daemon=True,
                          name=f"run:{slug}")
     with _runs_lock:
         _runs[slug] = t
@@ -172,7 +174,7 @@ def _run_tests(score: Score) -> dict:
     return r
 
 
-def _run(requirement: str, slug: str) -> None:
+def _run(requirement: str, slug: str, attachment_ids: list[str]) -> None:
     # 이 스레드의 컨텍스트를 묶는다. 이후 bus/usage/fs 호출은 전부 이 실행 소유가 된다.
     bus.bind(slug)
     usage.bind(slug)
@@ -191,13 +193,17 @@ def _run(requirement: str, slug: str) -> None:
     report: dict = {}
 
     bus.say("USER", requirement)
+    if attachment_ids:
+        import attachments
+        bus.say("USER", f"첨부: {attachments.summary(attachment_ids)}", kind="tool")
+        store.save_meta(slug, {"attachments": attachments.summary(attachment_ids)})
     bus.phase("PLAN", "PM이 계획을 세우는 중")
     score.push()
 
     try:
         # 1) 기획
         _spend_guard(rounds := rounds + 1, config.WORST_CASE["PM"])
-        plan = pm.plan(requirement)
+        plan = pm.plan(requirement, attachment_ids)
         criteria: list[Criterion] = plan.acceptance_criteria
         score.total_tasks = len(plan.tasks)
         score.ac_total = len(criteria)

@@ -28,8 +28,12 @@ CRITERIA = [
 ]
 
 
-def plan(requirement: str) -> Plan:
+def plan(requirement: str, attachment_ids=None) -> Plan:
     bus.say("PM", "요구사항 확인했습니다. 작업을 쪼개볼게요.")
+    if attachment_ids:
+        import attachments
+        bus.say("PM", f"첨부 자료 {len(attachment_ids)}건을 참고합니다 — "
+                      f"{attachments.summary(attachment_ids)}", kind="tool")
     _beat()
     _spend("PM", 1840, 620)
     p = Plan(

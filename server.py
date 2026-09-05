@@ -8,13 +8,16 @@ import queue
 import sys
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+import approvals
+import attachments
 import bus
 import config
 import orchestrator
+import screen
 import secrets_broker
 import store
 
@@ -26,6 +29,15 @@ app = FastAPI(title="AI Agent Company")
 
 class StartReq(BaseModel):
     requirement: str
+    attachments: list[str] = []
+
+
+class DecisionReq(BaseModel):
+    decision: str
+
+
+class ToggleReq(BaseModel):
+    on: bool
 
 
 class KeysReq(BaseModel):
@@ -152,7 +164,8 @@ def start(req: StartReq):
     if not MOCK and not secrets_broker.ready():
         raise HTTPException(400, "API 키가 등록되지 않았습니다. 설정에서 먼저 등록하세요.")
     try:
-        slug = orchestrator.start(req.requirement.strip(), mock=MOCK)
+        slug = orchestrator.start(req.requirement.strip(), mock=MOCK,
+                                  attachment_ids=req.attachments)
     except RuntimeError as e:
         raise HTTPException(429, str(e))
     return {"ok": True, "slug": slug}
@@ -250,6 +263,85 @@ def project_preview_run(slug: str):
     if not entry:
         raise HTTPException(400, "실행할 진입점을 찾지 못했습니다")
     return runner.run_entry(d, entry)
+
+
+# ── 첨부 자료 ───────────────────────────────────────────────────────
+@app.get("/api/attachments")
+def list_attachments():
+    return {"attachments": attachments.listing()}
+
+
+@app.post("/api/attachments")
+async def upload_attachment(file: UploadFile = File(...)):
+    data = await file.read()
+    try:
+        return attachments.save(file.filename or "upload.bin", data, source="upload")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/attachments/{aid}/preview")
+def attachment_preview(aid: str):
+    url = attachments.data_url(aid)
+    if not url:
+        raise HTTPException(404, "미리볼 수 없는 첨부")
+    return {"id": aid, "data_url": url}
+
+
+@app.delete("/api/attachments/{aid}")
+def delete_attachment(aid: str):
+    if not attachments.delete(aid):
+        raise HTTPException(404, "없는 첨부")
+    return {"ok": True}
+
+
+# ── 화면 ────────────────────────────────────────────────────────────
+@app.get("/api/screen/status")
+def screen_status():
+    st = screen.status()
+    st["auto_approve_low_risk"] = approvals.auto_approve_low_risk
+    st["pending"] = approvals.pending()
+    return st
+
+
+@app.post("/api/screen/capture")
+def screen_capture():
+    """사용자가 누를 때만 한 장 찍는다. 주기적 자동 캡처는 만들지 않았다."""
+    try:
+        png = screen.capture()
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    meta = attachments.save(screen.capture_name(), png, source="screen")
+    meta["data_url"] = attachments.data_url(meta["id"])
+    return meta
+
+
+# ── 승인 게이트 ─────────────────────────────────────────────────────
+@app.get("/api/approvals")
+def list_approvals():
+    return {"pending": approvals.pending(),
+            "auto_approve_low_risk": approvals.auto_approve_low_risk}
+
+
+@app.post("/api/approvals/{aid}")
+def decide_approval(aid: str, req: DecisionReq):
+    if req.decision not in ("approve", "deny"):
+        raise HTTPException(400, "decision은 approve 또는 deny")
+    if not approvals.decide(aid, req.decision):
+        raise HTTPException(404, "이미 처리됐거나 없는 요청")
+    return {"ok": True}
+
+
+@app.post("/api/approvals/deny-all")
+def deny_all_approvals():
+    """비상 정지."""
+    return {"denied": approvals.deny_all("사용자 비상 정지")}
+
+
+@app.post("/api/approvals/auto")
+def set_auto_approve(req: ToggleReq):
+    """저위험(이동·스크롤) 자동 승인 토글. 클릭·입력에는 적용되지 않는다."""
+    return {"auto_approve_low_risk": approvals.set_auto_approve(req.on)}
 
 
 @app.get("/api/stream")

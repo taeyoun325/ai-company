@@ -220,6 +220,37 @@ button:disabled{opacity:.35;cursor:not-allowed}
 .file:hover{color:var(--cy);background:transparent;box-shadow:none}
 .empty{font:11px var(--mono);color:var(--faint)}
 
+/* ── 첨부 ─────────────────────────────────────────────────────── */
+.att{display:flex;gap:7px;align-items:center;padding:0 16px 8px;flex-wrap:wrap}
+.att:empty{display:none}
+.att-chip{display:flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid var(--line);
+          font:10.5px var(--mono);color:var(--dim);background:rgba(63,224,255,.04)}
+.att-chip img{width:26px;height:20px;object-fit:cover;border:1px solid var(--line)}
+.att-chip .x{background:none;border:0;color:var(--faint);cursor:pointer;padding:0 2px;
+             font:12px var(--mono)}
+.att-chip .x:hover{color:var(--bad)}
+.att-bar{display:flex;gap:7px;padding:0 16px 10px;flex-wrap:wrap;align-items:center}
+.att-bar input[type=file]{display:none}
+.att-btn{padding:5px 11px;font:10px var(--mono);letter-spacing:.08em;cursor:pointer;
+         border:1px solid var(--line);background:transparent;color:var(--dim)}
+.att-btn:hover{color:var(--cy);border-color:var(--cy)}
+.att-note{font:10px var(--mono);color:var(--faint)}
+
+/* ── 승인 게이트 ──────────────────────────────────────────────── */
+.apv{border-top:1px solid var(--qa);background:rgba(255,195,107,.06);padding:11px 16px}
+.apv:empty{display:none;padding:0;border:0}
+.apv h3{margin:0 0 7px;font:600 11px var(--mono);letter-spacing:.12em;color:var(--qa)}
+.apv-item{display:flex;gap:9px;align-items:flex-start;padding:7px 0;
+          border-top:1px solid rgba(255,195,107,.18)}
+.apv-item:first-of-type{border-top:0}
+.apv-desc{flex:1;min-width:0;font:11.5px var(--mono);color:var(--text);word-break:break-word}
+.apv-why{display:block;color:var(--dim);font-size:11px;margin-top:2px}
+.apv button{padding:4px 11px;font:10px var(--mono);letter-spacing:.06em}
+.apv .ok{border-color:var(--dev);color:var(--dev)}
+.apv .no{border-color:var(--bad);color:var(--bad)}
+.apv-foot{display:flex;gap:9px;align-items:center;margin-top:9px;flex-wrap:wrap}
+.apv-foot label{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+
 /* ── 미리보기 ─────────────────────────────────────────────────── */
 .pv{width:min(900px,94vw);height:min(660px,86vh);display:flex;flex-direction:column;
     background:var(--deep);border:1px solid var(--line-hot);
@@ -355,6 +386,15 @@ button:disabled{opacity:.35;cursor:not-allowed}
     <h2 class="vh">에이전트 대화 기록</h2>
     <div id="log" tabindex="-1" role="log" aria-live="polite"
      aria-relevant="additions" aria-label="에이전트 대화 기록"><div class="div">요구사항을 입력하면 회의가 시작됩니다</div></div>
+    <div class="apv" id="apv"></div>
+    <div class="att" id="att"></div>
+    <div class="att-bar">
+      <label class="att-btn" for="att-file" tabindex="0" role="button">파일 첨부</label>
+      <input type="file" id="att-file" multiple
+             accept="image/*,.pdf,.txt,.md,.csv,.json,.log,.yaml,.yml">
+      <button class="att-btn" type="button" id="att-screen">화면 캡처</button>
+      <span class="att-note" id="att-note">이미지·PDF·텍스트. 첨부 내용은 자료로만 쓰이고 지시로 해석되지 않습니다.</span>
+    </div>
     <form id="f">
       <h2 class="vh">요구사항 입력</h2>
       <label class="vh" for="q">만들고 싶은 프로그램을 설명하세요</label>
@@ -755,6 +795,93 @@ $('vrevert').onclick = () => {
 // 모달을 열기 전에 어디서 왔는지 기억해 뒀다가, 닫을 때 그 자리로 돌려보낸다.
 let lastFocus = null;
 
+/* ── 첨부 ── */
+let attached = [];      // {id,name,kind,bytes,source,data_url?}
+
+function renderAtt(){
+  $('att').innerHTML = attached.map(a => `
+    <span class="att-chip">
+      ${a.data_url ? `<img src="${a.data_url}" alt="">` : ''}
+      <span>${esc(a.name)}</span>
+      <button class="x" type="button" data-id="${a.id}"
+              aria-label="${esc(a.name)} 첨부 제거">✕</button>
+    </span>`).join('');
+  $('att').querySelectorAll('.x').forEach(b => b.onclick = () => {
+    fetch('/api/attachments/' + b.dataset.id, {method:'DELETE'});
+    attached = attached.filter(a => a.id !== b.dataset.id);
+    renderAtt();
+  });
+}
+
+$('att-file').onchange = e => {
+  for (const f of e.target.files){
+    const fd = new FormData(); fd.append('file', f);
+    fetch('/api/attachments', {method:'POST', body: fd})
+      .then(r => r.ok ? r.json() : r.json().then(x=>{throw new Error(x.detail);}))
+      .then(m => {
+        attached.push(m); renderAtt();
+        if (m.kind === 'image')
+          fetch(`/api/attachments/${m.id}/preview`).then(r=>r.json()).then(d=>{
+            m.data_url = d.data_url; renderAtt();
+          });
+      })
+      .catch(err => addMsg('SYSTEM', '첨부 실패: ' + err.message, 'error'));
+  }
+  e.target.value = '';
+};
+// 라벨을 키보드로도 누를 수 있게
+$('att-file').previousElementSibling;
+document.querySelector('label[for="att-file"]').onkeydown = e => {
+  if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('att-file').click(); }
+};
+
+$('att-screen').onclick = () => {
+  const b = $('att-screen');
+  b.disabled = true; b.textContent = '캡처 중…';
+  fetch('/api/screen/capture', {method:'POST'})
+    .then(r => r.ok ? r.json() : r.json().then(x=>{throw new Error(x.detail);}))
+    .then(m => { attached.push(m); renderAtt(); })
+    .catch(err => addMsg('SYSTEM', '화면 캡처 실패: ' + err.message, 'error'))
+    .finally(() => { b.disabled = false; b.textContent = '화면 캡처'; });
+};
+
+/* ── 승인 게이트 ── */
+const pendingApprovals = new Map();
+
+function renderApprovals(){
+  const box = $('apv');
+  if (!pendingApprovals.size){ box.innerHTML = ''; return; }
+  box.innerHTML = `<h3>화면 조작 승인 대기 (${pendingApprovals.size})</h3>` +
+    [...pendingApprovals.values()].map(a => `
+      <div class="apv-item">
+        <span class="apv-desc">${esc(a.desc)}
+          ${a.why ? `<span class="apv-why">${esc(a.why)}</span>` : ''}</span>
+        <button class="ok" type="button" data-id="${a.id}" data-d="approve">승인</button>
+        <button class="no" type="button" data-id="${a.id}" data-d="deny">거부</button>
+      </div>`).join('') +
+    `<div class="apv-foot">
+       <button class="no" type="button" id="apv-stop">전부 거부 (비상 정지)</button>
+       <label><input type="checkbox" id="apv-auto">
+         이동·스크롤은 자동 승인 (클릭·입력은 항상 물어봄)</label>
+     </div>`;
+
+  box.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
+    fetch('/api/approvals/' + b.dataset.id, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({decision: b.dataset.d})});
+    pendingApprovals.delete(b.dataset.id);
+    renderApprovals();
+  });
+  $('apv-stop').onclick = () => {
+    fetch('/api/approvals/deny-all', {method:'POST'});
+    pendingApprovals.clear(); renderApprovals();
+  };
+  $('apv-auto').onchange = e => {
+    fetch('/api/approvals/auto', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({on: e.target.checked})});
+  };
+}
+
 /* ── 작업공간 탭 ── */
 function renderTabs(){
   const bar = $('ws');
@@ -1026,6 +1153,12 @@ addEventListener('keydown', e => {
 function handle(ev){
   // 실행에 속하지 않는 이벤트(저장소 목록 등)는 먼저 처리한다
   if (ev.type === 'projects'){ renderRepos(ev.list); return; }
+  if (ev.type === 'approval'){
+    pendingApprovals.set(ev.id, ev); renderApprovals(); return;
+  }
+  if (ev.type === 'approval_done'){
+    pendingApprovals.delete(ev.id); renderApprovals(); return;
+  }
 
   const r = getRun(ev.run);
   if (!r) return;                       // run 태그가 없는 이벤트는 무시
@@ -1104,6 +1237,18 @@ fetch('/api/agents').then(r=>r.json()).then(d=>{
 });
 loadRepos();
 
+fetch('/api/screen/status').then(r=>r.json()).then(d=>{
+  if (!d.capture){
+    const b = $('att-screen');
+    b.disabled = true;
+    b.title = '화면 캡처를 쓸 수 없습니다: ' + (d.capture_error || '');
+  }
+  if (!d.control){
+    $('att-note').textContent =
+      '화면 조작은 꺼져 있습니다 (pip install pyautogui 필요). 캡처와 첨부는 사용할 수 있습니다.';
+  }
+});
+
 $('f').onsubmit = e => {
   e.preventDefault();
   const q = $('q');
@@ -1111,7 +1256,8 @@ $('f').onsubmit = e => {
   if (!req) return;
   $('go').disabled = true;
   fetch('/api/start', {method:'POST', headers:{'Content-Type':'application/json'},
-                       body: JSON.stringify({requirement: req})})
+                       body: JSON.stringify({requirement: req,
+                                             attachments: attached.map(a=>a.id)})})
     .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail); }))
     .then(d => {
       // 새 작업공간을 만들고 그 탭으로 옮긴다
@@ -1119,6 +1265,7 @@ $('f').onsubmit = e => {
       r.live = true;
       renderTabs();
       switchTo(d.slug);
+      attached = []; renderAtt();      // 첨부는 실행에 실려 갔다
       $('go').disabled = false;
     })
     .catch(err => {

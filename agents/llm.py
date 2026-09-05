@@ -39,11 +39,17 @@ def _bill(agent: str, model: str, u) -> None:
 
 
 def structured(agent: str, model: str, system: str, user: str, schema: type[T],
-               max_tokens: int = 16000, retries: int = 1) -> T:
+               max_tokens: int = 16000, retries: int = 1,
+               extra_blocks: list | None = None) -> T:
     """system은 캐싱 대상(고정), user는 매번 바뀌는 부분.
+
+    extra_blocks: 첨부 자료(이미지·문서) 콘텐츠 블록. 요구사항 텍스트 *앞에* 놓는다 —
+    자료를 먼저 보여주고 지시를 나중에 주는 편이 자료를 지시로 오인할 여지가 적다.
 
     구조화 출력이라도 검증에 실패할 수 있으므로 한 번은 다시 물어본다.
     """
+    content = ([*extra_blocks, {"type": "text", "text": user}]
+               if extra_blocks else user)
     last: Exception | None = None
     for attempt in range(retries + 1):
         try:
@@ -53,7 +59,7 @@ def structured(agent: str, model: str, system: str, user: str, schema: type[T],
                 system=[{"type": "text", "text": system,
                          "cache_control": {"type": "ephemeral"}}],
                 thinking={"type": "adaptive"},
-                messages=[{"role": "user", "content": user}],
+                messages=[{"role": "user", "content": content}],
                 output_format=schema,
             )
             _bill(agent, model, resp.usage)
