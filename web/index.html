@@ -205,6 +205,23 @@ button:disabled{opacity:.35;cursor:not-allowed}
 .file:hover{color:var(--cy);background:transparent;box-shadow:none}
 .empty{font:11px var(--mono);color:var(--faint)}
 
+/* ── 미리보기 ─────────────────────────────────────────────────── */
+.pv{width:min(900px,94vw);height:min(660px,86vh);display:flex;flex-direction:column;
+    background:var(--deep);border:1px solid var(--line-hot);
+    box-shadow:0 0 60px -20px var(--cy)}
+.pv-top{display:flex;align-items:center;gap:10px;padding:11px 15px;
+        border-bottom:1px solid var(--line);flex-wrap:wrap}
+.pv-top h2{margin:0;font:600 12px var(--mono);letter-spacing:.12em;color:var(--cy)}
+.pv-kind{font:10px var(--mono);color:var(--dim);border:1px solid var(--line);padding:2px 8px}
+.pv-body{flex:1;min-height:0;display:flex;flex-direction:column}
+.pv-frame{flex:1;width:100%;border:0;background:#fff}
+.pv-out{flex:1;margin:0;padding:14px 16px;overflow:auto;white-space:pre-wrap;
+        word-break:break-word;font:12px/1.6 var(--mono);color:var(--text)}
+.pv-out.fail{color:var(--bad)}
+.pv-empty{padding:22px 18px;color:var(--dim);font-size:12.5px;line-height:1.7}
+.pv-warn{margin:0;padding:9px 15px;border-top:1px solid var(--line);
+         font:11px var(--mono);color:var(--qa);line-height:1.6}
+
 /* ── 설정 ─────────────────────────────────────────────────────── */
 .cfg-btn{padding:4px 10px;font:10px var(--mono);letter-spacing:.1em}
 .cfg{width:min(560px,92vw);max-height:86vh;overflow:auto;padding:18px 20px;
@@ -339,12 +356,29 @@ button:disabled{opacity:.35;cursor:not-allowed}
     <section class="panel sec">
       <h2>산출물</h2>
       <div id="files"><p class="empty">(비어 있음)</p></div>
+      <button class="tag cfg-btn" id="pv-open" type="button"
+              style="margin-top:9px;width:100%" disabled>미리보기</button>
     </section>
     <section class="panel sec">
       <h2>저장소</h2>
       <div id="repos"><p class="empty">아직 없음</p></div>
     </section>
   </aside>
+</div>
+
+<div class="modal" id="pv-modal">
+  <div class="pv" role="dialog" aria-modal="true" aria-labelledby="pv-title">
+    <div class="pv-top">
+      <h2 id="pv-title">미리보기</h2>
+      <span class="pv-kind" id="pv-kind">—</span>
+      <button type="button" id="pv-run" hidden>실행</button>
+      <button type="button" id="pv-close" style="margin-left:auto">닫기</button>
+    </div>
+    <div class="pv-body" id="pv-body"></div>
+    <p class="pv-warn">생성된 코드입니다. HTML은 스크립트 격리 상태로 렌더되고,
+      파이썬은 pytest와 같은 격리(환경 세탁·프로세스 트리 종료)로 실행됩니다.
+      네트워크 송신은 막지 못합니다.</p>
+  </div>
 </div>
 
 <div class="modal" id="cfg-modal">
@@ -572,6 +606,7 @@ function openProject(slug){
 }
 function renderFiles(files, slug){
   const box = $('files');
+  $('pv-open').disabled = !(slug || curSlug) || !files.length;
   if (!files.length){ box.innerHTML = '<p class="empty">(비어 있음)</p>'; return; }
   box.innerHTML = '<ul class="plain">' + files.map(f=>
     `<li><button class="file" data-f="${esc(f)}" type="button"
@@ -667,6 +702,69 @@ $('vrevert').onclick = () => {
 };
 // 모달을 열기 전에 어디서 왔는지 기억해 뒀다가, 닫을 때 그 자리로 돌려보낸다.
 let lastFocus = null;
+
+/* ── 미리보기 ── */
+function pvOpen(){
+  if (!curSlug) return;
+  lastFocus = document.activeElement;
+  $('pv-modal').dataset.open = '1';
+  $('pv-close').focus();
+  loadPreview();
+}
+function pvClose(){
+  if ($('pv-modal').dataset.open !== '1') return;
+  $('pv-modal').dataset.open = '0';
+  $('pv-body').innerHTML = '';        // iframe을 확실히 내려서 실행을 멈춘다
+  if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+  lastFocus = null;
+}
+
+function loadPreview(){
+  const body = $('pv-body'), kind = $('pv-kind'), run = $('pv-run');
+  body.innerHTML = '<p class="pv-empty">확인 중…</p>';
+  run.hidden = true;
+  fetch(`/api/projects/${encodeURIComponent(curSlug)}/preview`)
+    .then(r=>r.json()).then(d=>{
+      if (d.kind === 'html'){
+        kind.textContent = d.path;
+        const f = document.createElement('iframe');
+        f.className = 'pv-frame';
+        f.title = '산출물 미리보기';
+        // allow-same-origin 은 절대 넣지 않는다 — 넣으면 격리가 무의미해진다
+        f.setAttribute('sandbox', 'allow-scripts allow-forms');
+        f.srcdoc = d.content || '';
+        body.innerHTML = '';
+        body.appendChild(f);
+      } else if (d.kind === 'python'){
+        kind.textContent = d.path;
+        run.hidden = false;
+        body.innerHTML = '<p class="pv-empty">파이썬 진입점을 찾았습니다: ' +
+          `<code>${esc(d.path)}</code><br>실행 버튼을 누르면 한 번 실행하고 출력을 보여줍니다.</p>`;
+      } else {
+        kind.textContent = '없음';
+        body.innerHTML = '<p class="pv-empty">미리볼 수 있는 산출물이 없습니다. ' +
+          'HTML 파일이나 실행 가능한 진입점(main.py, app.py 등)이 필요합니다.</p>';
+      }
+    }).catch(()=> body.innerHTML = '<p class="pv-empty">불러오지 못했습니다.</p>');
+}
+
+$('pv-run').onclick = () => {
+  const body = $('pv-body');
+  body.innerHTML = '<p class="pv-empty">실행 중…</p>';
+  fetch(`/api/projects/${encodeURIComponent(curSlug)}/preview/run`, {method:'POST'})
+    .then(r => r.ok ? r.json() : r.json().then(e=>{throw new Error(e.detail);}))
+    .then(d=>{
+      const head = d.ok ? '실행 완료' : (d.timed_out ? '타임아웃' : `종료코드 ${d.returncode}`);
+      body.innerHTML = `<pre class="pv-out${d.ok ? '' : ' fail'}">` +
+        `[${esc(head)}]\n\n${esc(d.output)}</pre>`;
+    })
+    .catch(err => body.innerHTML =
+      `<p class="pv-empty">${esc(err.message || '실행 실패')}</p>`);
+};
+
+$('pv-open').onclick = pvOpen;
+$('pv-close').onclick = pvClose;
+$('pv-modal').onclick = e => { if (e.target === $('pv-modal')) pvClose(); };
 
 /* ── 설정 ── */
 function cfgOpen(){
@@ -787,12 +885,13 @@ $('vx').onclick = closeModal;
 $('modal').onclick = e => { if (e.target === $('modal')) closeModal(); };
 
 addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeModal(); cfgClose(); return; }
+  if (e.key === 'Escape') { closeModal(); cfgClose(); pvClose(); return; }
   // 포커스 트랩: 모달이 열린 동안 Tab이 뒤 페이지로 새지 않게 가둔다.
-  const open = ['modal','cfg-modal'].find(id => $(id).dataset.open === '1');
+  // 열려 있는 모달이면 무엇이든 트랩한다 — 모달을 추가할 때마다 목록을 고치지 않게.
+  const open = document.querySelector('.modal[data-open="1"]');
   if (e.key !== 'Tab' || !open) return;
-  const items = $(open).querySelectorAll(
-    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  const items = open.querySelectorAll(
+    'button:not([hidden]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
   if (!items.length) return;
   const first = items[0], last = items[items.length - 1];
   if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }

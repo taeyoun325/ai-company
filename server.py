@@ -213,6 +213,35 @@ def edit_file(slug: str, req: EditReq):
     return {"ok": True, **info, "files": store.files_of(slug)}
 
 
+@app.get("/api/projects/{slug}/preview")
+def project_preview(slug: str):
+    """무엇을 보여줄 수 있는지 판단한다. 실행은 하지 않는다."""
+    import runner
+    d = store.dir_of(slug)
+    if not d.exists():
+        raise HTTPException(404, "없는 프로젝트")
+    html = runner.find_html(d)
+    if html:
+        return {"kind": "html", "path": html, "content": store.read_file(slug, html)}
+    entry = runner.find_entry(d)
+    if entry:
+        return {"kind": "python", "path": entry}
+    return {"kind": "none", "path": None}
+
+
+@app.post("/api/projects/{slug}/preview/run")
+def project_preview_run(slug: str):
+    """진입점을 실제로 실행한다. pytest와 동일한 격리를 쓴다."""
+    import runner
+    if orchestrator.is_running():
+        raise HTTPException(409, "에이전트가 작업 중입니다. 끝난 뒤에 실행하세요.")
+    d = store.dir_of(slug)
+    entry = runner.find_entry(d)
+    if not entry:
+        raise HTTPException(400, "실행할 진입점을 찾지 못했습니다")
+    return runner.run_entry(d, entry)
+
+
 @app.get("/api/stream")
 def stream():
     def gen():

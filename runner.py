@@ -132,6 +132,65 @@ def run(project_dir) -> dict:
     return _parse(out or "", proc.returncode or 0, timed_out)
 
 
+ENTRY_CANDIDATES = ("main.py", "app.py", "__main__.py", "run.py", "cli.py")
+
+
+def find_entry(project_dir) -> str | None:
+    """실행해볼 만한 파이썬 진입점을 고른다."""
+    src = project_dir / "src"
+    if not src.exists():
+        return None
+    for name in ENTRY_CANDIDATES:
+        if (src / name).exists():
+            return f"src/{name}"
+    pys = [f for f in sorted(src.glob("*.py")) if not f.name.startswith("_")]
+    return f"src/{pys[0].name}" if len(pys) == 1 else None
+
+
+def find_html(project_dir) -> str | None:
+    src = project_dir / "src"
+    if not src.exists():
+        return None
+    for name in ("index.html", "main.html"):
+        if (src / name).exists():
+            return f"src/{name}"
+    htmls = sorted(src.rglob("*.html"))
+    if htmls:
+        return "src/" + str(htmls[0].relative_to(src)).replace("\\", "/")
+    return None
+
+
+def run_entry(project_dir, entry: str, timeout: int | None = None) -> dict:
+    """진입점을 한 번 실행하고 출력을 돌려준다.
+
+    pytest와 동일한 격리를 쓴다 — 환경 세탁, 격리 모드, 프로세스 트리 종료.
+    stdin은 막는다. 입력을 기다리는 프로그램이 타임아웃까지 매달리지 않게.
+    """
+    limit = timeout or min(TIMEOUT, 30)
+    proc = subprocess.Popen(
+        [sys.executable, "-I", entry.replace("/", os.sep)],
+        cwd=project_dir, env=_clean_env(), text=True, encoding="utf-8",
+        errors="replace", stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        **_popen_kwargs(),
+    )
+    timed_out = False
+    try:
+        out, _ = proc.communicate(timeout=limit)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        _kill_tree(proc)
+        out, _ = proc.communicate()
+        out = (out or "") + f"\n\n[타임아웃 {limit}초 — 프로세스 트리 강제 종료]"
+    return {
+        "entry": entry,
+        "ok": proc.returncode == 0 and not timed_out,
+        "timed_out": timed_out,
+        "returncode": proc.returncode or 0,
+        "output": secrets_broker.scrub(_clip(out or "", 1500, 1500)) or "(출력 없음)",
+    }
+
+
 def summary_line(r: dict) -> str:
     if r.get("skipped_run"):
         return "테스트 없음"

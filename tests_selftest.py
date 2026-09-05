@@ -7,6 +7,7 @@
 """
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -312,7 +313,7 @@ def test_secrets_file_is_gitignored():
     ('aria-labelledby="cfg-title"',  "설정 다이얼로그 이름"),
     ('type="password" id="k-anthropic"', "키 입력이 password 타입"),
     ('id="qa-model"',                "검증자 모델 선택"),
-    ("['modal','cfg-modal'].find",   "두 모달 모두 포커스 트랩"),
+    ('.modal[data-open="1"]',        "열린 모달 전부 포커스 트랩"),
 ])
 def test_settings_ui_present(html, needle, why):
     assert needle in html, f"설정 화면 요소가 사라졌다: {why}"
@@ -364,3 +365,49 @@ def test_history_not_listed_as_output(project):
 ])
 def test_editor_ui_present(html, needle, why):
     assert needle in html, f"편집기 요소가 사라졌다: {why}"
+
+
+# ── 미리보기 (B3) ──────────────────────────────────────────────────
+def test_preview_iframe_is_not_given_same_origin(html):
+    """allow-scripts 와 allow-same-origin 을 함께 주면 샌드박스가 무의미해진다.
+
+    생성된 코드가 부모 문서에 접근할 수 있게 되므로 이 조합은 절대 안 된다.
+    """
+    m = re.search(r"setAttribute\('sandbox',\s*'([^']*)'\)", html)
+    assert m, "미리보기 iframe에 sandbox 속성이 없다"
+    tokens = m.group(1).split()
+    assert "allow-scripts" in tokens
+    assert "allow-same-origin" not in tokens, \
+        "allow-scripts 와 allow-same-origin 을 함께 주면 격리가 뚫린다"
+
+
+@pytest.mark.parametrize("needle, why", [
+    ('id="pv-modal"', "미리보기 다이얼로그"),
+    ('id="pv-open"',  "미리보기 열기 버튼"),
+    ('id="pv-run"',   "진입점 실행 버튼"),
+])
+def test_preview_ui_present(html, needle, why):
+    assert needle in html, f"미리보기 요소가 사라졌다: {why}"
+
+
+def test_entry_point_detection(project):
+    import runner
+    d = store.dir_of(project)
+    assert runner.find_entry(d) == "src/app.py"       # 유일한 .py
+    fs.write("src/main.py", "print(1)\n", "DEV")
+    assert runner.find_entry(d) == "src/main.py"      # main.py 우선
+    assert runner.find_html(d) is None
+    fs.write("src/index.html", "<p>hi</p>\n", "DEV")
+    assert runner.find_html(d) == "src/index.html"
+
+
+@pytest.mark.slow
+def test_run_entry_is_isolated_like_pytest(project, monkeypatch):
+    """미리보기 실행도 키를 못 봐야 한다. 격리가 한쪽만 되면 의미가 없다."""
+    import runner
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-PREVIEW-CANARY")
+    fs.write("src/main.py",
+             "import os\nprint('KEY=', os.environ.get('ANTHROPIC_API_KEY'))\n", "DEV")
+    r = runner.run_entry(store.dir_of(project), "src/main.py")
+    assert "PREVIEW-CANARY" not in r["output"]
+    assert "KEY= None" in r["output"]
