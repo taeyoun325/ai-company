@@ -197,3 +197,47 @@ def test_ui_has_required_elements():
     for ident in ("id=\"log\"", "id=\"agents\"", "id=\"board\"", "id=\"repos\"",
                   "id=\"files\"", "id=\"arc\"", "/api/stream", "/api/start"):
         assert ident in html, f"UI에서 {ident} 가 사라졌다"
+
+
+# ── 접근성 불변식 ──────────────────────────────────────────────────
+# 루프가 UI를 계속 고치므로, 되돌아가기 쉬운 것들을 못으로 박아둔다.
+@pytest.fixture(scope="module")
+def html():
+    return (config.ROOT / "web" / "index.html").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("needle, why", [
+    ('class="skip"',                    "스킵 링크"),
+    ("<main class=",                    "main 랜드마크"),
+    ('aria-label="진행 상황 계기판"',      "좌측 레일 이름"),
+    ('aria-label="산출물과 저장소"',       "우측 레일 이름"),
+    ("<h1 class=",                      "h1 제목"),
+    ('for="q"',                         "입력 라벨"),
+    ('role="log"',                      "대화 로그 라이브 리전"),
+    ('aria-live="polite"',              "라이브 리전 공손 모드"),
+    ('role="status"',                   "단계 상태 리전"),
+    ("@media (prefers-reduced-motion: reduce)", "모션 축소"),
+    (":focus-visible",                  "포커스 표시"),
+    ('role="dialog"',                   "모달 역할"),
+    ('aria-modal="true"',               "모달 격리"),
+    ("lastFocus.focus()",               "모달 닫을 때 포커스 복귀"),
+])
+def test_accessibility_features_present(html, needle, why):
+    assert needle in html, f"접근성 기능이 사라졌다: {why} ({needle})"
+
+
+def test_low_contrast_token_not_reintroduced(html):
+    """--faint:#3f5170 은 배경 대비 약 2.5:1로 WCAG AA 미달이었다."""
+    assert "#3f5170" not in html, "대비가 낮은 옛 --faint 색이 되돌아왔다"
+
+
+def test_decorative_glyphs_are_hidden(html):
+    """아바타·아이콘 문자는 장식이다. 스크린 리더가 읽으면 소음이 된다."""
+    assert 'class="av" aria-hidden="true"' in html
+    assert '<div class="bar" aria-hidden="true">' in html
+
+
+def test_tool_logs_excluded_from_live_announcements(html):
+    """툴 호출까지 낭독되면 대화를 따라갈 수 없다."""
+    assert "const quiet = (kind === 'tool')" in html
+    assert "el.setAttribute('aria-hidden', 'true')" in html

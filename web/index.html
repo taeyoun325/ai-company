@@ -9,8 +9,8 @@
 :root{
   --void:#04070f;  --deep:#070d1a;  --glass:rgba(18,32,54,.55);
   --line:rgba(94,205,255,.20); --line-hot:rgba(94,205,255,.55);
-  --text:#d6ecff;  --dim:#6f89ab;  --faint:#3f5170;
-  --cy:#3fe0ff;  --pm:#4bb8ff;  --dev:#4dffb0;  --qa:#ffb347;  --usr:#c98bff;
+  --text:#d6ecff;  --dim:#93aac9;  --faint:#8ba3c4;
+  --cy:#5ce6ff;  --pm:#6cc6ff;  --dev:#5cffb8;  --qa:#ffc36b;  --usr:#d6a3ff;
   --bad:#ff5f7e;
   --mono:ui-monospace,"JetBrains Mono",Consolas,monospace;
 }
@@ -52,6 +52,25 @@ body::after{
 ul.plain{list-style:none;margin:0;padding:0}
 dl{margin:0}
 
+/* ── 포커스 표시 ──────────────────────────────────────────────
+   키보드 사용자가 지금 어디 있는지 항상 보이게 한다.
+   :focus-visible 이라 마우스 클릭에는 링이 뜨지 않는다. */
+:focus-visible{outline:2px solid var(--cy); outline-offset:2px}
+.repo:focus-visible,.file:focus-visible{outline:2px solid var(--cy);outline-offset:-2px}
+
+/* ── 모션 축소 ────────────────────────────────────────────────
+   스캔라인이 8초마다 무한히 흐르고 맥박이 1.1초마다 뛴다.
+   전정기관 장애가 있으면 이 화면을 못 쓴다. 전부 정지시킨다. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms !important; animation-iteration-count:1 !important;
+    transition-duration:.001ms !important; scroll-behavior:auto !important;
+  }
+  body::after{animation:none; opacity:.18}   /* 스캔라인은 정지 + 더 옅게 */
+  .agent[data-on="1"] .orb{animation:none}
+  .task.doing .mark{animation:none}
+}
+
 /* ── 패널 (코너 브래킷) ───────────────────────────────────────── */
 .panel{position:relative;background:var(--glass);border:1px solid var(--line);
        backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}
@@ -78,11 +97,16 @@ dl{margin:0}
 .a-name{font-weight:650;font-size:13px;color:var(--c);letter-spacing:-.2px}
 .a-model{margin-left:auto;font:10px var(--mono);color:var(--faint)}
 .a-role{font-size:11px;color:var(--dim);margin:3px 0 8px}
+.agent{margin-bottom:9px}
 .bar{height:3px;background:rgba(255,255,255,.06);overflow:hidden;margin-bottom:6px}
 .bar i{display:block;height:100%;width:0;background:var(--c);
        box-shadow:0 0 8px var(--c);transition:width .5s cubic-bezier(.2,.8,.2,1)}
-.a-nums{display:flex;justify-content:space-between;font:10.5px var(--mono);color:var(--dim)}
-.a-nums b{color:var(--text);font-weight:600}
+.a-nums{display:flex;justify-content:space-between;gap:6px;margin:0;
+        font:10.5px var(--mono);color:var(--dim)}
+.a-nums>div{display:flex;gap:4px;min-width:0}
+.a-nums dt{text-transform:uppercase}
+.a-nums dd{margin:0;color:var(--text);font-weight:600}
+.a-name{margin:0;font-size:13px}
 
 /* ── 완성도 게이지 ────────────────────────────────────────────── */
 .gauge{display:flex;align-items:center;gap:14px}
@@ -120,8 +144,8 @@ dl{margin:0}
 .av{width:32px;height:32px;display:grid;place-items:center;font-size:15px;
     border:1px solid var(--c);color:var(--c);background:rgba(63,224,255,.06);
     box-shadow:0 0 14px -4px var(--c)}
-.who{font:600 11px/1 var(--mono);letter-spacing:.09em;color:var(--c);margin-bottom:5px;
-     text-transform:uppercase}
+.who{font:600 11px/1 var(--mono);letter-spacing:.09em;color:var(--c);
+     margin:0 0 5px;text-transform:uppercase}
 .bubble{position:relative;padding:9px 13px;background:rgba(20,36,60,.5);
         border:1px solid var(--line);border-left:2px solid var(--c);
         white-space:pre-wrap;word-break:break-word}
@@ -138,6 +162,7 @@ pre{margin:7px 0 0;padding:9px 11px;background:rgba(4,8,16,.75);border:1px solid
 
 .div{display:flex;align-items:center;gap:11px;color:var(--cy);opacity:.75;
      font:10px var(--mono);letter-spacing:.24em;text-transform:uppercase;margin:5px 0}
+.div>span:not(.vh){flex:none}
 .div::before,.div::after{content:"";flex:1;height:1px;
   background:linear-gradient(90deg,transparent,var(--line-hot),transparent)}
 
@@ -185,7 +210,7 @@ button:disabled{opacity:.35;cursor:not-allowed}
 .viewer{width:min(880px,92vw);max-height:82vh;display:flex;flex-direction:column;
         background:var(--deep);border:1px solid var(--line-hot);box-shadow:0 0 60px -20px var(--cy)}
 .v-top{display:flex;align-items:center;gap:11px;padding:11px 15px;border-bottom:1px solid var(--line)}
-.v-path{font:12px var(--mono);color:var(--cy)}
+.v-path{font:12px var(--mono);color:var(--cy);margin:0;font-weight:400}
 .v-x{margin-left:auto;padding:4px 11px;font-size:11px}
 .v-body{overflow:auto;padding:14px 16px;margin:0;font:12px/1.65 var(--mono);color:var(--text);
         white-space:pre;background:transparent;border:0}
@@ -243,16 +268,18 @@ button:disabled{opacity:.35;cursor:not-allowed}
     <header class="bar-top">
       <h1 class="logo">AI AGENT COMPANY</h1>
       <span class="tag" id="mode">연결 중</span>
+      <p class="vh" id="phase-status" role="status">대기 중</p>
       <p class="proj" id="proj"></p>
     </header>
     <h2 class="vh">에이전트 대화 기록</h2>
-    <div id="log" tabindex="-1"><div class="div">요구사항을 입력하면 회의가 시작됩니다</div></div>
+    <div id="log" tabindex="-1" role="log" aria-live="polite"
+     aria-relevant="additions" aria-label="에이전트 대화 기록"><div class="div">요구사항을 입력하면 회의가 시작됩니다</div></div>
     <form id="f">
       <h2 class="vh">요구사항 입력</h2>
       <label class="vh" for="q">만들고 싶은 프로그램을 설명하세요</label>
       <input id="q" autocomplete="off"
              placeholder="예: 사칙연산 계산기 모듈과 pytest 테스트를 만들어줘">
-      <button id="go">착수</button>
+      <button id="go" type="submit">착수</button>
     </form>
   </main>
 
@@ -273,11 +300,13 @@ button:disabled{opacity:.35;cursor:not-allowed}
   </aside>
 </div>
 
-<div class="modal" id="modal"><div class="viewer">
-  <div class="v-top"><span class="v-path" id="vpath"></span>
-    <button class="v-x" id="vx">닫기</button></div>
-  <pre class="v-body" id="vbody"></pre>
-</div></div>
+<div class="modal" id="modal">
+  <div class="viewer" role="dialog" aria-modal="true" aria-labelledby="vpath">
+    <div class="v-top"><h2 class="v-path" id="vpath">파일</h2>
+      <button class="v-x" id="vx" type="button">닫기</button></div>
+    <pre class="v-body" id="vbody" tabindex="0"></pre>
+  </div>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -310,18 +339,21 @@ function fmt(t){
 /* ── 에이전트 카드 ── */
 function buildAgents(){
   $('agents').innerHTML = Object.entries(ROLE).map(([k,r])=>`
-    <div class="agent" id="ag-${k}" data-on="0" style="--c:${r.c}">
-      <div class="a-top"><span class="orb"></span>
-        <span class="a-name">${r.icon} ${r.name}</span>
+    <article class="agent" id="ag-${k}" data-on="0" style="--c:${r.c}"
+             aria-labelledby="an-${k}">
+      <div class="a-top"><span class="orb" aria-hidden="true"></span>
+        <h3 class="a-name" id="an-${k}">
+          <span aria-hidden="true">${r.icon}</span> ${r.name}</h3>
         <span class="a-model" id="am-${k}">—</span></div>
-      <div class="a-role">${r.role}</div>
-      <div class="bar"><i id="ab-${k}"></i></div>
-      <div class="a-nums">
-        <span>IN <b id="ai-${k}">0</b></span>
-        <span>OUT <b id="ao-${k}">0</b></span>
-        <span id="ac-${k}">$0.0000</span>
-      </div>
-    </div>`).join('');
+      <p class="a-role">${r.role}</p>
+      <p class="vh" id="as-${k}">대기 중</p>
+      <div class="bar" aria-hidden="true"><i id="ab-${k}"></i></div>
+      <dl class="a-nums">
+        <div><dt>입력</dt> <dd id="ai-${k}">0</dd></div>
+        <div><dt>출력</dt> <dd id="ao-${k}">0</dd></div>
+        <div><dt class="vh">비용</dt> <dd id="ac-${k}">$0.0000</dd></div>
+      </dl>
+    </article>`).join('');
 }
 buildAgents();
 
@@ -333,10 +365,20 @@ function renderUsage(u){
     $('ao-'+k).textContent = num(r.output);
     $('ac-'+k).textContent = '$' + (r.cost||0).toFixed(4);
     $('ab-'+k).style.width = (100*((r.input||0)+(r.output||0))/max) + '%';
+    // 막대는 aria-hidden 이므로 카드 전체에 요약을 붙여 읽을 수 있게 한다
+    const card = $('ag-'+k);
+    if (card) card.title =
+      `입력 ${num(r.input)} · 출력 ${num(r.output)} 토큰 · $${(r.cost||0).toFixed(4)}`;
   }
 }
 function setActive(agent){
-  for (const k of ['PM','DEV','QA']) $('ag-'+k).dataset.on = (k===agent) ? '1' : '0';
+  // 발광 테두리는 색이다. 색만으로는 전달되지 않으므로 숨김 텍스트를 함께 바꾼다.
+  for (const k of ['PM','DEV','QA']){
+    const on = (k === agent);
+    $('ag-'+k).dataset.on = on ? '1' : '0';
+    const st = $('as-'+k);
+    if (st) st.textContent = on ? '작업 중' : '대기 중';
+  }
 }
 
 /* ── 완성도 ── */
@@ -361,16 +403,23 @@ function addMsg(agent, text, kind){
   const stick = atBottom();
   const el = document.createElement('div');
   el.className = `msg ${agent} ${kind||'say'}`;
-  el.innerHTML = `<div class="av">${AV[agent]||'•'}</div><div>
-    <div class="who">${NAME[agent]||agent}</div>
-    <div class="bubble">${fmt(text)}</div></div>`;
+  // 툴 호출 로그는 부가 정보다. 매번 낭독되면 대화 자체를 못 따라간다.
+  // 화면에는 남기되 라이브 낭독에서는 뺀다.
+  const quiet = (kind === 'tool');
+  const badge = {verdict:'판정', error:'오류'}[kind];
+  if (quiet) el.setAttribute('aria-hidden', 'true');
+  el.innerHTML =
+    `<div class="av" aria-hidden="true">${AV[agent]||'•'}</div><div>
+      <p class="who">${NAME[agent]||agent}${badge ? ` · ${badge}` : ''}</p>
+      <div class="bubble">${fmt(text)}</div></div>`;
   log.appendChild(el);
   if (stick) log.scrollTop = log.scrollHeight;
 }
 function addDiv(text){
   const stick = atBottom();
-  const el = document.createElement('div');
-  el.className = 'div'; el.textContent = text;
+  const el = document.createElement('p');
+  el.className = 'div';
+  el.innerHTML = `<span class="vh">단계 전환: </span>${esc(text)}`;
   log.appendChild(el);
   if (stick) log.scrollTop = log.scrollHeight;
 }
@@ -383,7 +432,9 @@ function renderRepos(list){
     const t = new Date((p.created_at||0)*1000);
     const stamp = `${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
     const st = {running:'진행중', done:'완료', stopped:'중단'}[p.status] || p.status;
-    return `<li><button class="repo" data-slug="${esc(p.slug)}" data-sel="${p.slug===curSlug?1:0}">
+    return `<li><button class="repo" type="button" data-slug="${esc(p.slug)}"
+      data-sel="${p.slug===curSlug?1:0}"
+      aria-label="${esc(p.name||p.slug)} 프로젝트 열기, 완성도 ${p.score||0}점">
       <div class="r-top"><span class="r-name">${esc(p.name||p.slug)}</span>
         <span class="r-score">${p.score||0}</span></div>
       <div class="r-meta">${stamp} · ${st} · 파일 ${p.file_count||0} · $${(p.cost||0).toFixed(4)}</div>
@@ -407,7 +458,8 @@ function renderFiles(files, slug){
   const box = $('files');
   if (!files.length){ box.innerHTML = '<p class="empty">(비어 있음)</p>'; return; }
   box.innerHTML = '<ul class="plain">' + files.map(f=>
-    `<li><button class="file" data-f="${esc(f)}">▸ ${esc(f)}</button></li>`).join('') + '</ul>';
+    `<li><button class="file" data-f="${esc(f)}" type="button"
+        aria-label="${esc(f)} 파일 내용 보기">▸ ${esc(f)}</button></li>`).join('') + '</ul>';
   box.querySelectorAll('.file').forEach(b =>
     b.onclick = () => viewFile(slug || curSlug, b.dataset.f));
 }
@@ -417,12 +469,37 @@ function viewFile(slug, path){
     .then(r=>r.json()).then(d=>{
       $('vpath').textContent = path;
       $('vbody').textContent = d.content ?? '(읽을 수 없음)';
-      $('modal').dataset.open = '1';
+      openModal();
     });
 }
-$('vx').onclick = () => $('modal').dataset.open = '0';
-$('modal').onclick = e => { if (e.target === $('modal')) $('modal').dataset.open = '0'; };
-addEventListener('keydown', e => { if (e.key === 'Escape') $('modal').dataset.open = '0'; });
+// 모달을 열기 전에 어디서 왔는지 기억해 뒀다가, 닫을 때 그 자리로 돌려보낸다.
+let lastFocus = null;
+
+function openModal(){
+  lastFocus = document.activeElement;
+  $('modal').dataset.open = '1';
+  $('vx').focus();
+}
+function closeModal(){
+  if ($('modal').dataset.open !== '1') return;
+  $('modal').dataset.open = '0';
+  if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+  lastFocus = null;
+}
+
+$('vx').onclick = closeModal;
+$('modal').onclick = e => { if (e.target === $('modal')) closeModal(); };
+
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); return; }
+  // 포커스 트랩: 모달이 열린 동안 Tab이 뒤 페이지로 새지 않게 가둔다.
+  if (e.key !== 'Tab' || $('modal').dataset.open !== '1') return;
+  const items = $('modal').querySelectorAll('button, [href], [tabindex]:not([tabindex="-1"])');
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+});
 
 /* ── 이벤트 처리 ── */
 function handle(ev){
@@ -431,6 +508,7 @@ function handle(ev){
     case 'phase': {
       const label = PHASE[ev.name] || ev.name;
       addDiv(label + (ev.detail ? ' — ' + ev.detail : ''));
+      $('phase-status').textContent = `현재 단계 ${label}`;
       setActive(ACTOR[ev.name]);
       break;
     }
@@ -445,8 +523,11 @@ function handle(ev){
         c.textContent = num(ev.totals.cached);
         // 캐시가 실제로 걸리는지 표시한다. cache_control을 붙인 것과
         // 캐시가 적중한 것은 다르다 — 최소 길이 미만이면 조용히 무시된다.
-        c.style.color = ev.cache_ok === false ? 'var(--bad)' : '';
-        c.title = ev.cache_ok === false
+        const bad = ev.cache_ok === false;
+        c.style.color = bad ? 'var(--bad)' : '';
+        // 색만으로 알리면 색각 이상인 사람은 놓친다. 표시를 덧붙인다.
+        c.textContent = num(ev.totals.cached) + (bad ? ' ⚠ 미적중' : '');
+        c.title = bad
           ? '캐시가 적중하지 않고 있습니다 (프리픽스가 최소 길이 미만일 수 있음)' : '';
       }
       if (ev.score_detail) $('t-qapass').textContent = ev.score_detail.review_pass_rate + '%';
@@ -487,6 +568,7 @@ fetch('/api/agents').then(r=>r.json()).then(d=>{
   const tag = $('mode');
   tag.textContent = d.mock ? 'MOCK' : 'LIVE';
   tag.className = 'tag' + (d.mock ? '' : ' live');
+  tag.title = d.mock ? '대본 응답으로 도는 시연 모드입니다' : '실제 모델을 호출합니다';
   for (const k of ['PM','DEV','QA']) $('am-'+k).textContent = d.models[k];
 });
 loadRepos();
