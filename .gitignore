@@ -17,6 +17,7 @@ venv/
 .env.*
 *.key
 secrets.json
+.secrets.json
 
 # 편집기·OS
 .vscode/

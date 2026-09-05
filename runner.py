@@ -21,6 +21,7 @@ import subprocess
 import sys
 
 import config
+import secrets_broker
 
 TIMEOUT = int(os.getenv("TEST_TIMEOUT", "120"))
 
@@ -89,7 +90,8 @@ def _parse(out: str, returncode: int, timed_out: bool) -> dict:
         **counts,
         "failed_tests": failures[:40],
         # 앞뒤를 모두 남긴다. 뒤에서만 자르면 실패 원인이 통째로 사라진다.
-        "output": _clip(out),
+        # 만에 하나 출력에 키가 섞이면 가린다
+        "output": secrets_broker.scrub(_clip(out)),
     }
 
 

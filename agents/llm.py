@@ -5,6 +5,7 @@ from typing import TypeVar
 import anthropic
 
 import bus
+import secrets_broker
 import usage
 
 T = TypeVar("T")
@@ -12,10 +13,17 @@ _client: anthropic.Anthropic | None = None
 
 
 def client() -> anthropic.Anthropic:
+    """키는 환경이 아니라 브로커에서 온다. 환경에는 이미 남아 있지 않다."""
     global _client
     if _client is None:
-        _client = anthropic.Anthropic()
+        _client = anthropic.Anthropic(api_key=secrets_broker.require("anthropic"))
     return _client
+
+
+def reset_client() -> None:
+    """설정 화면에서 키가 바뀌면 다음 호출에 새 클라이언트를 만든다."""
+    global _client
+    _client = None
 
 
 def _bill(agent: str, model: str, u) -> None:

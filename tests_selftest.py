@@ -5,6 +5,7 @@
 
     python -m pytest tests_selftest.py -q
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -241,3 +242,82 @@ def test_tool_logs_excluded_from_live_announcements(html):
     """툴 호출까지 낭독되면 대화를 따라갈 수 없다."""
     assert "const quiet = (kind === 'tool')" in html
     assert "el.setAttribute('aria-hidden', 'true')" in html
+
+
+# ── 비밀키 브로커 (B1) ─────────────────────────────────────────────
+@pytest.fixture
+def broker(monkeypatch, tmp_path):
+    import secrets_broker as sb
+    monkeypatch.setattr(sb, "STORE_PATH", tmp_path / ".secrets.json")
+    monkeypatch.setattr(sb, "_store", {}, raising=False)
+    monkeypatch.setattr(sb, "_loaded", False, raising=False)
+    return sb
+
+
+def test_broker_removes_keys_from_environ(broker, monkeypatch):
+    """키가 os.environ에 남아 있으면 세탁을 빠뜨린 코드 경로가 전부 유출구가 된다."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fromenv")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-fromenv")
+    broker.init()
+    assert broker.get("anthropic") == "sk-ant-fromenv"
+    assert "ANTHROPIC_API_KEY" not in os.environ, "키가 환경에 그대로 남아 있다"
+    assert "GEMINI_API_KEY" not in os.environ
+
+
+def test_broker_masks_never_exposes_raw(broker):
+    broker.set_key("anthropic", "sk-ant-abcdefghijklmnop")
+    masked = broker.mask("anthropic")
+    assert "abcdefghijkl" not in masked
+    assert masked.startswith("sk-ant") and masked.endswith("mnop")
+
+
+def test_broker_status_has_no_raw_key(broker):
+    broker.set_key("gemini", "AIzaSECRETVALUE12345")
+    blob = json.dumps(broker.status(), ensure_ascii=False)
+    assert "AIzaSECRETVALUE12345" not in blob, "status()가 원문 키를 노출한다"
+
+
+def test_broker_scrub_redacts_keys_from_text(broker):
+    broker.set_key("anthropic", "sk-ant-LEAKYVALUE999")
+    out = broker.scrub("오류: sk-ant-LEAKYVALUE999 로 인증 실패")
+    assert "sk-ant-LEAKYVALUE999" not in out
+    assert "[REDACTED]" in out
+
+
+def test_broker_require_raises_when_missing(broker):
+    with pytest.raises(RuntimeError):
+        broker.require("anthropic")
+
+
+def test_broker_persist_roundtrip(broker):
+    broker.set_key("anthropic", "sk-ant-persisted")
+    path = broker.persist()
+    assert path.exists()
+    broker._store.clear()
+    broker._loaded = False
+    broker.init()
+    assert broker.get("anthropic") == "sk-ant-persisted"
+    broker.forget_stored()
+    assert not path.exists()
+
+
+def test_secrets_file_is_gitignored():
+    ignore = (config.ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert ".secrets.json" in ignore, "키 저장 파일이 커밋될 수 있다"
+
+
+# ── 설정 화면 (C1) ─────────────────────────────────────────────────
+@pytest.mark.parametrize("needle, why", [
+    ('id="cfg-open"',                "설정 열기 버튼"),
+    ('aria-labelledby="cfg-title"',  "설정 다이얼로그 이름"),
+    ('type="password" id="k-anthropic"', "키 입력이 password 타입"),
+    ('id="qa-model"',                "검증자 모델 선택"),
+    ("['modal','cfg-modal'].find",   "두 모달 모두 포커스 트랩"),
+])
+def test_settings_ui_present(html, needle, why):
+    assert needle in html, f"설정 화면 요소가 사라졌다: {why}"
+
+
+def test_settings_ui_clears_key_inputs_on_close(html):
+    """입력한 키를 DOM에 남겨두지 않는다."""
+    assert "$('k-anthropic').value = ''; $('k-gemini').value = '';" in html

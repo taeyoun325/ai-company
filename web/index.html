@@ -129,6 +129,8 @@ dl{margin:0}
 .tag{font:10px var(--mono);letter-spacing:.1em;padding:3px 8px;border:1px solid var(--line);
      color:var(--dim);text-transform:uppercase}
 .tag.live{color:var(--dev);border-color:rgba(77,255,176,.4)}
+.cfg-btn{cursor:pointer;background:transparent;color:var(--dim)}
+.cfg-btn:hover{color:var(--cy);border-color:var(--cy)}
 .proj{margin-left:auto;font:11px var(--mono);color:var(--dim);overflow:hidden;
       text-overflow:ellipsis;white-space:nowrap;max-width:44%}
 .proj b{color:var(--cy)}
@@ -203,6 +205,28 @@ button:disabled{opacity:.35;cursor:not-allowed}
 .file:hover{color:var(--cy);background:transparent;box-shadow:none}
 .empty{font:11px var(--mono);color:var(--faint)}
 
+/* ── 설정 ─────────────────────────────────────────────────────── */
+.cfg-btn{padding:4px 10px;font:10px var(--mono);letter-spacing:.1em}
+.cfg{width:min(560px,92vw);max-height:86vh;overflow:auto;padding:18px 20px;
+     background:var(--deep);border:1px solid var(--line-hot);
+     box-shadow:0 0 60px -20px var(--cy)}
+.cfg h2{margin:0 0 4px;font:600 13px var(--mono);letter-spacing:.14em;color:var(--cy)}
+.cfg p.lede{margin:0 0 16px;font-size:12px;color:var(--dim);line-height:1.6}
+.cfg fieldset{border:1px solid var(--line);margin:0 0 14px;padding:12px 14px}
+.cfg legend{padding:0 6px;font:600 11px var(--mono);color:var(--text)}
+.cfg label{display:block;font-size:11.5px;color:var(--dim);margin-bottom:5px}
+.cfg input[type=password],.cfg input[type=text],.cfg select{
+  width:100%;padding:8px 10px;border:1px solid var(--line);background:rgba(4,10,20,.7);
+  color:var(--text);font:12px var(--mono)}
+.cfg .row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.cfg .state{font:11px var(--mono);color:var(--dim)}
+.cfg .state.ok{color:var(--dev)} .cfg .state.no{color:var(--bad)}
+.cfg .note{font-size:11px;color:var(--dim);line-height:1.6;margin:8px 0 0}
+.cfg .warn{border-left:2px solid var(--qa);padding-left:10px;color:var(--qa)}
+.cfg button{padding:7px 14px;font:600 11px var(--mono);letter-spacing:.1em}
+.cfg .chk{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--dim)}
+.cfg .chk input{width:auto}
+
 /* ── 코드 뷰어 ────────────────────────────────────────────────── */
 .modal{position:fixed;inset:0;z-index:20;display:none;place-items:center;
        background:rgba(2,5,11,.82);backdrop-filter:blur(4px)}
@@ -270,6 +294,7 @@ button:disabled{opacity:.35;cursor:not-allowed}
       <span class="tag" id="mode">연결 중</span>
       <p class="vh" id="phase-status" role="status">대기 중</p>
       <p class="proj" id="proj"></p>
+      <button class="tag cfg-btn" id="cfg-open" type="button">설정</button>
     </header>
     <h2 class="vh">에이전트 대화 기록</h2>
     <div id="log" tabindex="-1" role="log" aria-live="polite"
@@ -298,6 +323,58 @@ button:disabled{opacity:.35;cursor:not-allowed}
       <div id="repos"><p class="empty">아직 없음</p></div>
     </section>
   </aside>
+</div>
+
+<div class="modal" id="cfg-modal">
+  <div class="cfg" role="dialog" aria-modal="true" aria-labelledby="cfg-title">
+    <h2 id="cfg-title">API 키 등록</h2>
+    <p class="lede">키는 이 브라우저가 아니라 서버 프로세스의 메모리에 보관됩니다.
+      화면에는 앞뒤 일부만 표시되고 원문은 다시 내려보내지 않습니다.</p>
+
+    <fieldset>
+      <legend>Anthropic (Claude) — PM · 개발자</legend>
+      <label for="k-anthropic">API 키</label>
+      <input type="password" id="k-anthropic" autocomplete="off" spellcheck="false"
+             placeholder="sk-ant-...">
+      <div class="row">
+        <button type="button" data-verify="anthropic">연결 확인</button>
+        <span class="state" id="s-anthropic">미등록</span>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Google (Gemini) — 검증자</legend>
+      <label for="k-gemini">API 키</label>
+      <input type="password" id="k-gemini" autocomplete="off" spellcheck="false"
+             placeholder="AIza...">
+      <div class="row">
+        <button type="button" data-verify="gemini">연결 확인</button>
+        <span class="state" id="s-gemini">미등록</span>
+      </div>
+      <div class="row">
+        <label for="qa-model" style="margin:0">검증자 모델</label>
+        <select id="qa-model" disabled>
+          <option value="">연결 확인을 먼저 하세요</option>
+        </select>
+      </div>
+      <p class="note">기본값 <code>gemini-2.5-pro</code>는 <strong>추측값</strong>입니다.
+        연결을 확인하면 실제 사용 가능한 모델을 조회해 목록으로 보여줍니다.</p>
+    </fieldset>
+
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="k-remember">
+        이 컴퓨터에 저장 (.secrets.json)</label>
+    </div>
+    <p class="note warn">저장하면 키가 평문 파일로 남습니다. 공용 컴퓨터에서는 체크하지 마세요.
+      저장 파일은 .gitignore 대상이라 커밋되지 않습니다.</p>
+
+    <div class="row" style="margin-top:14px">
+      <button type="button" id="cfg-save">저장</button>
+      <button type="button" id="cfg-forget">저장된 키 삭제</button>
+      <button type="button" id="cfg-close">닫기</button>
+      <span class="state" id="cfg-msg" role="status"></span>
+    </div>
+  </div>
 </div>
 
 <div class="modal" id="modal">
@@ -475,6 +552,109 @@ function viewFile(slug, path){
 // 모달을 열기 전에 어디서 왔는지 기억해 뒀다가, 닫을 때 그 자리로 돌려보낸다.
 let lastFocus = null;
 
+/* ── 설정 ── */
+function cfgOpen(){
+  lastFocus = document.activeElement;
+  $('cfg-modal').dataset.open = '1';
+  loadSettings();
+  $('k-anthropic').focus();
+}
+function cfgClose(){
+  if ($('cfg-modal').dataset.open !== '1') return;
+  $('cfg-modal').dataset.open = '0';
+  // 입력한 키를 DOM에 남겨두지 않는다
+  $('k-anthropic').value = ''; $('k-gemini').value = '';
+  if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+  lastFocus = null;
+}
+function keyState(name, info){
+  const el = $('s-' + name);
+  el.textContent = info.set ? `등록됨 ${info.masked}` : '미등록';
+  el.className = 'state ' + (info.set ? 'ok' : 'no');
+}
+function loadSettings(){
+  fetch('/api/settings').then(r=>r.json()).then(d=>{
+    for (const [name, info] of Object.entries(d.keys)) keyState(name, info);
+    $('k-remember').checked = d.stored;
+    const sel = $('qa-model');
+    if (![...sel.options].some(o=>o.value === d.models.QA)){
+      sel.innerHTML = `<option value="${esc(d.models.QA)}">${esc(d.models.QA)} (미확인)</option>`;
+    }
+    sel.value = d.models.QA;
+  });
+}
+function cfgMsg(text, ok){
+  const m = $('cfg-msg');
+  m.textContent = text;
+  m.className = 'state ' + (ok === undefined ? '' : ok ? 'ok' : 'no');
+}
+
+$('cfg-open').onclick = cfgOpen;
+$('cfg-close').onclick = cfgClose;
+$('cfg-modal').onclick = e => { if (e.target === $('cfg-modal')) cfgClose(); };
+
+$('cfg-save').onclick = () => {
+  const body = {remember: $('k-remember').checked};
+  // 빈 칸은 보내지 않는다 — 기존 키를 지우지 않기 위해
+  if ($('k-anthropic').value.trim()) body.anthropic = $('k-anthropic').value.trim();
+  if ($('k-gemini').value.trim())    body.gemini    = $('k-gemini').value.trim();
+  cfgMsg('저장 중…');
+  fetch('/api/settings/keys', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)}).then(r=>r.json()).then(d=>{
+      for (const [name, info] of Object.entries(d.keys)) keyState(name, info);
+      $('k-anthropic').value = ''; $('k-gemini').value = '';
+      cfgMsg(d.ready ? '저장됨 · 실행 준비 완료' : '저장됨 · 아직 미등록인 키가 있습니다', d.ready);
+      refreshHeader();
+    }).catch(()=>cfgMsg('저장 실패', false));
+};
+
+$('cfg-forget').onclick = () => {
+  fetch('/api/settings/forget', {method:'POST'}).then(r=>r.json()).then(()=>{
+    $('k-remember').checked = false;
+    cfgMsg('저장 파일을 삭제했습니다 (현재 세션은 계속 동작)', true);
+  });
+};
+
+document.querySelectorAll('[data-verify]').forEach(b => b.onclick = () => {
+  const who = b.dataset.verify;
+  // 입력창에 새 키가 있으면 먼저 저장하고 확인한다
+  const input = $('k-' + who).value.trim();
+  const pre = input
+    ? fetch('/api/settings/keys', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({[who]: input, remember: $('k-remember').checked})}).then(r=>r.json())
+    : Promise.resolve(null);
+  cfgMsg('확인 중…');
+  pre.then(()=>fetch('/api/settings/verify/' + who, {method:'POST'}))
+     .then(r=>r.json()).then(d=>{
+       cfgMsg(`${who}: ${d.detail}`, d.ok);
+       if (d.ok && who === 'gemini' && d.models && d.models.length){
+         const sel = $('qa-model');
+         const pro = d.models.filter(m=>/pro/i.test(m));
+         const list = pro.length ? pro.concat(d.models.filter(m=>!/pro/i.test(m))) : d.models;
+         sel.innerHTML = list.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+         sel.disabled = false;
+       }
+       if (d.ok) loadSettings();
+     }).catch(()=>cfgMsg('확인 실패', false));
+});
+
+$('qa-model').onchange = e => {
+  fetch('/api/settings/qa-model', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({qa_model: e.target.value})}).then(r=>r.json()).then(d=>{
+      $('am-QA').textContent = d.models.QA;
+      cfgMsg('검증자 모델을 ' + d.models.QA + ' 로 설정했습니다', true);
+    });
+};
+
+function refreshHeader(){
+  fetch('/api/agents').then(r=>r.json()).then(d=>{
+    const tag = $('mode');
+    tag.textContent = d.mock ? 'MOCK' : (d.keys_ready ? 'LIVE' : '키 필요');
+    tag.className = 'tag' + (!d.mock && d.keys_ready ? ' live' : '');
+    for (const k of ['PM','DEV','QA']) $('am-'+k).textContent = d.models[k];
+  });
+}
+
 function openModal(){
   lastFocus = document.activeElement;
   $('modal').dataset.open = '1';
@@ -491,10 +671,12 @@ $('vx').onclick = closeModal;
 $('modal').onclick = e => { if (e.target === $('modal')) closeModal(); };
 
 addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeModal(); return; }
+  if (e.key === 'Escape') { closeModal(); cfgClose(); return; }
   // 포커스 트랩: 모달이 열린 동안 Tab이 뒤 페이지로 새지 않게 가둔다.
-  if (e.key !== 'Tab' || $('modal').dataset.open !== '1') return;
-  const items = $('modal').querySelectorAll('button, [href], [tabindex]:not([tabindex="-1"])');
+  const open = ['modal','cfg-modal'].find(id => $(id).dataset.open === '1');
+  if (e.key !== 'Tab' || !open) return;
+  const items = $(open).querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
   if (!items.length) return;
   const first = items[0], last = items[items.length - 1];
   if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
@@ -566,9 +748,11 @@ new EventSource('/api/stream').onmessage = e => handle(JSON.parse(e.data));
 fetch('/api/agents').then(r=>r.json()).then(d=>{
   models = d.models;
   const tag = $('mode');
-  tag.textContent = d.mock ? 'MOCK' : 'LIVE';
-  tag.className = 'tag' + (d.mock ? '' : ' live');
-  tag.title = d.mock ? '대본 응답으로 도는 시연 모드입니다' : '실제 모델을 호출합니다';
+  tag.textContent = d.mock ? 'MOCK' : (d.keys_ready ? 'LIVE' : '키 필요');
+  tag.className = 'tag' + (!d.mock && d.keys_ready ? ' live' : '');
+  tag.title = d.mock ? '대본 응답으로 도는 시연 모드입니다'
+            : d.keys_ready ? '실제 모델을 호출합니다'
+            : 'API 키를 등록해야 실행할 수 있습니다';
   for (const k of ['PM','DEV','QA']) $('am-'+k).textContent = d.models[k];
 });
 loadRepos();
@@ -581,7 +765,13 @@ $('f').onsubmit = e => {
   log.innerHTML = '';
   renderScore(0);
   fetch('/api/start', {method:'POST', headers:{'Content-Type':'application/json'},
-                       body: JSON.stringify({requirement: q.value})});
+                       body: JSON.stringify({requirement: q.value})})
+    .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.detail); }); })
+    .catch(err => {
+      running = false; $('go').disabled = false;
+      addMsg('SYSTEM', err.message || '착수하지 못했습니다', 'error');
+      cfgOpen();
+    });
   q.value = '';
 };
 </script>
