@@ -1,7 +1,10 @@
-"""로컬 웹 서버. 채팅 로그를 SSE로 실시간 스트리밍한다.
+"""로컬 웹 서버.
 
-  python server.py --mock     API 키 없이 UI 확인
-  python server.py            실제 모델로 실행
+Claude Code의 틀: 작업 폴더를 열고, 대화하듯 에이전트에게 시킨다.
+진행 상황은 SSE로 흘러나간다.
+
+  python server.py                실제 모델 (설정에서 키 등록)
+  python server.py --dir <경로>    시작할 때 폴더 열기
 """
 import json
 import queue
@@ -12,48 +15,37 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+import agent_core
 import approvals
 import attachments
 import bus
 import config
-import orchestrator
+import gemini
 import scheduler
 import screen
 import secrets_broker
-import store
+import subagents
 import timeline
+import usage
+import workspace
 
 secrets_broker.init()   # 기동 즉시 환경변수에서 키를 꺼내 지운다
 
-MOCK = "--mock" in sys.argv
 app = FastAPI(title="AI Agent Company")
 
 
-class StartReq(BaseModel):
-    requirement: str
+# ── 요청 모델 ───────────────────────────────────────────────────────
+class SendReq(BaseModel):
+    message: str
     attachments: list[str] = []
 
 
-class DecisionReq(BaseModel):
-    decision: str
+class OpenReq(BaseModel):
+    path: str
 
 
-class ToggleReq(BaseModel):
-    on: bool
-
-
-class ScheduleReq(BaseModel):
-    requirement: str
-    at: str                       # "HH:MM"
-    days: list[int] = []          # 0=월 … 6=일. 비우면 매일
-    enabled: bool = True
-
-
-class SchedulePatch(BaseModel):
-    requirement: str | None = None
-    at: str | None = None
-    days: list[int] | None = None
-    enabled: bool | None = None
+class ModeReq(BaseModel):
+    mode: str
 
 
 class KeysReq(BaseModel):
@@ -66,9 +58,27 @@ class ModelReq(BaseModel):
     qa_model: str
 
 
+class DecisionReq(BaseModel):
+    decision: str
+
+
 class EditReq(BaseModel):
     path: str
     content: str
+
+
+class ScheduleReq(BaseModel):
+    requirement: str
+    at: str
+    days: list[int] = []
+    enabled: bool = True
+
+
+class SchedulePatch(BaseModel):
+    requirement: str | None = None
+    at: str | None = None
+    days: list[int] | None = None
+    enabled: bool | None = None
 
 
 @app.get("/")
@@ -76,24 +86,143 @@ def index():
     return FileResponse(config.ROOT / "web" / "index.html")
 
 
-@app.get("/api/agents")
-def agents():
-    return {"agents": bus.AGENTS, "mock": MOCK, "models": config.MODEL_OF,
-            "prices": config.PRICES, "running": orchestrator.is_running(),
-            "keys_ready": secrets_broker.ready()}
+# ── 상태 ────────────────────────────────────────────────────────────
+@app.get("/api/state")
+def state():
+    return {
+        "workspace": workspace.summary(),
+        "permission": approvals.mode_info(),
+        "agents": subagents.roster(),
+        "models": config.MODEL_OF,
+        "keys_ready": secrets_broker.ready(),
+        "busy": agent_core.busy(),
+        "turns": len(agent_core.history),
+        "screen": screen.status(),
+    }
+
+
+# ── 작업 폴더 ───────────────────────────────────────────────────────
+@app.post("/api/workspace")
+def open_workspace(req: OpenReq):
+    try:
+        root = workspace.use(req.path)
+    except (workspace.Denied, OSError) as e:
+        raise HTTPException(400, str(e))
+    bus.bind("main")
+    usage.bind("main")
+    g = workspace.git_status()
+    bus.say("SYSTEM", f"작업 폴더를 열었습니다 — `{root}`", kind="verdict")
+    if not g.get("repo"):
+        bus.say("SYSTEM", g.get("warning", ""), kind="error")
+    bus.state(workspace=workspace.summary())
+    return workspace.summary()
+
+
+@app.get("/api/files")
+def files(path: str = ".", depth: int = 2):
+    if workspace.current() is None:
+        raise HTTPException(400, "작업 폴더를 먼저 여세요")
+    try:
+        return {"files": workspace.listdir(path, depth=depth)}
+    except workspace.Denied as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/file")
+def read_file(path: str):
+    try:
+        p = workspace.resolve(path)
+    except (workspace.Denied, RuntimeError) as e:
+        raise HTTPException(400, str(e))
+    if not p.is_file():
+        raise HTTPException(404, "없는 파일")
+    if workspace.is_secret(p.name):
+        raise HTTPException(403, "비밀이 담긴 파일로 보여 열지 않습니다")
+    return {"path": path, "content": p.read_text(encoding="utf-8", errors="replace")}
+
+
+@app.post("/api/file")
+def write_file(req: EditReq):
+    """사람이 직접 고친다. 에이전트가 작업 중이면 막는다."""
+    if agent_core.busy():
+        raise HTTPException(409, "에이전트가 작업 중입니다. 끝난 뒤에 편집하세요.")
+    try:
+        p = workspace.resolve(req.path)
+    except (workspace.Denied, RuntimeError) as e:
+        raise HTTPException(400, str(e))
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(req.content, encoding="utf-8")
+    bus.state(changed=workspace.git_status().get("changed", []))
+    return {"ok": True, "path": req.path}
+
+
+@app.get("/api/diff")
+def diff(path: str | None = None):
+    if workspace.current() is None:
+        raise HTTPException(400, "작업 폴더를 먼저 여세요")
+    return {"diff": workspace.git_diff(path)}
+
+
+# ── 대화 ────────────────────────────────────────────────────────────
+@app.post("/api/send")
+def send(req: SendReq):
+    if not secrets_broker.ready():
+        raise HTTPException(400, "API 키가 등록되지 않았습니다. 설정에서 먼저 등록하세요.")
+    try:
+        agent_core.send(req.message.strip(), req.attachments)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return {"ok": True}
+
+
+@app.post("/api/reset")
+def reset_chat():
+    if agent_core.busy():
+        raise HTTPException(409, "에이전트가 작업 중입니다.")
+    agent_core.reset()
+    return {"ok": True}
+
+
+# ── 권한 모드 ───────────────────────────────────────────────────────
+@app.get("/api/permission")
+def get_permission():
+    return approvals.mode_info()
+
+
+@app.post("/api/permission")
+def set_permission(req: ModeReq):
+    try:
+        approvals.set_mode(req.mode)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return approvals.mode_info()
+
+
+@app.get("/api/approvals")
+def list_approvals():
+    return {"pending": approvals.pending(), **approvals.mode_info()}
+
+
+@app.post("/api/approvals/deny-all")
+def deny_all_approvals():
+    return {"denied": approvals.deny_all("사용자 비상 정지")}
+
+
+@app.post("/api/approvals/{aid}")
+def decide_approval(aid: str, req: DecisionReq):
+    if req.decision not in ("approve", "deny"):
+        raise HTTPException(400, "decision은 approve 또는 deny")
+    if not approvals.decide(aid, req.decision):
+        raise HTTPException(404, "이미 처리됐거나 없는 요청")
+    return {"ok": True}
 
 
 # ── 설정: API 키와 모델 ─────────────────────────────────────────────
 @app.get("/api/settings")
 def get_settings():
-    """키 원문은 절대 내보내지 않는다. 설정 여부와 마스킹만."""
-    return {
-        "keys": secrets_broker.status(),
-        "models": config.MODEL_OF,
-        "stored": secrets_broker.STORE_PATH.exists(),
-        "mock": MOCK,
-        "ready": secrets_broker.ready(),
-    }
+    return {"keys": secrets_broker.status(), "models": config.MODEL_OF,
+            "stored": secrets_broker.STORE_PATH.exists(),
+            "ready": secrets_broker.ready()}
 
 
 @app.post("/api/settings/keys")
@@ -102,46 +231,32 @@ def set_keys(req: KeysReq):
     for name in ("anthropic", "gemini"):
         val = getattr(req, name)
         if val is None:
-            continue                      # 안 보낸 것은 건드리지 않는다
+            continue
         secrets_broker.set_key(name, val)
         changed.append(name)
     if req.remember:
         secrets_broker.persist()
-
-    # 키가 바뀌었으니 다음 호출에 새 클라이언트를 만들게 한다.
-    # SDK가 아직 설치되지 않았을 수 있다 — 설정 화면은 그 전에 쓰는 화면이다.
-    _reset_clients(changed)
-
-    return {"ok": True, "keys": secrets_broker.status(),
-            "ready": secrets_broker.ready(),
-            "stored": secrets_broker.STORE_PATH.exists()}
-
-
-def _reset_clients(changed: list[str]) -> None:
     if "anthropic" in changed:
         try:
             from agents import llm
             llm.reset_client()
         except ImportError:
-            pass          # anthropic 미설치 — 설치 후 첫 호출에 새로 만들어진다
-    if "gemini" in changed:
-        try:
-            from agents import qa
-            qa.reset_client()
-        except ImportError:
             pass
+    if "gemini" in changed:
+        gemini.reset_client()
+    return {"ok": True, "keys": secrets_broker.status(),
+            "ready": secrets_broker.ready(),
+            "stored": secrets_broker.STORE_PATH.exists()}
 
 
 @app.post("/api/settings/forget")
 def forget_keys():
-    """저장 파일을 지운다. 현재 세션의 메모리 키는 유지된다."""
     secrets_broker.forget_stored()
     return {"ok": True, "stored": False}
 
 
 @app.post("/api/settings/verify/{provider}")
 def verify_key(provider: str):
-    """실제로 한 번 호출해서 키가 유효한지 본다. 가장 싼 호출로."""
     try:
         if provider == "anthropic":
             from agents import llm
@@ -149,8 +264,7 @@ def verify_key(provider: str):
             return {"ok": True, "detail": f"모델 {len(models)}개 조회됨",
                     "models": models[:40]}
         if provider == "gemini":
-            from agents import qa
-            models = qa.list_models()
+            models = gemini.list_models()
             return {"ok": True, "detail": f"모델 {len(models)}개 조회됨",
                     "models": models[:60]}
         raise HTTPException(400, "알 수 없는 제공자")
@@ -160,125 +274,17 @@ def verify_key(provider: str):
         pkg = "anthropic" if provider == "anthropic" else "google-genai"
         return {"ok": False,
                 "detail": f"{pkg} 패키지가 설치되지 않았습니다. "
-                          f"pip install -r requirements.txt 를 먼저 실행하세요. ({e})"}
+                          f"pip install -r requirements.txt 를 실행하세요. ({e})"}
     except Exception as e:
-        # 오류 메시지에 키가 섞여 나올 수 있다
         return {"ok": False, "detail": secrets_broker.scrub(f"{type(e).__name__}: {e}")}
 
 
 @app.post("/api/settings/qa-model")
 def set_qa_model(req: ModelReq):
-    """Gemini 모델 ID는 시점에 따라 바뀐다. 조회한 목록에서 고른 값을 박는다."""
     config.QA_MODEL = req.qa_model
     config.MODEL_OF["QA"] = req.qa_model
     config.PRICES.setdefault(req.qa_model, config.PRICES.get("gemini-2.5-pro", (0.0, 0.0)))
     return {"ok": True, "models": config.MODEL_OF}
-
-
-@app.post("/api/start")
-def start(req: StartReq):
-    if not MOCK and not secrets_broker.ready():
-        raise HTTPException(400, "API 키가 등록되지 않았습니다. 설정에서 먼저 등록하세요.")
-    try:
-        slug = orchestrator.start(req.requirement.strip(), mock=MOCK,
-                                  attachment_ids=req.attachments)
-    except RuntimeError as e:
-        raise HTTPException(429, str(e))
-    return {"ok": True, "slug": slug}
-
-
-@app.get("/api/runs")
-def runs():
-    """지금 돌고 있는 실행 목록. UI의 작업공간 탭이 쓴다."""
-    return {"running": orchestrator.running_slugs(),
-            "max_concurrent": orchestrator.MAX_CONCURRENT}
-
-
-# ── 저장소 ──────────────────────────────────────────────────────────
-@app.get("/api/projects")
-def projects():
-    return {"projects": store.list_projects()}
-
-
-@app.get("/api/projects/{slug}")
-def project(slug: str):
-    m = store.meta(slug)
-    if not m:
-        raise HTTPException(404, "없는 프로젝트")
-    m["files"] = store.files_of(slug)
-    return m
-
-
-@app.get("/api/projects/{slug}/file")
-def project_file(slug: str, path: str, version: int = 0):
-    """version 0 = 현재 파일. 그 외는 이력."""
-    try:
-        return {"path": path, "version": version,
-                "content": store.version_text(slug, path, version)}
-    except (ValueError, OSError):
-        raise HTTPException(404, "없는 파일 또는 버전")
-
-
-@app.get("/api/projects/{slug}/versions")
-def project_versions(slug: str, path: str):
-    return {"path": path, "versions": store.versions(slug, path)}
-
-
-@app.get("/api/projects/{slug}/diff")
-def project_diff(slug: str, path: str, a: int, b: int = 0):
-    try:
-        return {"path": path, "a": a, "b": b, "rows": store.diff(slug, path, a, b)}
-    except (ValueError, OSError):
-        raise HTTPException(404, "비교할 수 없는 버전")
-
-
-@app.post("/api/projects/{slug}/file")
-def edit_file(slug: str, req: EditReq):
-    """사람이 직접 고친다.
-
-    사람은 에이전트의 신뢰 경계 위에 있으므로 src/ 와 tests/ 를 모두 쓸 수 있다.
-    다만 에이전트가 도는 중에는 막는다 — 같은 파일을 동시에 쓰면 한쪽이 사라진다.
-    """
-    if orchestrator.is_running():
-        raise HTTPException(409, "에이전트가 작업 중입니다. 끝난 뒤에 편집하세요.")
-    from tools import fs as _fs
-    try:
-        _fs.use(slug)
-        info = _fs.write(req.path, req.content, "SYSTEM")
-    except _fs.Denied as e:
-        raise HTTPException(400, str(e))
-    except OSError as e:
-        raise HTTPException(500, f"쓰기 실패: {e}")
-    return {"ok": True, **info, "files": store.files_of(slug)}
-
-
-@app.get("/api/projects/{slug}/preview")
-def project_preview(slug: str):
-    """무엇을 보여줄 수 있는지 판단한다. 실행은 하지 않는다."""
-    import runner
-    d = store.dir_of(slug)
-    if not d.exists():
-        raise HTTPException(404, "없는 프로젝트")
-    html = runner.find_html(d)
-    if html:
-        return {"kind": "html", "path": html, "content": store.read_file(slug, html)}
-    entry = runner.find_entry(d)
-    if entry:
-        return {"kind": "python", "path": entry}
-    return {"kind": "none", "path": None}
-
-
-@app.post("/api/projects/{slug}/preview/run")
-def project_preview_run(slug: str):
-    """진입점을 실제로 실행한다. pytest와 동일한 격리를 쓴다."""
-    import runner
-    if orchestrator.is_running():
-        raise HTTPException(409, "에이전트가 작업 중입니다. 끝난 뒤에 실행하세요.")
-    d = store.dir_of(slug)
-    entry = runner.find_entry(d)
-    if not entry:
-        raise HTTPException(400, "실행할 진입점을 찾지 못했습니다")
-    return runner.run_entry(d, entry)
 
 
 # ── 첨부 자료 ───────────────────────────────────────────────────────
@@ -315,7 +321,7 @@ def delete_attachment(aid: str):
 @app.get("/api/screen/status")
 def screen_status():
     st = screen.status()
-    st["auto_approve_low_risk"] = approvals.auto_approve_low_risk
+    st.update(approvals.mode_info())
     st["pending"] = approvals.pending()
     return st
 
@@ -332,51 +338,20 @@ def screen_capture():
     return meta
 
 
-# ── 승인 게이트 ─────────────────────────────────────────────────────
-@app.get("/api/approvals")
-def list_approvals():
-    return {"pending": approvals.pending(),
-            "auto_approve_low_risk": approvals.auto_approve_low_risk}
-
-
-@app.post("/api/approvals/{aid}")
-def decide_approval(aid: str, req: DecisionReq):
-    if req.decision not in ("approve", "deny"):
-        raise HTTPException(400, "decision은 approve 또는 deny")
-    if not approvals.decide(aid, req.decision):
-        raise HTTPException(404, "이미 처리됐거나 없는 요청")
-    return {"ok": True}
-
-
-@app.post("/api/approvals/deny-all")
-def deny_all_approvals():
-    """비상 정지."""
-    return {"denied": approvals.deny_all("사용자 비상 정지")}
-
-
-@app.post("/api/approvals/auto")
-def set_auto_approve(req: ToggleReq):
-    """저위험(이동·스크롤) 자동 승인 토글. 클릭·입력에는 적용되지 않는다."""
-    return {"auto_approve_low_risk": approvals.set_auto_approve(req.on)}
-
-
-# ── 협업 타임라인 (B5) ──────────────────────────────────────────────
-@app.get("/api/projects/{slug}/timeline")
-def project_timeline(slug: str):
-    if not store.meta(slug):
-        raise HTTPException(404, "없는 프로젝트")
-    tl = timeline.build(slug)
-    tl["summary"] = timeline.summary(slug)
+# ── 타임라인 · 예약 ─────────────────────────────────────────────────
+@app.get("/api/timeline")
+def get_timeline():
+    tl = timeline.build("main")
+    tl["summary"] = timeline.summary("main")
     return tl
 
 
-# ── 예약 실행 (B6) ──────────────────────────────────────────────────
 @app.get("/api/schedules")
 def list_schedules():
     from datetime import datetime
     now = datetime.now()
-    items = [{**i, "when": scheduler.next_due(i, now)} for i in scheduler.listing()]
-    return {"schedules": items, "mock": MOCK}
+    return {"schedules": [{**i, "when": scheduler.next_due(i, now)}
+                          for i in scheduler.listing()]}
 
 
 @app.post("/api/schedules")
@@ -406,6 +381,7 @@ def delete_schedule(sid: str):
     return {"ok": True}
 
 
+# ── 이벤트 스트림 ───────────────────────────────────────────────────
 @app.get("/api/stream")
 def stream():
     def gen():
@@ -416,7 +392,7 @@ def stream():
                 try:
                     ev = q.get(timeout=15)
                 except queue.Empty:
-                    yield ": keepalive\n\n"      # 프록시 타임아웃 방지
+                    yield ": keepalive\n\n"
                     continue
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         finally:
@@ -427,17 +403,29 @@ def stream():
                                       "X-Accel-Buffering": "no"})
 
 
-def _scheduled_start(requirement: str) -> str:
-    """예약이 착수할 때 쓰는 경로. 몰래 실제 모델을 부르지 않게 같은 검사를 통과시킨다."""
-    if not MOCK and not secrets_broker.ready():
+def _scheduled_send(requirement: str) -> str:
+    """예약이 착수할 때. 키와 작업 폴더가 준비돼 있어야 한다."""
+    if not secrets_broker.ready():
         raise RuntimeError("API 키가 없어 예약을 실행하지 않았습니다")
-    return orchestrator.start(requirement, mock=MOCK)
+    if workspace.current() is None:
+        raise RuntimeError("작업 폴더가 열려 있지 않아 예약을 실행하지 않았습니다")
+    agent_core.send(requirement)
+    return "main"
 
 
-scheduler.configure(_scheduled_start)
+scheduler.configure(_scheduled_send)
 scheduler.start()
 
 
 if __name__ == "__main__":
-    print(f"\n  http://127.0.0.1:8000   {'[MOCK 모드]' if MOCK else ''}\n")
+    if "--dir" in sys.argv:
+        try:
+            workspace.use(sys.argv[sys.argv.index("--dir") + 1])
+            bus.bind("main")
+            usage.bind("main")
+        except (IndexError, workspace.Denied, OSError) as e:
+            print(f"  폴더를 열지 못했습니다: {e}")
+    cur = workspace.current()
+    print("\n  http://127.0.0.1:8000")
+    print(f"  작업 폴더: {cur or '(설정에서 열기)'}\n")
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
