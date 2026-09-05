@@ -238,6 +238,28 @@ button:disabled{opacity:.35;cursor:not-allowed}
 .v-x{margin-left:auto;padding:4px 11px;font-size:11px}
 .v-body{overflow:auto;padding:14px 16px;margin:0;font:12px/1.65 var(--mono);color:var(--text);
         white-space:pre;background:transparent;border:0}
+.v-tabs{display:flex;gap:6px;margin-left:6px}
+.v-tab{padding:3px 10px;font:10px var(--mono);letter-spacing:.1em;border:1px solid var(--line);
+       background:transparent;color:var(--dim);cursor:pointer}
+.v-tab[aria-selected="true"]{color:var(--cy);border-color:var(--cy);
+       background:rgba(63,224,255,.10)}
+.v-edit{flex:1;min-height:340px;width:100%;resize:vertical;padding:14px 16px;border:0;
+        background:rgba(4,8,16,.55);color:var(--text);font:12px/1.65 var(--mono);
+        white-space:pre;overflow:auto}
+.v-edit:focus{outline:2px solid var(--cy);outline-offset:-2px}
+.v-foot{display:flex;align-items:center;gap:9px;padding:10px 15px;
+        border-top:1px solid var(--line);flex-wrap:wrap}
+.v-foot select{padding:5px 8px;border:1px solid var(--line);background:rgba(4,10,20,.7);
+        color:var(--text);font:11px var(--mono)}
+.v-foot .state{font:11px var(--mono);color:var(--dim)}
+.v-foot .state.ok{color:var(--dev)} .v-foot .state.no{color:var(--bad)}
+.dl{margin:0;padding:14px 16px;overflow:auto;font:12px/1.6 var(--mono)}
+.dl div{white-space:pre-wrap;word-break:break-word;padding:0 6px}
+.dl .add{background:rgba(77,255,176,.10);color:var(--dev)}
+.dl .del{background:rgba(255,95,126,.10);color:var(--bad)}
+.dl .hunk{color:var(--cy);opacity:.8;margin-top:6px}
+.dl .same{color:var(--dim)}
+.dl .none{color:var(--dim);padding:0 6px}
 </style>
 </head>
 <body>
@@ -380,8 +402,25 @@ button:disabled{opacity:.35;cursor:not-allowed}
 <div class="modal" id="modal">
   <div class="viewer" role="dialog" aria-modal="true" aria-labelledby="vpath">
     <div class="v-top"><h2 class="v-path" id="vpath">파일</h2>
+      <div class="v-tabs" role="tablist" aria-label="보기 방식">
+        <button class="v-tab" id="tab-edit" type="button" role="tab"
+                aria-selected="true" aria-controls="vedit">편집</button>
+        <button class="v-tab" id="tab-diff" type="button" role="tab"
+                aria-selected="false" aria-controls="vdiff">변경 내역</button>
+      </div>
       <button class="v-x" id="vx" type="button">닫기</button></div>
-    <pre class="v-body" id="vbody" tabindex="0"></pre>
+
+    <textarea class="v-edit" id="vedit" spellcheck="false" role="tabpanel"
+              aria-labelledby="tab-edit" aria-label="파일 내용 편집"></textarea>
+    <div class="dl" id="vdiff" role="tabpanel" aria-labelledby="tab-diff" hidden></div>
+
+    <div class="v-foot">
+      <label class="vh" for="vver">비교할 이전 버전</label>
+      <select id="vver"><option value="">이력 없음</option></select>
+      <button type="button" id="vsave">저장</button>
+      <button type="button" id="vrevert">되돌리기</button>
+      <span class="state" id="vmsg" role="status"></span>
+    </div>
   </div>
 </div>
 
@@ -540,15 +579,92 @@ function renderFiles(files, slug){
   box.querySelectorAll('.file').forEach(b =>
     b.onclick = () => viewFile(slug || curSlug, b.dataset.f));
 }
+let curFile = null, curOriginal = '';
+
 function viewFile(slug, path){
   if (!slug) return;
-  fetch(`/api/projects/${encodeURIComponent(slug)}/file?path=${encodeURIComponent(path)}`)
-    .then(r=>r.json()).then(d=>{
+  curFile = {slug, path};
+  const q = `/api/projects/${encodeURIComponent(slug)}/file?path=${encodeURIComponent(path)}`;
+  fetch(q).then(r=>r.json()).then(d=>{
       $('vpath').textContent = path;
-      $('vbody').textContent = d.content ?? '(읽을 수 없음)';
+      curOriginal = d.content ?? '';
+      $('vedit').value = curOriginal;
+      vTab('edit');
+      vMsg('');
+      loadVersions();
       openModal();
     });
 }
+
+function vMsg(text, ok){
+  const m = $('vmsg');
+  m.textContent = text;
+  m.className = 'state ' + (ok === undefined ? '' : ok ? 'ok' : 'no');
+}
+
+function vTab(which){
+  const edit = which === 'edit';
+  $('tab-edit').setAttribute('aria-selected', edit);
+  $('tab-diff').setAttribute('aria-selected', !edit);
+  $('vedit').hidden = !edit;
+  $('vdiff').hidden = edit;
+  if (!edit) loadDiff();
+}
+$('tab-edit').onclick = () => vTab('edit');
+$('tab-diff').onclick = () => vTab('diff');
+
+function loadVersions(){
+  if (!curFile) return;
+  const {slug, path} = curFile;
+  fetch(`/api/projects/${encodeURIComponent(slug)}/versions?path=${encodeURIComponent(path)}`)
+    .then(r=>r.json()).then(d=>{
+      // version 0 은 현재 파일이므로 비교 대상에서 뺀다
+      const past = (d.versions||[]).filter(v=>v.version !== 0);
+      const sel = $('vver');
+      sel.innerHTML = past.length
+        ? past.reverse().map(v=>
+            `<option value="${v.version}">v${v.version} · ${v.lines}줄 · ${esc(v.note)}</option>`).join('')
+        : '<option value="">이력 없음 (아직 덮어쓰기가 없었습니다)</option>';
+      sel.disabled = !past.length;
+    });
+}
+
+function loadDiff(){
+  if (!curFile) return;
+  const a = $('vver').value;
+  const box = $('vdiff');
+  if (!a){ box.innerHTML = '<p class="none">비교할 이전 버전이 없습니다.</p>'; return; }
+  const {slug, path} = curFile;
+  fetch(`/api/projects/${encodeURIComponent(slug)}/diff` +
+        `?path=${encodeURIComponent(path)}&a=${a}&b=0`)
+    .then(r=>r.json()).then(d=>{
+      const rows = d.rows || [];
+      box.innerHTML = rows.length
+        ? rows.map(r=>`<div class="${r.kind}">${esc(r.text)}</div>`).join('')
+        : '<p class="none">이 버전과 현재 내용이 같습니다.</p>';
+    });
+}
+$('vver').onchange = () => { if (!$('vdiff').hidden) loadDiff(); };
+
+$('vsave').onclick = () => {
+  if (!curFile) return;
+  vMsg('저장 중…');
+  fetch(`/api/projects/${encodeURIComponent(curFile.slug)}/file`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({path: curFile.path, content: $('vedit').value})
+  }).then(r => r.ok ? r.json() : r.json().then(e=>{throw new Error(e.detail);}))
+    .then(d=>{
+      curOriginal = $('vedit').value;
+      vMsg(`저장됨 (${d.new_lines}줄)`, true);
+      renderFiles(d.files, curFile.slug);
+      loadVersions();
+    }).catch(err => vMsg(err.message || '저장 실패', false));
+};
+
+$('vrevert').onclick = () => {
+  $('vedit').value = curOriginal;
+  vMsg('편집 내용을 되돌렸습니다');
+};
 // 모달을 열기 전에 어디서 왔는지 기억해 뒀다가, 닫을 때 그 자리로 돌려보낸다.
 let lastFocus = null;
 

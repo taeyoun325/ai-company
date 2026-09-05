@@ -82,6 +82,9 @@ def write(path: str, content: str, role: str = "SYSTEM") -> dict:
     p = _resolve(path, role, write=True)
     p.parent.mkdir(parents=True, exist_ok=True)
     before = p.read_text(encoding="utf-8") if p.exists() else None
+    # 덮어쓰기 전 내용을 이력에 남긴다 — 회차별 diff의 재료
+    if before is not None and before != content:
+        store.snapshot_version(slug(), path, before, note=f"{role} 덮어쓰기 직전")
     p.write_text(content, encoding="utf-8")
     return {"path": path, "created": before is None,
             "old_lines": len(before.splitlines()) if before else 0,

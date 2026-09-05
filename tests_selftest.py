@@ -321,3 +321,46 @@ def test_settings_ui_present(html, needle, why):
 def test_settings_ui_clears_key_inputs_on_close(html):
     """입력한 키를 DOM에 남겨두지 않는다."""
     assert "$('k-anthropic').value = ''; $('k-gemini').value = '';" in html
+
+
+# ── 파일 이력과 diff (B2) ──────────────────────────────────────────
+def test_overwrite_creates_history(project):
+    """에이전트는 파일을 통째로 덮어쓴다. 이전 내용이 남아야 diff를 볼 수 있다."""
+    fs.write("src/app.py", "VALUE = 2\n", "DEV")
+    vers = store.versions(project, "src/app.py")
+    past = [v for v in vers if v["version"] != 0]
+    assert len(past) == 1, "덮어쓰기 전 내용이 이력에 안 남았다"
+    assert store.version_text(project, "src/app.py", past[0]["version"]) == "VALUE = 1\n"
+    assert store.version_text(project, "src/app.py", 0) == "VALUE = 2\n"
+
+
+def test_identical_write_makes_no_history(project):
+    """같은 내용을 다시 써도 버전이 늘면 이력이 잡음으로 가득 찬다."""
+    fs.write("src/app.py", "VALUE = 1\n", "DEV")
+    past = [v for v in store.versions(project, "src/app.py") if v["version"] != 0]
+    assert past == []
+
+
+def test_diff_marks_added_and_removed_lines(project):
+    fs.write("src/app.py", "VALUE = 1\nEXTRA = 9\n", "DEV")
+    rows = store.diff(project, "src/app.py", 1, 0)
+    kinds = {r["kind"] for r in rows}
+    assert "add" in kinds
+    assert any(r["kind"] == "add" and "EXTRA = 9" in r["text"] for r in rows)
+
+
+def test_history_not_listed_as_output(project):
+    """.history/ 는 산출물이 아니다."""
+    fs.write("src/app.py", "VALUE = 3\n", "DEV")
+    assert not any(".history" in f for f in store.files_of(project))
+
+
+@pytest.mark.parametrize("needle, why", [
+    ('id="vedit"',    "편집 textarea"),
+    ('id="vdiff"',    "diff 패널"),
+    ('role="tablist"', "편집/변경내역 탭"),
+    ('id="vver"',     "비교 버전 선택"),
+    ('id="vsave"',    "저장 버튼"),
+])
+def test_editor_ui_present(html, needle, why):
+    assert needle in html, f"편집기 요소가 사라졌다: {why}"

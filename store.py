@@ -15,6 +15,7 @@ from pathlib import Path
 import config
 
 META = ".meta.json"
+HISTORY = ".history"
 
 
 def _slug(text: str) -> str:
@@ -100,3 +101,70 @@ def list_projects() -> list[dict]:
         m["file_count"] = len(files_of(d.name))
         out.append(m)
     return sorted(out, key=lambda m: m.get("created_at", 0), reverse=True)
+
+
+# ── 파일 이력 ──────────────────────────────────────────────────────
+# 에이전트가 파일을 덮어쓰기 직전 내용을 남긴다. 회차별 diff의 재료.
+
+def _hist_dir(slug: str, path: str) -> Path:
+    # 경로 구분자를 파일명에 안전한 형태로 눕힌다
+    flat = path.replace("\\", "/").replace("/", "__")
+    return dir_of(slug) / HISTORY / flat
+
+
+def snapshot_version(slug: str, path: str, content: str, note: str = "") -> int:
+    """쓰기 직전 내용을 새 버전으로 남기고 버전 번호를 돌려준다."""
+    d = _hist_dir(slug, path)
+    d.mkdir(parents=True, exist_ok=True)
+    n = len(list(d.glob("v*.txt"))) + 1
+    (d / f"v{n:03d}.txt").write_text(content, encoding="utf-8")
+    if note:
+        (d / f"v{n:03d}.note").write_text(note, encoding="utf-8")
+    return n
+
+
+def versions(slug: str, path: str) -> list[dict]:
+    """오래된 것부터. 마지막 항목은 항상 현재 파일이다."""
+    d = _hist_dir(slug, path)
+    out = []
+    if d.exists():
+        for f in sorted(d.glob("v*.txt")):
+            note = f.with_suffix(".note")
+            out.append({
+                "version": int(f.stem[1:]),
+                "note": note.read_text(encoding="utf-8") if note.exists() else "",
+                "lines": len(f.read_text(encoding="utf-8", errors="replace").splitlines()),
+            })
+    try:
+        cur = read_file(slug, path)
+        out.append({"version": 0, "note": "현재", "lines": len(cur.splitlines())})
+    except ValueError:
+        pass
+    return out
+
+
+def version_text(slug: str, path: str, version: int) -> str:
+    """version 0 은 현재 파일."""
+    if version == 0:
+        return read_file(slug, path)
+    f = _hist_dir(slug, path) / f"v{version:03d}.txt"
+    if not f.exists():
+        raise ValueError("없는 버전")
+    return f.read_text(encoding="utf-8", errors="replace")
+
+
+def diff(slug: str, path: str, a: int, b: int) -> list[dict]:
+    """단순 통합 diff. difflib 은 표준 라이브러리라 의존성이 늘지 않는다."""
+    import difflib
+    old = version_text(slug, path, a).splitlines()
+    new = version_text(slug, path, b).splitlines()
+    rows = []
+    for line in difflib.unified_diff(old, new, lineterm="", n=3):
+        if line.startswith("+++") or line.startswith("---"):
+            continue
+        kind = ("hunk" if line.startswith("@@")
+                else "add" if line.startswith("+")
+                else "del" if line.startswith("-")
+                else "same")
+        rows.append({"kind": kind, "text": line})
+    return rows

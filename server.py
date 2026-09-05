@@ -38,6 +38,11 @@ class ModelReq(BaseModel):
     qa_model: str
 
 
+class EditReq(BaseModel):
+    path: str
+    content: str
+
+
 @app.get("/")
 def index():
     return FileResponse(config.ROOT / "web" / "index.html")
@@ -166,11 +171,46 @@ def project(slug: str):
 
 
 @app.get("/api/projects/{slug}/file")
-def project_file(slug: str, path: str):
+def project_file(slug: str, path: str, version: int = 0):
+    """version 0 = 현재 파일. 그 외는 이력."""
     try:
-        return {"path": path, "content": store.read_file(slug, path)}
+        return {"path": path, "version": version,
+                "content": store.version_text(slug, path, version)}
     except (ValueError, OSError):
-        raise HTTPException(404, "없는 파일")
+        raise HTTPException(404, "없는 파일 또는 버전")
+
+
+@app.get("/api/projects/{slug}/versions")
+def project_versions(slug: str, path: str):
+    return {"path": path, "versions": store.versions(slug, path)}
+
+
+@app.get("/api/projects/{slug}/diff")
+def project_diff(slug: str, path: str, a: int, b: int = 0):
+    try:
+        return {"path": path, "a": a, "b": b, "rows": store.diff(slug, path, a, b)}
+    except (ValueError, OSError):
+        raise HTTPException(404, "비교할 수 없는 버전")
+
+
+@app.post("/api/projects/{slug}/file")
+def edit_file(slug: str, req: EditReq):
+    """사람이 직접 고친다.
+
+    사람은 에이전트의 신뢰 경계 위에 있으므로 src/ 와 tests/ 를 모두 쓸 수 있다.
+    다만 에이전트가 도는 중에는 막는다 — 같은 파일을 동시에 쓰면 한쪽이 사라진다.
+    """
+    if orchestrator.is_running():
+        raise HTTPException(409, "에이전트가 작업 중입니다. 끝난 뒤에 편집하세요.")
+    from tools import fs as _fs
+    try:
+        _fs.use(slug)
+        info = _fs.write(req.path, req.content, "SYSTEM")
+    except _fs.Denied as e:
+        raise HTTPException(400, str(e))
+    except OSError as e:
+        raise HTTPException(500, f"쓰기 실패: {e}")
+    return {"ok": True, **info, "files": store.files_of(slug)}
 
 
 @app.get("/api/stream")
