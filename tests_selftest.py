@@ -8,6 +8,7 @@
 import json
 import os
 import re
+import time
 import sys
 from pathlib import Path
 
@@ -411,3 +412,112 @@ def test_run_entry_is_isolated_like_pytest(project, monkeypatch):
     r = runner.run_entry(store.dir_of(project), "src/main.py")
     assert "PREVIEW-CANARY" not in r["output"]
     assert "KEY= None" in r["output"]
+
+
+# ── 동시 실행 격리 (B4) ────────────────────────────────────────────
+# 전역 상태 하나로 두면 두 프로젝트가 서로를 덮어쓴다.
+# 실행 하나가 스레드 하나이므로 스레드 로컬로 가른다.
+
+def test_fs_current_project_is_per_thread(tmp_path, monkeypatch):
+    """두 스레드가 서로 다른 프로젝트를 가리켜야 한다."""
+    import threading
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    a = store.new_project("가")
+    b = store.new_project("나")
+    seen = {}
+
+    def work(slug, key):
+        fs.use(slug)
+        time.sleep(0.05)              # 서로 겹치도록
+        seen[key] = fs.slug()
+
+    t1 = threading.Thread(target=work, args=(a, "a"))
+    t2 = threading.Thread(target=work, args=(b, "b"))
+    t1.start(); t2.start(); t1.join(); t2.join()
+    assert seen["a"] == a and seen["b"] == b, f"fs 컨텍스트가 섞였다: {seen}"
+
+
+def test_fs_requires_use_in_each_thread(tmp_path, monkeypatch):
+    import threading
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    fs.use(store.new_project("메인"))
+    err = []
+
+    def work():
+        try:
+            fs.slug()
+        except RuntimeError as e:
+            err.append(str(e))
+
+    t = threading.Thread(target=work)
+    t.start(); t.join()
+    assert err, "다른 스레드가 메인 스레드의 프로젝트를 물려받았다"
+
+
+def test_usage_is_counted_per_run():
+    """실행별로 따로 세지 않으면 예산 상한이 엉뚱하게 걸린다."""
+    import usage
+    usage.bind("run-a")
+    usage.record("DEV", "claude-opus-5", 1000, 500)
+    a_cost = usage.total_cost("run-a")
+
+    usage.bind("run-b")
+    usage.record("DEV", "claude-opus-5", 2000, 1000)
+
+    assert usage.total_cost("run-a") == a_cost, "다른 실행의 사용량이 섞였다"
+    assert usage.total_cost("run-b") > a_cost
+    assert usage.agents_of("run-a")["DEV"]["input"] == 1000
+    assert usage.agents_of("run-b")["DEV"]["input"] == 2000
+    usage.drop("run-a"); usage.drop("run-b")
+
+
+def test_bus_tags_events_with_run():
+    import bus
+    bus.bind("run-x")
+    bus.say("PM", "안녕")
+    evs = bus.history("run-x")
+    assert evs and all(e["run"] == "run-x" for e in evs)
+    bus.reset("run-x")
+
+
+def test_bus_reset_only_clears_its_own_run():
+    """한 실행을 새로 시작해도 다른 실행의 기록이 날아가면 안 된다."""
+    import bus
+    bus.bind("run-keep")
+    bus.say("PM", "남아야 함")
+    bus.bind("run-wipe")
+    bus.say("PM", "지워질 것")
+    bus.reset("run-wipe")
+    assert bus.history("run-keep"), "다른 실행 기록까지 지워졌다"
+    assert not bus.history("run-wipe")
+    bus.reset("run-keep")
+
+
+def test_bus_history_is_bounded():
+    """무한히 쌓이면 오래 켜둔 세션이 메모리를 먹는다."""
+    import bus
+    assert bus._history.maxlen == bus.HISTORY_LIMIT
+
+
+def test_concurrency_limit_is_enforced(monkeypatch, tmp_path):
+    import orchestrator
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    monkeypatch.setattr(orchestrator, "MAX_CONCURRENT", 0)
+    with pytest.raises(RuntimeError):
+        orchestrator.start("한도 초과", mock=True)
+
+
+@pytest.mark.parametrize("needle, why", [
+    ('id="ws" role="tablist"', "작업공간 탭 바"),
+    ("const runs = new Map()", "실행별 상태 보관"),
+    ("function switchTo(slug)", "탭 전환"),
+    ("const showing = (ev.run === curSlug)", "활성 탭만 렌더"),
+])
+def test_workspace_tabs_present(html, needle, why):
+    assert needle in html, f"작업공간 요소가 사라졌다: {why}"
+
+
+def test_completion_summary_survives_tab_switch(html):
+    """renderDone(d, false) 는 아무것도 안 그려서 탭을 옮기면 요약이 사라졌다."""
+    assert "renderDone(d, append)" not in html, "append 분기가 되살아났다"
+    assert "if (r.done) renderDone(r.done);" in html

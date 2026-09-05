@@ -7,6 +7,7 @@
 대신 인수기준은 보여준다. 그게 계약서이기 때문이다.
 """
 import json
+import threading
 
 from anthropic import beta_tool
 
@@ -16,8 +17,15 @@ from agents import llm
 from schemas import Criterion, QAVerdict, Task
 from tools import fs
 
-touched: set[str] = set()
+# 동시 실행에서 서로의 변경 목록을 덮어쓰지 않도록 스레드 로컬
+_local = threading.local()
 ROLE = "DEV"
+
+
+def _touched() -> set[str]:
+    if not hasattr(_local, "touched"):
+        _local.touched = set()
+    return _local.touched
 
 
 @beta_tool
@@ -55,7 +63,7 @@ def write_file(path: str, content: str) -> str:
     except fs.Denied as e:
         bus.say("DEV", f"쓰기 거부됨 — `{path}` ({e})", kind="error")
         return f"거부됨: {e}"
-    touched.add(path)
+    _touched().add(path)
     verb = "새로 만듦" if info["created"] else f"수정 ({info['old_lines']}→{info['new_lines']}줄)"
     bus.say("DEV", f"`{path}` {verb}", kind="tool")
     return f"ok: {path} ({info['new_lines']} lines)"
@@ -67,7 +75,7 @@ TOOLS = [read_file, list_files, write_file]
 def implement(task: Task, criteria: list[Criterion],
               feedback: QAVerdict | None) -> tuple[str, list[str]]:
     """태스크 하나를 구현한다. (개발자의 마지막 발언, 건드린 파일 목록)."""
-    touched.clear()
+    _touched().clear()
 
     relevant = [c for c in criteria if c.id in task.covers] or criteria
     prompt = (
@@ -107,4 +115,4 @@ def implement(task: Task, criteria: list[Criterion],
     last_text = ""
     if messages:
         last_text = "".join(b.text for b in messages[-1].content if b.type == "text")
-    return last_text.strip(), sorted(touched)
+    return last_text.strip(), sorted(_touched())

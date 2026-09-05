@@ -151,8 +151,18 @@ def set_qa_model(req: ModelReq):
 def start(req: StartReq):
     if not MOCK and not secrets_broker.ready():
         raise HTTPException(400, "API 키가 등록되지 않았습니다. 설정에서 먼저 등록하세요.")
-    orchestrator.start(req.requirement.strip(), mock=MOCK)
-    return {"ok": True}
+    try:
+        slug = orchestrator.start(req.requirement.strip(), mock=MOCK)
+    except RuntimeError as e:
+        raise HTTPException(429, str(e))
+    return {"ok": True, "slug": slug}
+
+
+@app.get("/api/runs")
+def runs():
+    """지금 돌고 있는 실행 목록. UI의 작업공간 탭이 쓴다."""
+    return {"running": orchestrator.running_slugs(),
+            "max_concurrent": orchestrator.MAX_CONCURRENT}
 
 
 # ── 저장소 ──────────────────────────────────────────────────────────

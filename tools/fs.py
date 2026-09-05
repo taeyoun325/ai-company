@@ -4,6 +4,7 @@
 DEV는 src/ 에만 쓸 수 있고 tests/ 는 읽지도 못한다. QA만 tests/ 에 쓴다.
 그래서 "테스트를 통과시키려고 테스트를 고치는" 우회가 원천 차단된다.
 """
+import threading
 from pathlib import Path
 
 import store
@@ -24,7 +25,8 @@ WRITABLE = {"DEV": (SRC,), "QA": (TESTS,), "SYSTEM": (SRC, TESTS)}
 # 역할별 읽기 가능 루트 (DEV는 tests/ 를 볼 수 없다 — 보면 맞춰 짜게 된다)
 READABLE = {"DEV": (SRC,), "QA": (SRC, TESTS), "SYSTEM": (SRC, TESTS)}
 
-_current: str | None = None
+# 실행 하나가 스레드 하나다. 전역이면 동시 실행이 서로를 덮어쓴다.
+_local = threading.local()
 
 
 class Denied(ValueError):
@@ -32,16 +34,21 @@ class Denied(ValueError):
 
 
 def use(slug: str) -> None:
-    global _current
-    _current = slug
+    """이 스레드가 작업할 프로젝트를 지정한다."""
+    _local.slug = slug
     for sub in (SRC, TESTS):
         (root() / sub).mkdir(parents=True, exist_ok=True)
 
 
 def slug() -> str:
-    if _current is None:
-        raise RuntimeError("fs.use(slug)를 먼저 호출해야 합니다")
-    return _current
+    cur = getattr(_local, "slug", None)
+    if cur is None:
+        raise RuntimeError("이 스레드에서 fs.use(slug)를 먼저 호출해야 합니다")
+    return cur
+
+
+def current() -> str | None:
+    return getattr(_local, "slug", None)
 
 
 def root() -> Path:

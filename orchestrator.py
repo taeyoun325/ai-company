@@ -10,8 +10,11 @@ import usage
 from schemas import Criterion, Plan, Task
 from tools import fs
 
+# slug -> Thread. 여러 프로젝트를 동시에 돌릴 수 있다.
+_runs: dict[str, threading.Thread] = {}
+_runs_lock = threading.Lock()
+MAX_CONCURRENT = int(__import__("os").environ.get("MAX_CONCURRENT", "3"))
 MOCK = False
-_thread: threading.Thread | None = None
 
 
 class Stop(Exception):
@@ -114,18 +117,47 @@ def _board(plan: Plan, done: set[str], current: str | None) -> list[dict]:
     return rows
 
 
-def start(requirement: str, mock: bool = False) -> None:
-    global _thread, MOCK
-    if _thread and _thread.is_alive():
-        bus.say("SYSTEM", "이미 실행 중입니다.", kind="error")
-        return
+def start(requirement: str, mock: bool = False) -> str:
+    """새 실행을 시작하고 프로젝트 slug를 돌려준다.
+
+    동시 실행 수를 제한하는 이유: 각 실행이 LLM을 호출하므로 무제한이면
+    비용과 요청 한도가 동시에 터진다.
+    """
+    global MOCK
     MOCK = mock
-    _thread = threading.Thread(target=_run, args=(requirement,), daemon=True)
-    _thread.start()
+    _reap()
+    with _runs_lock:
+        if len(_runs) >= MAX_CONCURRENT:
+            raise RuntimeError(
+                f"동시 실행 한도({MAX_CONCURRENT})에 도달했습니다. "
+                f"진행 중인 작업이 끝난 뒤에 시작하세요.")
+
+    slug = store.new_project(requirement)
+    t = threading.Thread(target=_run, args=(requirement, slug), daemon=True,
+                         name=f"run:{slug}")
+    with _runs_lock:
+        _runs[slug] = t
+    t.start()
+    return slug
 
 
-def is_running() -> bool:
-    return bool(_thread and _thread.is_alive())
+def _reap() -> None:
+    with _runs_lock:
+        for slug in [s for s, t in _runs.items() if not t.is_alive()]:
+            _runs.pop(slug, None)
+
+
+def running_slugs() -> list[str]:
+    _reap()
+    with _runs_lock:
+        return sorted(_runs)
+
+
+def is_running(slug: str | None = None) -> bool:
+    """slug를 주면 그 실행만, 안 주면 하나라도 도는지."""
+    _reap()
+    with _runs_lock:
+        return slug in _runs if slug else bool(_runs)
 
 
 def _run_tests(score: Score) -> dict:
@@ -140,13 +172,13 @@ def _run_tests(score: Score) -> dict:
     return r
 
 
-def _run(requirement: str) -> None:
-    bus.reset()
-    usage.reset()
-    score = Score()
-
-    slug = store.new_project(requirement)
+def _run(requirement: str, slug: str) -> None:
+    # 이 스레드의 컨텍스트를 묶는다. 이후 bus/usage/fs 호출은 전부 이 실행 소유가 된다.
+    bus.bind(slug)
+    usage.bind(slug)
     fs.use(slug)
+    bus.reset(slug)
+    score = Score()
     m = store.meta(slug)
     bus.state(project={"slug": slug, "name": m["name"], "requirement": requirement})
     bus.emit("projects", list=store.list_projects())
@@ -270,6 +302,9 @@ def _run(requirement: str) -> None:
         _fail(slug, plan, rows, score, str(e))
     except Exception as e:
         _fail(slug, plan, rows, score, f"{type(e).__name__}: {e}")
+    finally:
+        with _runs_lock:
+            _runs.pop(slug, None)
 
 
 def _persist(slug, plan, rows, score, status="running") -> None:
@@ -277,9 +312,9 @@ def _persist(slug, plan, rows, score, status="running") -> None:
         "status": status,
         "score": score.value(),
         "tasks": rows,
-        "usage": {a: dict(r) for a, r in usage.agents.items()},
-        "cost": round(usage.total_cost(), 4),
-        "cache_ok": usage.cache_working(),
+        "usage": usage.agents_of(slug),
+        "cost": round(usage.total_cost(slug), 4),
+        "cache_ok": usage.cache_working(slug),
         "criteria": [c.model_dump() for c in plan.acceptance_criteria] if plan else [],
     })
 
