@@ -15,6 +15,9 @@ venv/
 # 비밀값 — 절대 커밋하지 않는다. 키는 환경변수로만 넣는다.
 .env
 .env.*
+# 예시 파일은 반드시 커밋된다. .env.* 가 이것까지 삼켜서 환경변수
+# 문서가 통째로 사라지는 일이 있었다.
+!.env.example
 *.key
 secrets.json
 .secrets.json
@@ -26,3 +29,13 @@ secrets.json
 Thumbs.db
 attachments/
 schedules.json
+
+# 프론트엔드
+node_modules/
+.next/
+out/
+next-env.d.ts
+
+# 데이터베이스 (개발용 SQLite)
+*.db
+*.sqlite3

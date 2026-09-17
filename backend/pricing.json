@@ -1,0 +1,20 @@
+{
+  "_주의": "이 값들은 이전 작업에서 물려받은 것이고 공식 단가로 대조되지 않았다. DAY 11(사용량·크레딧)에서 실제 단가로 검증한 뒤에야 §17 원가 계산의 근거가 된다.",
+  "_단위": "USD per 1M tokens, [input, output]",
+  "models": {
+    "claude-opus-5":            { "price": [5.00, 25.00], "verified": false },
+    "claude-opus-4-8":          { "price": [5.00, 25.00], "verified": false },
+    "claude-sonnet-5":          { "price": [2.00, 10.00], "verified": false },
+    "claude-haiku-4-5":         { "price": [1.00,  5.00], "verified": false },
+    "claude-haiku-4-5-20251001":{ "price": [1.00,  5.00], "verified": false },
+    "gemini-2.5-pro":           { "price": [1.25, 10.00], "verified": false },
+    "mock":                     { "price": [0.00,  0.00], "verified": true  }
+  },
+  "_크레딧": "지시서 §15. 실제 배수는 공식 단가와 실측 사용량을 확인한 뒤 조정한다.",
+  "credits": {
+    "claude-opus-5":   2.5,
+    "claude-sonnet-5": 1.0,
+    "gemini-2.5-pro":  1.0,
+    "mock":            0.0
+  }
+}
