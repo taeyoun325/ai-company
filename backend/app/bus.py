@@ -165,7 +165,22 @@ def replay(run: str | None = None, after: int = 0) -> list[dict]:
 
 
 # ── 발행 ────────────────────────────────────────────────────────────
+RESERVED = ("id", "type", "ts", "run")
+
+
 def emit(type: str, **payload: Any) -> dict:
+    """이벤트를 발행한다.
+
+    `id` · `type` · `ts` · `run` 은 버스의 것이다. 페이로드가 같은 이름을
+    쓰면 조용히 덮어쓰지 않고 거부한다 — 실제로 `approvals` 가 `id` 로
+    승인 번호를 실었고, 그게 이벤트 일련번호를 덮어써서 재연결 이어받기가
+    깨졌다. 조용한 덮어쓰기는 증상이 엉뚱한 곳에서 나온다.
+    """
+    clash = [k for k in RESERVED if k in payload]
+    if clash:
+        raise ValueError(
+            f"이벤트 필드 {clash} 는 버스가 쓰는 이름입니다. "
+            f"다른 이름으로 실으세요 (예: approval_id).")
     run = current()
     ev = {"id": next(_seq), "type": type, "ts": time.time(), "run": run, **payload}
     with _lock:

@@ -596,8 +596,8 @@ function handle(ev){
   switch(ev.type){
     case 'message': addMsg(ev.agent, ev.text, ev.kind); break;
     case 'thinking': setThinking(ev.on); break;
-    case 'approval': pend.set(ev.id, ev); renderApv(); break;
-    case 'approval_done': pend.delete(ev.id); renderApv(); break;
+    case 'approval': pend.set(ev.approval_id, {...ev, id: ev.approval_id}); renderApv(); break;
+    case 'approval_done': pend.delete(ev.approval_id); renderApv(); break;
     case 'subagent': {
       const el = $('ag-'+ev.role.toUpperCase());
       if (el) el.dataset.on = ev.state === 'start' ? '1' : '0';

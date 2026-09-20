@@ -178,3 +178,21 @@ def test_roster_names_every_employee():
     r = bus.roster()
     for e in roles.EMPLOYEES.values():
         assert e.id in r and e.name in r[e.id]["name"]
+
+
+def test_reserved_event_fields_are_refused():
+    """실제로 approvals 가 `id` 로 승인 번호를 실었고, 그게 이벤트
+    일련번호를 덮어써서 재연결 이어받기가 깨졌다. 조용한 덮어쓰기는
+    증상이 엉뚱한 곳에서 나온다."""
+    for field in bus.RESERVED:
+        # `type` 은 emit 의 위치 인자라서 파이썬이 먼저 TypeError 로 막는다.
+        # 어느 쪽이든 조용히 통과하지 않는다는 것이 요점이다.
+        with pytest.raises((ValueError, TypeError)):
+            bus.emit("아무거나", **{field: "충돌"})
+
+
+def test_approval_events_do_not_clash():
+    from app import approvals
+    bus.bind("run-a")
+    approvals.decide("없는승인", "approve")     # 없는 id 여도 이벤트 경로는 탄다
+    assert all(isinstance(e["id"], int) for e in bus.history("run-a"))

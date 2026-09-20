@@ -162,7 +162,10 @@ def request(action: str, params: dict, why: str = "") -> str:
         _pending[aid] = item
         _events[aid] = ev
 
-    bus.emit("approval", **{k: item[k] for k in ("id", "action", "desc", "why")})
+    # `id` 를 쓰지 않는 이유: 버스가 이벤트마다 붙이는 일련번호가 `id` 다(§13).
+    # 같은 이름으로 실으면 그 번호를 덮어써서 재연결 이어받기가 깨진다.
+    bus.emit("approval", approval_id=item["id"],
+             **{k: item[k] for k in ("action", "desc", "why")})
 
     granted = ev.wait(TIMEOUT)
     with _lock:
@@ -171,11 +174,11 @@ def request(action: str, params: dict, why: str = "") -> str:
 
     if not granted or result != "approve":
         note = "거부됨" if granted else f"{TIMEOUT}초 안에 응답이 없어 거부"
-        bus.emit("approval_done", id=aid, decision="deny")
+        bus.emit("approval_done", approval_id=aid, decision="deny")
         bus.say("SYSTEM", f"취소 — {item['desc']} ({note})", kind="error")
         raise Denied(note)
 
-    bus.emit("approval_done", id=aid, decision="approve")
+    bus.emit("approval_done", approval_id=aid, decision="approve")
     return _maybe_execute(action, params, "승인됨")
 
 
