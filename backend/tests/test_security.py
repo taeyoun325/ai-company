@@ -101,11 +101,18 @@ def test_local_routes_are_forbidden_in_saas(client, saas, method, path, body):
     assert r.status_code == 403, f"{path} 가 SaaS 에서 열려 있다"
 
 
-def test_saas_state_still_works(client, saas):
-    """막는 것과 죽는 것은 다르다. 상태 조회는 계속 돼야 한다."""
-    st = client.get("/api/state").json()
-    assert st["deploy"]["mode"] == "saas"
-    assert st["deploy"]["local_tools"] is False
+def test_saas_state_requires_login(client, saas):
+    """DAY 15 이후 `/api/state` 는 사용자별 정보(크레딧·사용량)를 담으므로
+    로그인 없이는 줄 수 없다."""
+    assert client.get("/api/state").status_code == 401
+
+
+def test_saas_deploy_status_stays_public(client, saas):
+    """막는 것과 죽는 것은 다르다. 로그인 화면을 그리려면 '지금 어떤
+    자세인가'는 로그인 전에도 알 수 있어야 한다."""
+    st = client.get("/api/deploy").json()
+    assert st["mode"] == "saas"
+    assert st["local_tools"] is False
 
 
 def test_run_command_is_blocked_before_the_approval_gate(saas):

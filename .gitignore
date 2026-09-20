@@ -43,3 +43,6 @@ next-env.d.ts
 ai_company.db
 ai_company.db-wal
 ai_company.db-shm
+ai_company_auth.db
+ai_company_auth.db-wal
+ai_company_auth.db-shm

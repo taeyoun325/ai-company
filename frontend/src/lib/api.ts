@@ -15,11 +15,13 @@
 import type {
   CreditStatus,
   Employee,
+  MeResponse,
   PlanRow,
   Project,
   ProviderStatus,
   Roster,
   Settings,
+  User,
   Verdict,
   BusEvent,
 } from "./types";
@@ -42,6 +44,20 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 401 을 한 곳에서 알린다 (DAY 15).
+ *
+ * 세션은 만료된다. 화면마다 401 을 따로 처리하면 어떤 화면은 빼먹고,
+ * 그 화면만 "로그인했는데 빈 화면"이 된다.
+ */
+type Listener = () => void;
+const unauthorizedListeners = new Set<Listener>();
+
+export function onUnauthorized(fn: Listener): () => void {
+  unauthorizedListeners.add(fn);
+  return () => unauthorizedListeners.delete(fn);
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -62,6 +78,13 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* 본문이 JSON 이 아닐 수 있다 */
     }
+    if (res.status === 401) {
+      // 로그인 자체를 시도하다 실패한 것은 "세션 만료"가 아니다.
+      // 그때까지 로그인 화면으로 보내면 방금 뜬 오류 문구가 사라진다.
+      if (!path.startsWith("/api/auth/")) {
+        unauthorizedListeners.forEach((fn) => fn());
+      }
+    }
     throw new ApiError(res.status, detail);
   }
   if (res.status === 204) return undefined as T;
@@ -80,6 +103,24 @@ const post = <T>(path: string, body?: unknown) =>
   call<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined });
 
 export const api = {
+  // ── 인증 (DAY 15) ───────────────────────────────────────────────
+  me: () => call<MeResponse>("/api/auth/me"),
+  signUp: (email: string, password: string, display_name = "") =>
+    post<{ user: User }>("/api/auth/signup", { email, password, display_name }),
+  logIn: (email: string, password: string) =>
+    post<{ user: User }>("/api/auth/login", { email, password }),
+  logOut: () => post<{ ok: boolean }>("/api/auth/logout"),
+  changePassword: (current: string, next: string) =>
+    post<{ ok: boolean }>("/api/auth/password", { current, new: next }),
+  revokeSessions: () => post<{ revoked: number }>("/api/auth/sessions/revoke"),
+  deploy: () =>
+    call<{
+      mode: string;
+      sandboxed: boolean;
+      local_tools: boolean;
+      code_execution: boolean;
+    }>("/api/deploy"),
+
   /**
    * `run` 을 주면 그 실행의 직원별 사용량이 함께 온다. 안 주면 0 이다 —
    * 사용량은 실행별로 묶여 있고 이 요청은 다른 스레드가 처리한다(§14).

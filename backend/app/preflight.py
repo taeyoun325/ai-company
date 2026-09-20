@@ -133,6 +133,28 @@ def checks(strict: bool = False) -> list[dict]:
                         f"재시도 {config.MAX_RETRY} · 프로젝트 상한 "
                         f"${config.MAX_PROJECT_COST}"))
 
+    # ── 계정 (DAY 15) ──────────────────────────────────────────────
+    if deploy.is_saas():
+        try:
+            from app.auth import store as auth_store
+            n_users = auth_store.user_count()
+        except Exception as e:                        # noqa: BLE001
+            out.append(_row("계정 저장소", FAIL,
+                            f"계정 DB 를 열지 못했습니다: {e}",
+                            "ai_company_auth.db 의 권한과 경로를 확인하세요."))
+            n_users = -1
+        if n_users == 0:
+            out.append(_row(
+                "계정", WARN,
+                "계정이 하나도 없습니다. 지금 이 주소를 찾은 **아무나** 첫 "
+                "사용자가 됩니다.",
+                "배포 직후 바로 본인 계정을 만드세요."))
+        elif n_users > 0:
+            out.append(_row("계정", OK, f"{n_users}개"))
+    else:
+        out.append(_row("계정", OK,
+                        "로컬 모드 — 로그인 없이 'local' 사용자로 동작합니다."))
+
     # ── 배포 자세 (DAY 13) ─────────────────────────────────────────
     d = deploy.status()
     if d["mode"] == "local" and strict:
@@ -141,7 +163,13 @@ def checks(strict: bool = False) -> list[dict]:
             "DEPLOY_MODE 가 local 입니다. 서버에서 로컬 접근 기능(임의 명령 "
             "실행·폴더 열기·화면 캡처)이 열려 있습니다.",
             "DEPLOY_MODE=saas 로 두세요. docs/security.md 참조."))
-    elif d["mode"] == "saas" and not d["sandboxed"]:
+    elif d["mode"] == "saas":
+        out.append(_row(
+            "HTTPS", WARN,
+            "세션 쿠키는 https 로 와야 `Secure` 가 붙습니다. 앞단 프록시가 "
+            "TLS 를 끊는다면 `X-Forwarded-Proto: https` 를 넘기세요.",
+            "이 값이 없으면 세션이 평문으로 오갈 수 있습니다."))
+    if d["mode"] == "saas" and not d["sandboxed"]:
         out.append(_row(
             "샌드박스", WARN,
             "격리 선언이 없어 생성된 코드를 실행하지 않습니다. 검증자는 "

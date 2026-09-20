@@ -22,6 +22,8 @@ from app import attachments
 from app import bus
 from app import config
 from app import deploy
+from app.api import auth as auth_api
+from app.auth import deps as auth
 from app import preflight
 from app.providers import gemini_client as gemini
 from app.providers import registry
@@ -47,6 +49,7 @@ secrets_broker.init()   # 기동 즉시 환경변수에서 키를 꺼내 지운�
 _INDEX_READY = project_index.ensure_ready()
 
 app = FastAPI(title="AI Agent Company")
+app.include_router(auth_api.router)
 
 
 # ── 요청 모델 ───────────────────────────────────────────────────────
@@ -131,12 +134,13 @@ def index():
 
 # ── 상태 ────────────────────────────────────────────────────────────
 @app.get("/api/state")
-def state(run: str | None = None):
+def state(request: Request, run: str | None = None):
     """`run` 을 주면 그 실행의 직원별 사용량이 함께 온다.
 
     안 주면 0 으로 나온다 — 사용량은 실행별 스레드 로컬이고, 이 요청은
     다른 스레드에서 처리되기 때문이다(§14).
     """
+    run = _my_run(request, run)
     return {
         "workspace": workspace.summary(),
         "permission": approvals.mode_info(),
@@ -149,7 +153,8 @@ def state(run: str | None = None):
         # 화면이 "지금 Mock 으로 돌고 있다"를 표시할 수 있어야 한다.
         # 안 그러면 사용자는 Mock 이 지어낸 글을 AI 의 작업 결과로 믿는다.
         "providers": registry.status(),
-        "credits": credits.status(),
+        "credits": credits.status(auth.owner_of(request)),
+        "user": auth.require_user(request).public(),
         # 무엇이 막혀 있는지 화면이 말할 수 있어야 한다. 감추면 사용자는
         # 기능이 고장 났다고 생각한다.
         "deploy": deploy.status(),
@@ -157,6 +162,24 @@ def state(run: str | None = None):
         "turns": len(agent_core.history),
         "screen": screen.status(),
     }
+
+
+def _my_run(request: Request, run: str | None) -> str | None:
+    """`run` 이 내 프로젝트인가. 아니면 None 으로 떨어뜨린다.
+
+    이 파라미터는 실행별 사용량을 불러오는 데 쓴다(§14). 검사하지 않으면
+    남의 slug 를 넣어 **그 프로젝트의 직원별 토큰·비용을 볼 수 있다.**
+    소유권 검사를 목록에만 걸고 이런 부수적인 파라미터에 빼먹는 것이
+    테넌트 분리가 뚫리는 가장 흔한 방식이다.
+
+    404 로 막지 않고 조용히 None 으로 떨어뜨리는 이유: 이건 화면을
+    그리는 보조 정보라, 남의 slug 하나 때문에 상태 조회 전체가 실패하면
+    화면이 통째로 빈다. 정보는 안 주되 화면은 뜬다.
+    """
+    if not run:
+        return None
+    m = store.meta(run)
+    return run if m and auth.owns(request, m.get("owner")) else None
 
 
 def _require_local_tools() -> None:
@@ -419,7 +442,7 @@ def providers():
 
 # ── 실행 (지시서 §9 · §10 AUTO) ─────────────────────────────────────
 @app.post("/api/runs")
-def start_run(req: RunReq):
+def start_run(req: RunReq, request: Request):
     """AUTO 모드. 오케스트레이터가 직원을 골라 끝까지 돌린다.
 
     키가 없어도 막지 않는다 — Mock 으로 전 구간을 만드는 것이 현재 방침이고,
@@ -429,7 +452,8 @@ def start_run(req: RunReq):
     if not requirement:
         raise HTTPException(400, "요구사항이 비어 있습니다")
     try:
-        slug = orchestrator.start(requirement, req.attachments)
+        slug = orchestrator.start(requirement, req.attachments,
+                                  owner=auth.owner_of(request))
     except credits.InsufficientCredits as e:
         # 429(한도 초과)와 구분한다. 사용자의 대응이 다르다 —
         # 하나는 기다리면 되고, 하나는 충전해야 한다.
@@ -441,28 +465,34 @@ def start_run(req: RunReq):
 
 
 @app.get("/api/runs")
-def list_runs():
-    return {"running": orchestrator.running_slugs(),
-            "projects": store.list_projects()}
+def list_runs(request: Request):
+    """**내** 실행만. 진행 중 목록도 걸러야 한다 — 남의 slug 가 보이면
+    그 자체로 남의 프로젝트가 존재한다는 정보다."""
+    owner = auth.owner_of(request)
+    mine = {p["slug"] for p in store.list_projects(owner)}
+    return {"running": [s for s in orchestrator.running_slugs() if s in mine],
+            "projects": store.list_projects(owner)}
 
 
 @app.get("/api/runs/{slug}")
-def get_run(slug: str):
+def get_run(slug: str, request: Request):
     m = store.meta(slug)
     if not m:
         raise HTTPException(404, "없는 프로젝트")
+    auth.require_owner(request, m.get("owner"))
     m["running"] = orchestrator.is_running(slug)
     m["events"] = bus.history(slug)
     return m
 
 
 @app.post("/api/runs/{slug}/cancel")
-def cancel_run(slug: str):
+def cancel_run(slug: str, request: Request):
     """정지 버튼 (§18).
 
     스레드를 강제로 죽이지 않는다 — 파일을 반쯤 쓴 상태로 끊기면 산출물이
     깨진다. 다음 단계 경계에서 스스로 멈춘다.
     """
+    auth.require_owner(request, store.meta(slug).get("owner"))
     if not orchestrator.cancel(slug):
         raise HTTPException(404, "진행 중이 아닙니다")
     return {"ok": True}
@@ -499,10 +529,10 @@ def deploy_status():
 
 # ── 크레딧 · 요금제 · 원가 (지시서 §15 §16 §17) ─────────────────────
 @app.get("/api/credits")
-def get_credits(owner: str = "local"):
+def get_credits(request: Request):
     """잔액과 요금제. 단가가 검증됐는지도 함께 내려보낸다 —
     검증 안 된 단가로 계산한 잔액은 근거가 아니라 추측이다."""
-    return credits.status(owner)
+    return credits.status(auth.owner_of(request))
 
 
 @app.get("/api/plans")
@@ -511,7 +541,8 @@ def get_plans():
 
 
 @app.post("/api/credits/plan")
-def change_plan(req: PlanReq, owner: str = "local"):
+def change_plan(req: PlanReq, request: Request):
+    owner = auth.owner_of(request)
     try:
         credits.set_plan(owner, req.plan)
     except ValueError as e:
@@ -520,9 +551,10 @@ def change_plan(req: PlanReq, owner: str = "local"):
 
 
 @app.post("/api/credits/topup")
-def topup(req: TopUpReq, owner: str = "local"):
+def topup(req: TopUpReq, request: Request):
     """결제는 이 제품의 범위 밖이다. 여기서는 잔액이 실제로 늘고
     실제로 막히는가만 성립시킨다."""
+    owner = auth.owner_of(request)
     try:
         credits.top_up(owner, req.credits)
     except ValueError as e:
@@ -542,16 +574,17 @@ def margin():
 
 # ── MANUAL 모드 (지시서 §11) ────────────────────────────────────────
 @app.post("/api/manual")
-def open_manual(req: RunReq):
+def open_manual(req: RunReq, request: Request):
     """계획 단계 없이 바로 지시할 수 있는 빈 프로젝트를 연다."""
     if not req.requirement.strip():
         raise HTTPException(400, "요구사항이 비어 있습니다")
-    slug = manual.open_project(req.requirement.strip())
+    slug = manual.open_project(req.requirement.strip(),
+                               owner=auth.owner_of(request))
     return {"slug": slug, "mode": "manual"}
 
 
 @app.post("/api/manual/{slug}/instruct")
-def manual_instruct(slug: str, req: InstructReq):
+def manual_instruct(slug: str, req: InstructReq, request: Request):
     """CEO 가 직원을 지목해 직접 지시한다.
 
     권한 경계는 AUTO 와 **같다**. "CEO 가 시켰다"는 작가가 src/ 에 쓸
@@ -559,6 +592,9 @@ def manual_instruct(slug: str, req: InstructReq):
     """
     if not roles.exists(req.employee):
         raise HTTPException(404, f"없는 직원: {req.employee}")
+    if not store.exists(slug):
+        raise HTTPException(404, "없는 프로젝트")
+    auth.require_owner(request, store.meta(slug).get("owner"))
     if orchestrator.is_running(slug):
         raise HTTPException(409, "AUTO 실행이 진행 중입니다")
     try:
@@ -576,8 +612,11 @@ def manual_instruct(slug: str, req: InstructReq):
 
 
 @app.post("/api/manual/{slug}/verify")
-def manual_verify(slug: str):
+def manual_verify(slug: str, request: Request):
     """CEO 가 누를 때만 도는 검증. 검증 기준은 AUTO 와 같다."""
+    if not store.exists(slug):
+        raise HTTPException(404, "없는 프로젝트")
+    auth.require_owner(request, store.meta(slug).get("owner"))
     if orchestrator.is_running(slug):
         raise HTTPException(409, "AUTO 실행이 진행 중입니다")
     try:
@@ -593,9 +632,10 @@ def manual_verify(slug: str):
 
 
 @app.get("/api/manual/{slug}")
-def manual_state(slug: str):
+def manual_state(slug: str, request: Request):
     if not store.exists(slug):
         raise HTTPException(404, "없는 프로젝트")
+    auth.require_owner(request, store.meta(slug).get("owner"))
     return {
         "slug": slug,
         "busy": manual.busy_employee(slug),
@@ -608,14 +648,17 @@ def manual_state(slug: str):
 
 
 @app.delete("/api/manual/{slug}/history")
-def manual_clear_history(slug: str, employee: str | None = None):
+def manual_clear_history(slug: str, request: Request,
+                         employee: str | None = None):
+    if store.exists(slug):
+        auth.require_owner(request, store.meta(slug).get("owner"))
     manual.clear_history(slug, employee)
     return {"ok": True}
 
 
 # ── 프로젝트 (지시서 §12) ───────────────────────────────────────────
 @app.get("/api/projects")
-def list_projects(owner: str | None = None, status: str | None = None,
+def list_projects(request: Request, status: str | None = None,
                   q: str | None = None, sort: str = "created",
                   desc: bool = True, limit: int = 50, offset: int = 0):
     """색인으로 검색·정렬·페이지. 색인이 깨졌으면 디스크에서 읽는다 (§12).
@@ -623,14 +666,16 @@ def list_projects(owner: str | None = None, status: str | None = None,
     응답의 `source` 가 그 사실을 말한다 — 조용히 느려지는 것보다
     왜 느린지 보이는 편이 낫다.
     """
-    return project_index.search(owner=owner, status=status, q=q, sort=sort,
-                                desc=desc, limit=limit, offset=offset)
+    # owner 를 쿼리로 받지 않는다. 받으면 값을 바꿔 남의 목록을 본다.
+    return project_index.search(owner=auth.owner_of(request), status=status,
+                                q=q, sort=sort, desc=desc,
+                                limit=limit, offset=offset)
 
 
 @app.get("/api/projects/stats")
-def project_stats(owner: str | None = None):
+def project_stats(request: Request):
     """대시보드 요약 — 프로젝트 수 · 누적 비용 · 평균 완성도 (§12)."""
-    return project_index.stats(owner)
+    return project_index.stats(auth.owner_of(request))
 
 
 @app.post("/api/projects/reindex")
@@ -644,16 +689,20 @@ def reindex():
 
 
 @app.get("/api/projects/{slug}/files")
-def project_files(slug: str):
+def project_files(slug: str, request: Request):
     if not store.exists(slug):
         raise HTTPException(404, "없는 프로젝트")
+    auth.require_owner(request, store.meta(slug).get("owner"))
     return {"files": store.files_of(slug)}
 
 
 @app.get("/api/projects/{slug}/file")
-def project_file(slug: str, path: str):
+def project_file(slug: str, path: str, request: Request):
+    # 목록만 거르고 파일 접근을 빼먹으면, "목록에는 안 보이는데 주소를
+    # 알면 열리는" 상태가 된다. 막은 것처럼 보여서 더 위험하다.
     if not store.exists(slug):
         raise HTTPException(404, "없는 프로젝트")
+    auth.require_owner(request, store.meta(slug).get("owner"))
     try:
         return {"path": path, "content": store.read_file(slug, path),
                 "versions": store.versions(slug, path)}
@@ -662,9 +711,10 @@ def project_file(slug: str, path: str):
 
 
 @app.get("/api/projects/{slug}/diff")
-def project_diff(slug: str, path: str, a: int, b: int = 0):
+def project_diff(slug: str, path: str, a: int, request: Request, b: int = 0):
     if not store.exists(slug):
         raise HTTPException(404, "없는 프로젝트")
+    auth.require_owner(request, store.meta(slug).get("owner"))
     try:
         return {"path": path, "a": a, "b": b, "diff": store.diff(slug, path, a, b)}
     except ValueError as e:
@@ -672,7 +722,9 @@ def project_diff(slug: str, path: str, a: int, b: int = 0):
 
 
 @app.delete("/api/projects/{slug}")
-def delete_project(slug: str):
+def delete_project(slug: str, request: Request):
+    if store.exists(slug):
+        auth.require_owner(request, store.meta(slug).get("owner"))
     if orchestrator.is_running(slug):
         raise HTTPException(409, "진행 중인 프로젝트는 지울 수 없습니다")
     if not store.delete_project(slug):
@@ -682,9 +734,9 @@ def delete_project(slug: str):
 
 # ── AI 직원 (지시서 §8) ─────────────────────────────────────────────
 @app.get("/api/employees")
-def list_employees(run: str | None = None):
+def list_employees(request: Request, run: str | None = None):
     """직원 5명의 정의 · 권한 · 현재 모델 · Mock 여부 · 사용량."""
-    return {"employees": employees.status(run),
+    return {"employees": employees.status(_my_run(request, run)),
             "assignable": roles.assignable(),
             "planner": roles.PLANNER, "verifier": roles.VERIFIER}
 

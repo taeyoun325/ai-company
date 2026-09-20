@@ -180,3 +180,20 @@ export interface PlanRow {
   max_concurrent: number;
   max_project_cost: number;
 }
+
+export interface User {
+  id: string;
+  email: string;
+  display_name: string;
+  created_at: number;
+}
+
+export interface MeResponse {
+  user: User | null;
+  authenticated: boolean;
+  /** saas 배포라 로그인이 반드시 필요한가. local 이면 false. */
+  required: boolean;
+  /** 이 서버에 계정이 하나도 없는가. */
+  first_user: boolean;
+  identities: { provider: string; subject: string; created_at: number }[];
+}
