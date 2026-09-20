@@ -1,0 +1,215 @@
+"use client";
+
+/**
+ * 실시간 작업 로그 구독 (지시서 §13).
+ *
+ * ## 왜 훅으로 빼나
+ *
+ * SSE 는 끊긴다. 프록시가 끊고, 노트북이 잠들고, 탭이 백그라운드로 간다.
+ * 재연결·중복 제거·폴백을 화면마다 다시 쓰면 어떤 화면은 빼먹고, 그
+ * 화면만 로그가 멈춘 것처럼 보인다.
+ *
+ * ## 두 겹으로 막는다
+ *
+ * 1. EventSource 가 끊기면 브라우저가 알아서 재연결하고, 이때 보내는
+ *    `Last-Event-ID` 로 서버가 못 받은 것부터 준다.
+ * 2. EventSource 자체가 막힌 환경(일부 프록시·확장)에서는 `/api/events`
+ *    폴링으로 떨어진다. 한 경로에만 기대면 그 경로가 막혔을 때 화면이
+ *    통째로 빈다.
+ *
+ * ## 이벤트를 무한히 쌓지 않는다
+ *
+ * 긴 실행은 수천 건을 낸다. 전부 들고 있으면 React 가 매 렌더에서 그걸
+ * 훑고, 탭이 느려진다. 최근 것만 남긴다 — 전체는 서버에 있다.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { api } from "./api";
+import type { BusEvent, Roster } from "./types";
+
+const KEEP = 600;
+const POLL_MS = 1500;
+
+export interface StreamState {
+  events: BusEvent[];
+  roster: Roster;
+  connected: boolean;
+  /** SSE 가 막혀 폴링으로 떨어졌는가. 화면이 조용히 감추면 안 된다. */
+  polling: boolean;
+  clear: () => void;
+}
+
+export function useStream(run?: string): StreamState {
+  const [events, setEvents] = useState<BusEvent[]>([]);
+  const [roster, setRoster] = useState<Roster>({});
+  const [connected, setConnected] = useState(false);
+  // 서버에는 EventSource 가 없다. 그걸 초기값에 반영하면 서버는 true 로,
+  // 브라우저는 false 로 그려서 하이드레이션이 깨진다(실제로 깨뜨려봤다).
+  // 그래서 **양쪽이 같은 값**으로 시작하고, 판단은 아래 effect 에서 한다.
+  const [polling, setPolling] = useState(false);
+  const lastId = useRef(0);
+
+  const push = useCallback((incoming: BusEvent[]) => {
+    if (incoming.length === 0) return;
+    setEvents((prev) => {
+      // 재연결 직후에는 겹쳐 올 수 있다. id 로 거른다 — 안 거르면
+      // 같은 말풍선이 두 번 뜨고, 사용자는 직원이 두 번 말했다고 믿는다.
+      const seen = new Set(prev.map((e) => e.id));
+      const fresh = incoming.filter((e) => !seen.has(e.id));
+      if (fresh.length === 0) return prev;
+      const next = [...prev, ...fresh].sort((a, b) => a.id - b.id);
+      return next.length > KEEP ? next.slice(next.length - KEEP) : next;
+    });
+    lastId.current = Math.max(lastId.current, ...incoming.map((e) => e.id));
+  }, []);
+
+  const clear = useCallback(() => {
+    setEvents([]);
+    lastId.current = 0;
+  }, []);
+
+  // 이름·아이콘은 한 번만 받아두면 된다.
+  useEffect(() => {
+    let alive = true;
+    api
+      .events(run, 0)
+      .then((b) => {
+        if (!alive) return;
+        setRoster(b.roster);
+        push(b.events);
+      })
+      .catch(() => {
+        /* 첫 조회 실패는 아래 연결이 다시 시도한다 */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [run, push]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("EventSource" in window)) {
+      // effect 안의 동기 setState 다. 린터가 막는 패턴이지만 여기서는
+      // 불가피하다 — 렌더 시점에 판단하면 하이드레이션이 깨지고(위 참조),
+      // 이 분기는 EventSource 가 아예 없는 브라우저에서 딱 한 번 돈다.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPolling(true);
+      return;
+    }
+    const url = `/api/stream?after=${lastId.current}${
+      run ? `&run=${encodeURIComponent(run)}` : ""
+    }`;
+    const es = new EventSource(url);
+    let failures = 0;
+
+    const onMessage = (ev: MessageEvent) => {
+      setConnected(true);
+      setPolling(false);
+      failures = 0;
+      try {
+        push([JSON.parse(ev.data) as BusEvent]);
+      } catch {
+        /* 깨진 줄 하나 때문에 스트림을 버리지 않는다 */
+      }
+    };
+
+    // 서버가 event: <type> 으로 보내므로 기본 'message' 핸들러로는 안 온다.
+    const types = [
+      "message",
+      "phase",
+      "state",
+      "done",
+      "projects",
+      "approval",
+      "approval_done",
+    ];
+    types.forEach((t) => es.addEventListener(t, onMessage as EventListener));
+
+    es.onopen = () => {
+      setConnected(true);
+      setPolling(false);
+    };
+    es.onerror = () => {
+      setConnected(false);
+      failures += 1;
+      // 브라우저가 알아서 재연결하지만, 거듭 실패하면 이 경로 자체가
+      // 막힌 것으로 보고 폴링으로 내려간다.
+      if (failures >= 3) setPolling(true);
+    };
+
+    return () => {
+      types.forEach((t) => es.removeEventListener(t, onMessage as EventListener));
+      es.close();
+    };
+  }, [run, push]);
+
+  useEffect(() => {
+    if (!polling) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const b = await api.events(run, lastId.current);
+        if (!alive) return;
+        setRoster(b.roster);
+        push(b.events);
+        setConnected(true);
+      } catch {
+        setConnected(false);
+      }
+    };
+    const timer = setInterval(tick, POLL_MS);
+    void tick();
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [polling, run, push]);
+
+  return { events, roster, connected, polling, clear };
+}
+
+/** 이벤트 흐름에서 현재 상태를 접어낸다 — 화면마다 다시 접지 않도록. */
+export function foldState(events: BusEvent[]) {
+  const out: {
+    phase: string;
+    detail: string;
+    tasks: BusEvent["tasks"];
+    files: string[];
+    score: number | null;
+    scoreDetail: BusEvent["score_detail"];
+    round: number;
+    usage: BusEvent["usage"];
+    totals: BusEvent["totals"];
+    project: BusEvent["project"];
+    done: BusEvent | null;
+  } = {
+    phase: "",
+    detail: "",
+    tasks: undefined,
+    files: [],
+    score: null,
+    scoreDetail: undefined,
+    round: 0,
+    usage: undefined,
+    totals: undefined,
+    project: undefined,
+    done: null,
+  };
+  for (const e of events) {
+    if (e.type === "phase") {
+      out.phase = e.name ?? "";
+      out.detail = e.detail ?? "";
+    } else if (e.type === "state") {
+      if (e.tasks) out.tasks = e.tasks;
+      if (e.files) out.files = e.files;
+      if (typeof e.score === "number") out.score = e.score;
+      if (e.score_detail) out.scoreDetail = e.score_detail;
+      if (typeof e.round === "number") out.round = e.round;
+      if (e.usage) out.usage = e.usage;
+      if (e.totals) out.totals = e.totals;
+      if (e.project) out.project = e.project;
+    } else if (e.type === "done") {
+      out.done = e;
+    }
+  }
+  return out;
+}

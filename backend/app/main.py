@@ -115,13 +115,18 @@ def index():
 
 # ── 상태 ────────────────────────────────────────────────────────────
 @app.get("/api/state")
-def state():
+def state(run: str | None = None):
+    """`run` 을 주면 그 실행의 직원별 사용량이 함께 온다.
+
+    안 주면 0 으로 나온다 — 사용량은 실행별 스레드 로컬이고, 이 요청은
+    다른 스레드에서 처리되기 때문이다(§14).
+    """
     return {
         "workspace": workspace.summary(),
         "permission": approvals.mode_info(),
         # 지시서 §8 의 직원 5명. subagents 는 이전 제품의 보조 에이전트이고
         # 다른 것이다 — 화면이 둘을 섞으면 누가 일하는지 알 수 없게 된다.
-        "employees": employees.status(),
+        "employees": employees.status(run),
         "agents": subagents.roster(),
         "models": config.MODEL_OF,
         "keys_ready": secrets_broker.ready(),
@@ -492,7 +497,7 @@ def manual_state(slug: str):
     return {
         "slug": slug,
         "busy": manual.busy_employee(slug),
-        "employees": employees.status(),
+        "employees": employees.status(slug),
         "files": store.files_of(slug),
         "history": {e: [{"role": m.role, "content": m.content}
                         for m in manual.history(slug, e)]
@@ -551,9 +556,9 @@ def delete_project(slug: str):
 
 # ── AI 직원 (지시서 §8) ─────────────────────────────────────────────
 @app.get("/api/employees")
-def list_employees():
+def list_employees(run: str | None = None):
     """직원 5명의 정의 · 권한 · 현재 모델 · Mock 여부 · 사용량."""
-    return {"employees": employees.status(),
+    return {"employees": employees.status(run),
             "assignable": roles.assignable(),
             "planner": roles.PLANNER, "verifier": roles.VERIFIER}
 

@@ -8,7 +8,14 @@ const nextConfig: NextConfig = {
 
   async rewrites() {
     // 개발 중에는 프론트(3000)에서 /api 를 백엔드(8000)로 그대로 넘긴다.
-    // SSE 도 이 경로를 탄다 — CORS 설정을 따로 두지 않기 위해서다.
+    // CORS 설정을 따로 두지 않기 위해서다.
+    //
+    // **SSE 는 이 경로를 타지 않는다.** 이 rewrite 는 브라우저가 압축을
+    // 요구하면 응답을 버퍼링해서, EventSource 가 `onopen` 까지만 받고
+    // 이벤트를 하나도 못 받는다(실제로 겪었다 — 화면은 "연결됨"이라고
+    // 표시한 채 작업 로그만 영영 비어 있었다). 그래서 `/api/stream` 만
+    // 라우트 핸들러(src/app/api/stream/route.ts)가 가로채 흘려보낸다.
+    // 라우트 핸들러가 rewrite 보다 우선한다.
     const backend = process.env.BACKEND_ORIGIN ?? "http://127.0.0.1:8000";
     return [{ source: "/api/:path*", destination: `${backend}/api/:path*` }];
   },

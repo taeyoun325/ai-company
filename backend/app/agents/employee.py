@@ -130,14 +130,19 @@ def stream_text(employee_id: str, user: str,
         raise EmployeeFailed(e.id, str(ex), cause=ex) from ex
 
 
-def status() -> list[dict]:
+def status(run: str | None = None) -> list[dict]:
     """화면이 그릴 직원 현황 (§8 · §4 가상 사무실).
 
     `mock` 이 True 인데 화면이 그걸 안 보여주면, 사용자는 Mock 이 지어낸
     글을 AI 직원의 작업 결과로 믿는다.
+
+    `run` 을 받는 이유: 사용량은 **실행별**로 스레드 로컬에 묶여 있다(§14).
+    HTTP 요청은 다른 스레드에서 처리되므로, run 을 안 주면 그 스레드에는
+    아무 실행도 묶여 있지 않아 전부 0 으로 나온다. 화면에는 "아직 아무도
+    일하지 않음"으로 보이고, 실제로는 한창 일하는 중이다.
     """
     from app import usage
-    per = usage.agents_of()
+    per = usage.agents_of(run)
     out = []
     for e in roles.EMPLOYEES.values():
         row = e.info()

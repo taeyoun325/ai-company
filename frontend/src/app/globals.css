@@ -1,26 +1,103 @@
 @import "tailwindcss";
 
+/*
+  AI COMPANY 화면 토큰.
+
+  색을 값으로 고정해 두는 이유(§4 디자이너 규칙과 같다): '파란색'은
+  사람마다 다른 색이고, 화면 두 곳이 다른 파랑을 쓰면 같은 뜻이
+  다르게 보인다.
+
+  Mock 색(--mock)을 따로 둔 것이 이 파일에서 제일 중요한 줄이다.
+  Mock 으로 만든 산출물이 실제 결과물과 같은 색으로 보이면, 아무도
+  진짜와 가짜를 구분하지 못한다.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0b0d12;
+  --panel: #12151d;
+  --panel-2: #171b25;
+  --line: #242a38;
+  --fg: #e8eaf0;
+  --muted: #949bad;
+  --dim: #6b7285;
+
+  --accent: #4f7cff;
+  --ok: #31c48d;
+  --warn: #f0a13a;
+  --bad: #f2555a;
+  --mock: #b06bff; /* Mock 전용. 다른 어디에도 쓰지 않는다 */
+
+  --strategist: #7aa2ff;
+  --developer: #31c48d;
+  --analyst: #f0a13a;
+  --writer: #ff8fb1;
+  --designer: #c08bff;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f6f7fa;
+    --panel: #ffffff;
+    --panel-2: #f0f2f7;
+    --line: #dfe3ec;
+    --fg: #14171f;
+    --muted: #5b6275;
+    --dim: #868d9f;
+  }
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel-2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-dim: var(--dim);
+  --color-accent: var(--accent);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-mock: var(--mock);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 스크롤바가 화면마다 다르게 보이면 레이아웃이 흔들린다 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+/* 일하는 중인 직원 자리의 맥박. 진행 표시가 0초에 끝나면
+   제대로 동작하는지 확인할 수 없다(§4). */
+@keyframes working {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--c) 0%, transparent);
+  }
+}
+
+.working {
+  animation: working 1.6s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .working {
+    animation: none;
+    outline: 2px solid var(--c);
+  }
 }
