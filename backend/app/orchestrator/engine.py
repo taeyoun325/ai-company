@@ -40,6 +40,7 @@ from app.agents import employee, roles
 from app.agents.schemas import (Criterion, FinalReport, Plan, Routing, Task,
                                 TestSuite, Verdict, WorkResult)
 from app.database import store
+from app.usage import credits
 from app.orchestrator import prompts, runner
 from app.orchestrator.score import Score
 from app.tools import project_fs as pfs
@@ -105,14 +106,26 @@ def start(requirement: str, attachment_ids: list[str] | None = None,
     비용과 요청 한도가 동시에 터진다.
     """
     _reap()
+    # 동시 실행 한도는 요금제가 정한다 (§16). 환경변수 MAX_CONCURRENT 는
+    # 그 위의 하드 상한이다 — 요금제를 잘못 적어도 서버가 무너지지 않게.
+    seats = min(MAX_CONCURRENT,
+                int(credits.plan(credits.wallet(owner).plan)
+                    .get("max_concurrent", MAX_CONCURRENT)))
     with _runs_lock:
-        if len(_runs) >= MAX_CONCURRENT:
+        if len(_runs) >= seats:
             raise RuntimeError(
-                f"동시 실행 한도({MAX_CONCURRENT})에 도달했습니다. "
+                f"동시 실행 한도({seats})에 도달했습니다. "
                 f"진행 중인 작업이 끝난 뒤에 시작하세요.")
 
+    # 잔액을 **시작 전에** 본다 (§15). 0 이 된 다음에 막으면 이미 쓴 것이다.
+    # 다만 프로젝트 상한 전액이 아니라 **한 번 부를 돈**만 요구한다.
+    # 전액을 요구하면 무료 요금제(월 한도 == 프로젝트 상한)는 한 달에
+    # 한 번만 시작할 수 있게 되는데, 그건 상한이 아니라 횟수 제한이다.
+    credits.reserve(owner, employee.max_worst_case())
+
     slug = store.new_project(requirement, owner=owner)
-    t = threading.Thread(target=_run, args=(requirement, slug, attachment_ids or []),
+    t = threading.Thread(target=_run,
+                         args=(requirement, slug, attachment_ids or [], owner),
                          daemon=True, name=f"run:{slug}")
     with _runs_lock:
         _runs[slug] = t
@@ -121,14 +134,31 @@ def start(requirement: str, attachment_ids: list[str] | None = None,
 
 
 # ── 보조 ────────────────────────────────────────────────────────────
-def _spend_guard(rounds: int, about_to_spend: float = 0.0) -> None:
-    """호출 *전에* 검사한다. 사후 감지는 예산 상한이 아니라 예산 부고다."""
+def _spend_guard(rounds: int, about_to_spend: float = 0.0,
+                 owner: str = "local") -> None:
+    """호출 *전에* 검사한다. 사후 감지는 예산 상한이 아니라 예산 부고다.
+
+    세 가지를 함께 본다: 라운드(§18) · 프로젝트 비용 상한(§18) ·
+    남은 크레딧(§15). 크레딧을 여기서 같이 보는 이유는, 상한은 사고를
+    막는 장치이고 크레딧은 **사용자가 산 만큼**이라서 둘이 다르기 때문이다.
+    """
     if rounds > config.MAX_ROUNDS:
         raise Stop(f"라운드 상한({config.MAX_ROUNDS}) 도달 — 중단합니다.")
-    projected = usage.total_cost() + about_to_spend
-    if projected > config.MAX_PROJECT_COST:
-        raise Stop(f"비용 상한(${config.MAX_PROJECT_COST}) — 다음 호출의 최악 비용까지 "
+    spent = usage.total_cost()
+    projected = spent + about_to_spend
+    # 요금제 상한과 전역 하드 상한 중 **작은 쪽**. 전역 상한은 요금제를
+    # 잘못 적어도 사고가 나지 않게 하는 마지막 방벽이므로, 요금제가 그것을
+    # 넘어설 수 있으면 방벽이 아니다.
+    limit = min(config.MAX_PROJECT_COST,
+                float(credits.plan(credits.wallet(owner).plan)
+                      .get("max_project_cost", config.MAX_PROJECT_COST)))
+    if projected > limit:
+        raise Stop(f"비용 상한(${limit}) — 다음 호출의 최악 비용까지 "
                    f"더하면 ${projected:.2f}가 되어 중단합니다.")
+    if credits.usd_to_credits(about_to_spend) > credits.balance(owner):
+        raise Stop(f"크레딧이 부족합니다 — 잔액 "
+                   f"{credits.balance(owner):.1f} 크레딧으로는 다음 작업을 "
+                   f"시작할 수 없습니다.")
 
 
 def _topo(tasks: list[Task]) -> list[Task]:
@@ -233,7 +263,8 @@ def route(requirement: str) -> Routing:
 
 
 # ── 본체 ────────────────────────────────────────────────────────────
-def _run(requirement: str, slug: str, attachment_ids: list[str]) -> None:
+def _run(requirement: str, slug: str, attachment_ids: list[str],
+         owner: str = "local") -> None:
     # 이 스레드의 컨텍스트를 묶는다. 이후 bus/usage/pfs 호출은 전부 이 실행 소유다.
     bus.bind(slug)
     usage.bind(slug)
@@ -272,7 +303,7 @@ def _run(requirement: str, slug: str, attachment_ids: list[str]) -> None:
     try:
         # 1) 기획 ────────────────────────────────────────────────────
         _check_cancelled(slug)
-        _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.PLANNER))
+        _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.PLANNER), owner)
         plan = employee.ask(roles.PLANNER,
                             prompts.plan(requirement, attachments_note), Plan)
         employee.say(roles.get(roles.PLANNER), plan.message_to_team)
@@ -292,7 +323,7 @@ def _run(requirement: str, slug: str, attachment_ids: list[str]) -> None:
         #    구현자는 이 파일들을 읽지도 못한다. 보면 맞춰 짜기 때문이다.
         bus.phase("WRITE_TESTS", "분석가가 인수기준으로 테스트 작성")
         _check_cancelled(slug)
-        _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.VERIFIER))
+        _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.VERIFIER), owner)
         suite: TestSuite = employee.ask(
             roles.VERIFIER, prompts.write_tests(criteria, plan.tasks), TestSuite)
         employee.say(roles.get(roles.VERIFIER), suite.message_to_team)
@@ -332,7 +363,7 @@ def _run(requirement: str, slug: str, attachment_ids: list[str]) -> None:
             while True:
                 _check_cancelled(slug)
                 bus.phase("IMPLEMENT", f"{roles.get(who).name} · {task.title}")
-                _spend_guard(rounds := rounds + 1, employee.worst_case_cost(who))
+                _spend_guard(rounds := rounds + 1, employee.worst_case_cost(who), owner)
                 bus.state(round=rounds)
                 work: WorkResult = employee.ask(
                     who, prompts.implement(task, criteria, pfs.snapshot(who), feedback),
@@ -347,7 +378,7 @@ def _run(requirement: str, slug: str, attachment_ids: list[str]) -> None:
 
                 bus.phase("REVIEW", task.title)
                 _check_cancelled(slug)
-                _spend_guard(rounds, employee.worst_case_cost(roles.VERIFIER))
+                _spend_guard(rounds, employee.worst_case_cost(roles.VERIFIER), owner)
                 # 변경분이 아니라 전체를 보여준다. 부분만 보면 회귀를 놓친다.
                 # 담당자의 설명(work.summary)은 **넘기지 않는다** — 자기 합리화에
                 # 오염되지 않아야 교차검증이 성립한다.
@@ -382,7 +413,7 @@ def _run(requirement: str, slug: str, attachment_ids: list[str]) -> None:
                                    f"'{task.title}' 에서 진전이 없습니다.")
                     bus.phase("REPLAN", task.title)
                     _spend_guard(rounds := rounds + 1,
-                                 employee.worst_case_cost(roles.PLANNER))
+                                 employee.worst_case_cost(roles.PLANNER), owner)
                     plan = employee.ask(roles.PLANNER,
                                         prompts.replan(plan, task, verdict), Plan)
                     employee.say(roles.get(roles.PLANNER), plan.message_to_team)
@@ -395,7 +426,7 @@ def _run(requirement: str, slug: str, attachment_ids: list[str]) -> None:
         # 4) 최종 검수 ───────────────────────────────────────────────
         bus.phase("FINALIZE", "최종 검수")
         _check_cancelled(slug)
-        _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.PLANNER))
+        _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.PLANNER), owner)
         final: FinalReport = employee.ask(
             roles.PLANNER,
             prompts.finalize(criteria, pfs.snapshot("SYSTEM"), report), FinalReport)
@@ -416,6 +447,14 @@ def _run(requirement: str, slug: str, attachment_ids: list[str]) -> None:
     except Exception as e:                       # noqa: BLE001
         _fail(slug, plan, rows, score, f"{type(e).__name__}: {e}")
     finally:
+        # 실제로 쓴 만큼만 깎는다 (§15). 예약해두고 돌려주는 방식이 아닌
+        # 이유: 실행이 죽으면 돌려줄 사람이 없다. Mock 은 원가가 0 이므로
+        # 저절로 0 이 깎인다 — 따로 분기하지 않는다.
+        cost = usage.total_cost(slug)
+        left = credits.charge(owner, cost)
+        store.save_meta(slug, {"credits": round(credits.usd_to_credits(cost), 3),
+                               "credits_left": left})
+        bus.state(credits=left, credits_used=credits.usd_to_credits(cost))
         with _runs_lock:
             _runs.pop(slug, None)
             _cancelled.discard(slug)

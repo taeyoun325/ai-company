@@ -1,26 +1,51 @@
 {
-  "_주의": "이 값들은 이전 작업에서 물려받은 것이고 공식 단가로 대조되지 않았다. DAY 11(사용량·크레딧)에서 실제 단가로 검증한 뒤에야 §17 원가 계산의 근거가 된다.",
+  "_주의": "DAY 11에 공식 단가와 대조했다. 그 전까지 이 값들은 이전 작업에서 물려받은 추측이었고, verified=false 로 표시되어 있었다. 지금은 아래 sources 의 문서와 한 줄씩 맞춰본 값이다. 단가는 바뀐다 — verified_on 이 오래됐으면 다시 대조해야 한다.",
   "_단위": "USD per 1M tokens, [input, output]",
-  "models": {
-    "claude-opus-5":            { "price": [5.00, 25.00], "verified": false },
-    "claude-opus-4-8":          { "price": [5.00, 25.00], "verified": false },
-    "claude-sonnet-5":          { "price": [2.00, 10.00], "verified": false },
-    "claude-haiku-4-5":         { "price": [1.00,  5.00], "verified": false },
-    "claude-haiku-4-5-20251001":{ "price": [1.00,  5.00], "verified": false },
-    "gemini-2.5-pro":           { "price": [1.25, 10.00], "verified": false },
-    "gemini-2.5-flash":         { "price": [0.30,  2.50], "verified": false },
-    "gpt-5":                    { "price": [1.25, 10.00], "verified": false },
-    "gpt-5-mini":               { "price": [0.25,  2.00], "verified": false },
-    "mock":                     { "price": [0.00,  0.00], "verified": true  }
+  "verified_on": "2026-09-21",
+  "sources": {
+    "claude": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "gemini": "https://ai.google.dev/gemini-api/docs/pricing",
+    "openai": "https://developers.openai.com/api/docs/pricing"
   },
-  "_크레딧": "지시서 §15. 실제 배수는 공식 단가와 실측 사용량을 확인한 뒤 조정한다.",
+
+  "_캐시": "캐시 읽기/쓰기는 입력 단가의 배수다. 이걸 1.0 으로 두면(= 캐시를 보통 입력처럼 계산하면) 우리 원가를 실제보다 크게 잡는다. 보수적이긴 하지만, §17 마진 계산에서는 '안전한 쪽으로 틀린 숫자'도 틀린 숫자다.",
+  "cache_defaults": { "read": 0.1, "write": 1.25 },
+
+  "models": {
+    "claude-opus-5":            { "price": [5.00, 25.00], "cache": [0.10, 1.25], "verified": true },
+    "claude-opus-4-8":          { "price": [5.00, 25.00], "cache": [0.10, 1.25], "verified": true },
+    "claude-sonnet-5":          { "price": [2.00, 10.00], "cache": [0.10, 1.25], "verified": true },
+    "claude-haiku-4-5":         { "price": [1.00,  5.00], "cache": [0.10, 1.25], "verified": true },
+    "claude-haiku-4-5-20251001":{ "price": [1.00,  5.00], "cache": [0.10, 1.25], "verified": true },
+
+    "gemini-2.5-pro":           { "price": [1.25, 10.00], "cache": [0.10, 1.00], "verified": true },
+    "gemini-2.5-flash":         { "price": [0.30,  2.50], "cache": [0.10, 1.00], "verified": true },
+
+    "gpt-5":                    { "price": [1.25, 10.00], "cache": [0.10, 1.00], "verified": true },
+    "gpt-5-mini":               { "price": [0.25,  2.00], "cache": [0.10, 1.00], "verified": true },
+
+    "mock":                     { "price": [0.00,  0.00], "cache": [0.00, 0.00], "verified": true }
+  },
+
+  "_크레딧": "지시서 §15. 1 크레딧 = credit_usd 달러어치의 원가. 배수(multiplier)는 '같은 토큰이라도 비싼 모델은 크레딧을 더 먹는다'를 화면에 설명하기 위한 것이고, 실제 차감은 원가 기반으로 한다 — 배수만으로 차감하면 입력·출력 비율이 다른 작업에서 어긋난다.",
+  "credit_usd": 0.01,
   "credits": {
     "claude-opus-5":   2.5,
+    "claude-opus-4-8": 2.5,
     "claude-sonnet-5": 1.0,
+    "claude-haiku-4-5": 0.5,
     "gemini-2.5-pro":  1.0,
-    "gemini-2.5-flash":0.3,
+    "gemini-2.5-flash": 0.3,
     "gpt-5":           1.0,
     "gpt-5-mini":      0.3,
     "mock":            0.0
+  },
+
+  "_요금제": "지시서 §16. price_usd 는 월 구독료, credits 는 매달 주는 크레딧. §17 은 원가가 판매가의 50% 이하일 것을 요구한다 — 그 검사는 app/usage/credits.py 의 margin_report() 가 실제 숫자로 한다.",
+  "_요금제_주의": "max_project_cost 는 개발자 호출 한 번의 최악 비용(Opus 5 기준 입력 80k + 출력 32k = $1.20)보다 커야 한다. 작게 잡으면 그 요금제는 첫 구현 단계에서 항상 멈춘다 — 시작조차 못 하는 요금제는 요금제가 아니다. 실제 단가를 넣고 나서야 드러난 문제라, 숫자로 다시 맞췄다.",
+  "plans": {
+    "free":     { "label": "무료",   "price_usd": 0,  "credits": 150,  "max_concurrent": 1, "max_project_cost": 1.5 },
+    "pro":      { "label": "프로",   "price_usd": 29, "credits": 1200, "max_concurrent": 3, "max_project_cost": 3.0 },
+    "business": { "label": "비즈니스", "price_usd": 99, "credits": 4500, "max_concurrent": 5, "max_project_cost": 10.0 }
   }
 }

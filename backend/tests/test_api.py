@@ -177,3 +177,30 @@ def test_keys_endpoint_accepts_openai(client):
     r = client.post("/api/settings/keys", json={"openai": ""})
     assert r.status_code == 200
     assert "openai" in r.json()["keys"]
+
+
+def test_credits_endpoint_reports_verification(client):
+    """검증 안 된 단가로 계산한 잔액은 근거가 아니라 추측이다."""
+    body = client.get("/api/credits").json()
+    assert "prices_verified" in body and "balance" in body
+
+
+def test_plans_endpoint(client):
+    body = client.get("/api/plans").json()
+    assert set(body["plans"]) >= {"free", "pro", "business"}
+    assert body["credit_usd"] > 0
+
+
+def test_margin_endpoint_checks_section_17(client):
+    """§17 은 구호가 아니라 계산이다."""
+    body = client.get("/api/margin").json()
+    assert body["max_cost_ratio"] == 0.5
+    assert body["all_paid_plans_ok"] is True
+
+
+def test_unknown_plan_is_rejected_over_http(client):
+    assert client.post("/api/credits/plan", json={"plan": "없는것"}).status_code == 400
+
+
+def test_state_carries_credits(client):
+    assert "credits" in client.get("/api/state").json()

@@ -34,6 +34,7 @@ from app import orchestrator
 from app.orchestrator import manual
 from app import timeline
 from app import usage
+from app.usage import credits
 from app import workspace
 
 secrets_broker.init()   # 기동 즉시 환경변수에서 키를 꺼내 지운다
@@ -73,6 +74,14 @@ class ProviderModelReq(BaseModel):
 
 class ModelReq2(BaseModel):
     model: str
+
+
+class PlanReq(BaseModel):
+    plan: str
+
+
+class TopUpReq(BaseModel):
+    credits: float
 
 
 class RunReq(BaseModel):
@@ -133,6 +142,7 @@ def state(run: str | None = None):
         # 화면이 "지금 Mock 으로 돌고 있다"를 표시할 수 있어야 한다.
         # 안 그러면 사용자는 Mock 이 지어낸 글을 AI 의 작업 결과로 믿는다.
         "providers": registry.status(),
+        "credits": credits.status(),
         "busy": agent_core.busy(),
         "turns": len(agent_core.history),
         "screen": screen.status(),
@@ -392,6 +402,10 @@ def start_run(req: RunReq):
         raise HTTPException(400, "요구사항이 비어 있습니다")
     try:
         slug = orchestrator.start(requirement, req.attachments)
+    except credits.InsufficientCredits as e:
+        # 429(한도 초과)와 구분한다. 사용자의 대응이 다르다 —
+        # 하나는 기다리면 되고, 하나는 충전해야 한다.
+        raise HTTPException(402, str(e))
     except RuntimeError as e:
         raise HTTPException(429, str(e))
     return {"slug": slug, "running": True,
@@ -436,6 +450,49 @@ def route_work(req: RunReq):
     except Exception as e:                       # noqa: BLE001
         raise HTTPException(502, secrets_broker.scrub(f"{type(e).__name__}: {e}"))
     return r.model_dump()
+
+
+# ── 크레딧 · 요금제 · 원가 (지시서 §15 §16 §17) ─────────────────────
+@app.get("/api/credits")
+def get_credits(owner: str = "local"):
+    """잔액과 요금제. 단가가 검증됐는지도 함께 내려보낸다 —
+    검증 안 된 단가로 계산한 잔액은 근거가 아니라 추측이다."""
+    return credits.status(owner)
+
+
+@app.get("/api/plans")
+def get_plans():
+    return {"plans": credits.plans(), "credit_usd": config.CREDIT_USD}
+
+
+@app.post("/api/credits/plan")
+def change_plan(req: PlanReq, owner: str = "local"):
+    try:
+        credits.set_plan(owner, req.plan)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return credits.status(owner)
+
+
+@app.post("/api/credits/topup")
+def topup(req: TopUpReq, owner: str = "local"):
+    """결제는 이 제품의 범위 밖이다. 여기서는 잔액이 실제로 늘고
+    실제로 막히는가만 성립시킨다."""
+    try:
+        credits.top_up(owner, req.credits)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return credits.status(owner)
+
+
+@app.get("/api/margin")
+def margin():
+    """§17 원가 관리 — 원가가 판매가의 50% 이하인가를 **실제 숫자로** 검사한다.
+
+    구호가 아니라 계산이다. 요금제가 주는 크레딧을 전부 쓴 경우가
+    우리 최대 원가이므로, 그 값과 구독료를 비교한다.
+    """
+    return credits.margin_report()
 
 
 # ── MANUAL 모드 (지시서 §11) ────────────────────────────────────────

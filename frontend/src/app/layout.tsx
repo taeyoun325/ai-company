@@ -30,6 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </Link>
             <NavLink href="/">사무실</NavLink>
             <NavLink href="/projects">프로젝트</NavLink>
+            <NavLink href="/pricing">요금제</NavLink>
             <NavLink href="/settings">설정</NavLink>
           </nav>
         </header>

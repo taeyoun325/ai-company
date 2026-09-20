@@ -161,3 +161,15 @@ def worst_case_cost(employee_id: str) -> float:
     e = roles.get(employee_id)
     worst_input = 80_000 if e.kind in ("build", "verify") else 40_000
     return config.price_of(e.model, worst_input, e.max_tokens)
+
+
+def max_worst_case() -> float:
+    """직원 중 **한 번 부를 때 가장 비싼** 사람의 최악 비용($).
+
+    실행을 시작해도 되는지 판단할 때 쓴다. 프로젝트 상한 전액을 미리
+    잡아두면, 무료 요금제처럼 월 한도와 상한이 같은 경우 한 달에 한 번만
+    시작할 수 있게 된다 — 그건 상한이 아니라 횟수 제한이다.
+    한 번 부를 돈이 있으면 시작은 시킨다. 도중에 모자라면 `_spend_guard`
+    가 단계 경계에서 멈춘다.
+    """
+    return max(worst_case_cost(i) for i in roles.ids())

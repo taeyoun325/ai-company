@@ -26,6 +26,7 @@ from app.agents.schemas import Plan, Task, Verdict              # noqa: E402
 from app.database import store                                   # noqa: E402
 from app.orchestrator import engine, runner                      # noqa: E402
 from app.providers import registry                               # noqa: E402
+from app.usage import credits                                    # noqa: E402
 
 TIMEOUT = 90
 
@@ -35,8 +36,13 @@ def _isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("PROVIDER_MODE", "mock")
     monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
     monkeypatch.setattr(config, "LOGS", tmp_path / "logs")
+    # 지갑은 디스크에 남는다. 격리하지 않으면 앞 테스트가 쓴 크레딧이
+    # 뒤 테스트를 굶긴다 — 실패가 테스트 순서에 따라 달라진다.
+    monkeypatch.setattr(credits, "WALLET_FILE", tmp_path / "credits.json")
+    credits.reset()
     registry.reset()
     yield
+    credits.reset()
     registry.reset()
 
 

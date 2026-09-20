@@ -17,7 +17,7 @@ import { Office } from "@/components/Office";
 import { ScorePanel, TaskBoard } from "@/components/TaskBoard";
 import { Button, ErrorBox, Panel, Warning } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import type { Employee, ProviderStatus } from "@/lib/types";
+import type { CreditStatus, Employee, ProviderStatus } from "@/lib/types";
 import { useLoader } from "@/lib/useLoader";
 import { foldState, useStream } from "@/lib/useStream";
 
@@ -31,6 +31,7 @@ export default function OfficePage() {
   );
   const employees: Employee[] = state?.employees ?? [];
   const providers: ProviderStatus | null = state?.providers ?? null;
+  const wallet: CreditStatus | null = state?.credits ?? null;
   const [requirement, setRequirement] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [routing, setRouting] = useState<{ employee: string; why: string } | null>(null);
@@ -60,11 +61,13 @@ export default function OfficePage() {
       setSlug(r.slug);
     } catch (e) {
       setError(
-        e instanceof ApiError && e.isBusy
-          ? `${e.message} (동시 실행 한도는 비용과 요청 한도를 함께 막는 장치입니다)`
-          : e instanceof Error
-            ? e.message
-            : String(e),
+        e instanceof ApiError && e.isBudget
+          ? `${e.message} — 요금제 화면에서 충전하거나 요금제를 올리세요.`
+          : e instanceof ApiError && e.isBusy
+            ? `${e.message} (동시 실행 한도는 비용과 요청 한도를 함께 막는 장치입니다)`
+            : e instanceof Error
+              ? e.message
+              : String(e),
       );
     } finally {
       setBusy(false);
@@ -207,6 +210,28 @@ export default function OfficePage() {
         </Panel>
 
         <div className="space-y-4">
+          {wallet && (
+            <Panel title="크레딧">
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-2xl font-bold tabular-nums">
+                    {wallet.balance.toFixed(0)}
+                  </p>
+                  <p className="text-[11px] text-dim">
+                    남은 크레딧 · {wallet.plan_label} 요금제
+                  </p>
+                </div>
+                <a href="/pricing" className="text-xs text-muted underline">
+                  요금제
+                </a>
+              </div>
+              {!wallet.prices_verified && (
+                <p className="mt-2 text-[11px]" style={{ color: "var(--mock)" }}>
+                  단가가 검증되지 않아 이 숫자는 추측입니다.
+                </p>
+              )}
+            </Panel>
+          )}
           <Panel title="완성도와 비용">
             <ScorePanel
               score={folded.score}

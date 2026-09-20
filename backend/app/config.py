@@ -98,35 +98,100 @@ _FALLBACK = {"claude-opus-5": (5.00, 25.00), "gemini-2.5-pro": (1.25, 10.00),
              "mock": (0.0, 0.0)}
 
 
-def _load_pricing() -> tuple[dict[str, tuple[float, float]], dict[str, float], bool]:
-    """(단가표, 크레딧 배수, 전부_검증됐는가)."""
+_DEFAULT_CACHE = (0.1, 1.25)
+
+
+def _load_pricing():
+    """단가 파일을 읽는다. 없거나 깨졌으면 내장 기본값으로 버틴다.
+
+    기동을 막지 않는 이유: 단가 파일 하나 때문에 서버가 안 뜨면, 단가를
+    고치다 오타 한 번에 서비스가 내려간다. 대신 검증 여부를 남겨서
+    화면이 "이 숫자는 검증되지 않았다"고 말할 수 있게 한다.
+    """
     try:
         data = json.loads(PRICING_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return dict(_FALLBACK), {}, False
+        return dict(_FALLBACK), {}, {}, False, "", {}
     models = data.get("models", {})
-    prices = {name: (float(row["price"][0]), float(row["price"][1]))
-              for name, row in models.items() if "price" in row}
+    prices, cache = {}, {}
+    dflt = data.get("cache_defaults", {})
+    dflt_pair = (float(dflt.get("read", _DEFAULT_CACHE[0])),
+                 float(dflt.get("write", _DEFAULT_CACHE[1])))
+    for name, row in models.items():
+        if "price" not in row:
+            continue
+        prices[name] = (float(row["price"][0]), float(row["price"][1]))
+        c = row.get("cache")
+        cache[name] = (float(c[0]), float(c[1])) if c else dflt_pair
     verified = all(row.get("verified") for row in models.values()) if models else False
-    return (prices or dict(_FALLBACK)), data.get("credits", {}), verified
+    return ((prices or dict(_FALLBACK)), cache, data.get("credits", {}), verified,
+            data.get("verified_on", ""), data.get("plans", {}))
 
 
-PRICES, CREDITS, PRICES_VERIFIED = _load_pricing()
+(PRICES, CACHE_RATES, CREDITS, PRICES_VERIFIED,
+ PRICES_VERIFIED_ON, PLANS) = _load_pricing()
+
+CREDIT_USD = 0.01           # 1 크레딧이 몇 달러어치 원가인가 (§15)
+
+
+def _load_credit_usd() -> float:
+    try:
+        return float(json.loads(PRICING_FILE.read_text(encoding="utf-8"))
+                     .get("credit_usd", 0.01))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return 0.01
+
+
+CREDIT_USD = _load_credit_usd()
 
 
 def reload_pricing() -> None:
     """단가 파일을 다시 읽는다. 재배포 없이 단가를 고칠 수 있어야 한다."""
-    global PRICES, CREDITS, PRICES_VERIFIED
-    PRICES, CREDITS, PRICES_VERIFIED = _load_pricing()
+    global PRICES, CACHE_RATES, CREDITS, PRICES_VERIFIED, PRICES_VERIFIED_ON
+    global PLANS, CREDIT_USD
+    (PRICES, CACHE_RATES, CREDITS, PRICES_VERIFIED,
+     PRICES_VERIFIED_ON, PLANS) = _load_pricing()
+    CREDIT_USD = _load_credit_usd()
 
 
-def price_of(model: str, input_tokens: int, output_tokens: int) -> float:
-    pin, pout = PRICES.get(model, (0.0, 0.0))
-    return input_tokens / 1_000_000 * pin + output_tokens / 1_000_000 * pout
+def price_of(model: str, input_tokens: int, output_tokens: int,
+             cached_tokens: int = 0, cache_written: int = 0) -> float:
+    """이 호출의 **우리 원가**($).
+
+    캐시를 보통 입력처럼 계산하지 않는다. 캐시 읽기는 입력의 0.1배,
+    쓰기는 1.25배다(공식 단가, DAY 11 확인). 캐시분을 입력 단가로 더하면
+    원가를 실제보다 크게 잡는데, 안전한 쪽으로 틀린 숫자도 틀린 숫자다 —
+    §17 마진(원가 ≤ 판매가의 50%)을 그 숫자로 판단하면 팔 수 있는 가격을
+    못 판다.
+
+    모르는 모델은 0 이 아니라 **가장 비싼 모델**로 친다. 0 으로 두면
+    예산 상한(§18)이 그 모델에는 걸리지 않는다. 모르면 비싸게 잡는 편이
+    안전하다.
+    """
+    pin, pout = PRICES.get(model) or _max_price()
+    cread, cwrite = CACHE_RATES.get(model, _DEFAULT_CACHE)
+    return (input_tokens * pin
+            + output_tokens * pout
+            + cached_tokens * pin * cread
+            + cache_written * pin * cwrite) / 1_000_000
+
+
+def _max_price() -> tuple[float, float]:
+    known = [v for k, v in PRICES.items() if k != "mock"]
+    return max(known, key=lambda p: p[1]) if known else (0.0, 0.0)
+
+
+def is_priced(model: str) -> bool:
+    """단가를 아는 모델인가. 화면과 설정이 이것으로 거른다."""
+    return model in PRICES
 
 
 def credits_of(model: str) -> float:
-    """지시서 §15. 모델별 크레딧 배수. 모르는 모델은 1배로 본다."""
+    """지시서 §15. 모델별 크레딧 배수(화면 설명용). 모르는 모델은 1배로 본다.
+
+    실제 차감은 이 배수가 아니라 원가 기반이다 — `app/usage/credits.py` 참조.
+    배수만으로 차감하면 입력·출력 비율이 다른 작업에서 어긋난다.
+    """
     return float(CREDITS.get(model, 1.0))
 
 

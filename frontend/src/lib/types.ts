@@ -155,3 +155,28 @@ export interface Settings {
   missing: string[];
   ready: boolean;
 }
+
+export interface CreditStatus {
+  owner: string;
+  plan: string;
+  plan_label: string;
+  balance: number;
+  granted: number;
+  spent: number;
+  topped_up: number;
+  credit_usd: number;
+  balance_usd: number;
+  max_concurrent: number;
+  max_project_cost: number;
+  /** 단가가 공식 문서와 대조됐는가. 아니면 이 숫자들은 추측이다 (§14). */
+  prices_verified: boolean;
+  prices_verified_on: string;
+}
+
+export interface PlanRow {
+  label: string;
+  price_usd: number;
+  credits: number;
+  max_concurrent: number;
+  max_project_cost: number;
+}

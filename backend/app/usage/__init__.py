@@ -19,7 +19,7 @@ _lock = threading.RLock()
 _local = threading.local()
 
 _EMPTY = {"input": 0, "output": 0, "cached": 0, "cache_written": 0,
-          "cost": 0.0, "calls": 0}
+          "cost": 0.0, "credits": 0.0, "calls": 0}
 
 # run_id(프로젝트 slug) -> {에이전트 -> 사용량}
 _runs: dict[str, dict[str, dict]] = {}
@@ -94,8 +94,13 @@ def record(agent: str, model: str, input_tokens: int, output_tokens: int,
         row["output"] += output_tokens
         row["cached"] += cached_tokens
         row["cache_written"] += cache_written
-        # 캐시 읽기도 입력 토큰으로 과금된다(단가는 더 저렴하나 보수적으로 합산)
-        row["cost"] += config.price_of(model, input_tokens + cached_tokens, output_tokens)
+        # 캐시는 입력 단가의 배수로 따로 계산한다(§14). DAY 11 전에는 캐시
+        # 토큰을 보통 입력처럼 더했는데, 그러면 원가를 실제보다 크게 잡고
+        # §17 마진 판단이 틀어진다 — 안전한 쪽으로 틀린 숫자도 틀린 숫자다.
+        cost = config.price_of(model, input_tokens, output_tokens,
+                               cached_tokens, cache_written)
+        row["cost"] += cost
+        row["credits"] += cost / config.CREDIT_USD if config.CREDIT_USD else 0.0
         row["calls"] += 1
     push()
 
@@ -107,12 +112,18 @@ def totals(run_id: str | None = None) -> dict:
         "output": sum(r["output"] for r in rows),
         "cached": sum(r["cached"] for r in rows),
         "cost": sum(r["cost"] for r in rows),
+        "credits": sum(r.get("credits", 0.0) for r in rows),
         "calls": sum(r["calls"] for r in rows),
     }
 
 
 def total_cost(run_id: str | None = None) -> float:
     return totals(run_id)["cost"]
+
+
+def total_credits(run_id: str | None = None) -> float:
+    """이 실행이 먹은 크레딧 (§15). 원가를 크레딧 단가로 나눈 값이다."""
+    return totals(run_id)["credits"]
 
 
 def cache_working(run_id: str | None = None) -> bool | None:

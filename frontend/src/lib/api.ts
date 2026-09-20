@@ -13,7 +13,9 @@
  * 중, 404 는 없음. 화면이 다르게 반응해야 하므로 상태를 그대로 들고 간다.
  */
 import type {
+  CreditStatus,
   Employee,
+  PlanRow,
   Project,
   ProviderStatus,
   Roster,
@@ -86,6 +88,7 @@ export const api = {
     call<{
       employees: Employee[];
       providers: ProviderStatus;
+      credits: CreditStatus;
       keys_ready: boolean;
     }>(`/api/state${run ? `?run=${encodeURIComponent(run)}` : ""}`),
 
@@ -160,6 +163,14 @@ export const api = {
     ),
   deleteProject: (slug: string) =>
     call<{ ok: boolean }>(`/api/projects/${seg(slug)}`, { method: "DELETE" }),
+
+  // ── 크레딧 · 요금제 (§15 §16) ───────────────────────────────────
+  credits: () => call<CreditStatus>("/api/credits"),
+  plans: () =>
+    call<{ plans: Record<string, PlanRow>; credit_usd: number }>("/api/plans"),
+  changePlan: (plan: string) => post<CreditStatus>("/api/credits/plan", { plan }),
+  topUp: (amount: number) =>
+    post<CreditStatus>("/api/credits/topup", { credits: amount }),
 
   // ── 로그 (§13) ──────────────────────────────────────────────────
   events: (run?: string, after = 0) =>
