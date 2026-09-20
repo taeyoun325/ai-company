@@ -516,10 +516,21 @@ def test_timeline_survives_truncated_last_line(trace, tmp_path):
 
 
 # ── 이벤트 버스 ─────────────────────────────────────────────────────
-def test_bus_history_is_bounded():
-    """무한히 쌓이면 오래 켜둔 세션이 메모리를 먹는다."""
+def test_bus_history_is_bounded_per_run():
+    """무한히 쌓이면 오래 켜둔 세션이 메모리를 먹는다.
+
+    실행별로 나눠 보관하는 이유(§13): 한 덱에 전부 쌓으면 바쁜 실행 하나가
+    다른 실행의 이력을 밀어내고, 조용한 프로젝트의 화면이 이유 없이 빈다.
+    """
     from app import bus
-    assert bus._history.maxlen == bus.HISTORY_LIMIT
+    bus.bind("bounded-run")
+    try:
+        for i in range(bus.HISTORY_LIMIT + 50):
+            bus.say("SYSTEM", str(i))
+        assert len(bus.history("bounded-run")) == bus.HISTORY_LIMIT
+    finally:
+        bus.reset("bounded-run")
+        bus.release()
 
 
 def test_bus_tags_events_with_run():

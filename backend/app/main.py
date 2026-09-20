@@ -12,7 +12,7 @@ import queue
 import sys
 
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -681,24 +681,57 @@ def delete_schedule(sid: str):
 
 # ── 이벤트 스트림 ───────────────────────────────────────────────────
 @app.get("/api/stream")
-def stream():
+def stream(request: Request, run: str | None = None, after: int = 0):
+    """실시간 작업 로그 (§13).
+
+    `run` 을 주면 그 프로젝트의 이벤트만 온다. 안 주면 전부 — 여러
+    프로젝트를 한 화면에서 보는 대시보드(§12)가 그렇게 쓴다.
+
+    SSE 는 끊긴다. 프록시가 끊고, 노트북이 잠들고, 탭이 백그라운드로 간다.
+    브라우저가 재연결하면서 보내는 `Last-Event-ID` 를 받아 그 뒤부터만
+    보낸다. 안 그러면 끊긴 동안의 작업 로그를 사용자가 영영 못 본다.
+    """
+    last = request.headers.get("last-event-id")
+    try:
+        after = max(after, int(last)) if last else after
+    except ValueError:
+        pass
+
     def gen():
-        q = bus.subscribe()
+        sub = bus.subscribe(run, after)
         try:
             yield ": connected\n\n"
+            # 재연결 간격을 브라우저에 알려준다. 기본값(3초)보다 늘려서
+            # 서버가 잠깐 죽었을 때 재연결 폭주를 만들지 않는다.
+            yield "retry: 5000\n\n"
             while True:
                 try:
-                    ev = q.get(timeout=15)
+                    ev = sub.q.get(timeout=15)
                 except queue.Empty:
                     yield ": keepalive\n\n"
                     continue
-                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+                # id 를 함께 보내야 브라우저가 Last-Event-ID 를 채운다.
+                yield (f"id: {ev['id']}\n"
+                       f"event: {ev['type']}\n"
+                       f"data: {json.dumps(ev, ensure_ascii=False)}\n\n")
         finally:
-            bus.unsubscribe(q)
+            bus.unsubscribe(sub)
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
+                                      "Connection": "keep-alive",
                                       "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/events")
+def events(run: str | None = None, after: int = 0):
+    """SSE 를 못 쓰는 상황(테스트·프록시·폴링)에서의 같은 이력.
+
+    SSE 하나에만 기대면, 그 경로가 막힌 환경에서 화면이 통째로 빈다.
+    """
+    rows = bus.replay(run, after)
+    return {"events": rows, "last_id": rows[-1]["id"] if rows else after,
+            "roster": bus.roster()}
 
 
 def _scheduled_send(requirement: str) -> str:
