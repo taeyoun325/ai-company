@@ -20,6 +20,7 @@
  */
 import { useState, type FormEvent, type ReactNode } from "react";
 
+import { Landing } from "./Landing";
 import { Button, ErrorBox, Panel, Warning } from "./ui";
 import { useAuth } from "@/lib/useAuth";
 
@@ -47,7 +48,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!user && required) return <LoginScreen />;
+  // 처음 온 사람에게 이메일 입력칸만 보여주면, 무엇에 가입하는지 모른 채
+  // 가입하거나 그냥 닫는다. 제품이 무엇인지 먼저 말한다.
+  if (!user && required) {
+    return (
+      <Landing>
+        <LoginScreen />
+      </Landing>
+    );
+  }
   return <>{children}</>;
 }
 
@@ -76,17 +85,7 @@ function LoginScreen() {
   };
 
   return (
-    <div className="mx-auto max-w-md py-12">
-      <div className="mb-5 text-center">
-        <p className="text-3xl" aria-hidden>
-          🏢
-        </p>
-        <h1 className="mt-1 text-lg font-bold">AI COMPANY</h1>
-        <p className="mt-1 text-xs text-dim">
-          AI 직원들이 실제 회사처럼 협업합니다. 당신은 CEO 입니다.
-        </p>
-      </div>
-
+    <div>
       {firstUser && (
         <div className="mb-3">
           <Warning>
