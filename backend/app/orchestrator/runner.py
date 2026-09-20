@@ -21,6 +21,7 @@ import subprocess
 import sys
 
 from app import config
+from app import deploy
 from app import secrets_broker
 
 TIMEOUT = int(os.getenv("TEST_TIMEOUT", "120"))
@@ -101,14 +102,32 @@ def _clip(s: str, head: int = 2500, tail: int = 2500) -> str:
     return f"{s[:head]}\n\n... (중략 {len(s) - head - tail}자) ...\n\n{s[-tail:]}"
 
 
+def blocked(reason: str) -> dict:
+    """실행하지 않았다는 사실을 **실패로** 돌려준다.
+
+    통과로 돌려주면 검증자가 "테스트 통과"를 근거로 승인한다. 돌리지
+    않은 테스트는 통과한 테스트가 아니다.
+    """
+    return {"ok": False, "skipped_run": True, "timed_out": False,
+            "returncode": -1, "passed": 0, "failed": 0, "errors": 0,
+            "skipped": 0, "failed_tests": [], "blocked": True,
+            "output": reason}
+
+
 def run(project_dir) -> dict:
-    """프로젝트의 tests/ 를 실행하고 구조화된 리포트를 돌려준다."""
+    """프로젝트의 tests/ 를 실행하고 구조화된 리포트를 돌려준다.
+
+    **여기가 이 프로그램에서 가장 위험한 지점이다.** 모델이 쓴 코드를
+    실제로 실행한다. 로컬 도구였을 때는 "사용자가 자기 컴퓨터에서 자기
+    도구를 돌린다"였지만, SaaS 에서는 "요구사항 한 줄로 우리 서버에서
+    임의 코드 실행"이 된다. 그래서 배포 자세가 먼저 판단한다(app/deploy.py).
+    """
+    if (reason := deploy.allow_code_execution()) is not None:
+        return blocked(reason)
+
     tests = project_dir / "tests"
     if not any(tests.glob("test_*.py")):
-        return {"ok": False, "skipped_run": True, "timed_out": False,
-                "returncode": -1, "passed": 0, "failed": 0, "errors": 0,
-                "skipped": 0, "failed_tests": [],
-                "output": "(테스트 파일 없음 — 실행 생략)"}
+        return blocked("(테스트 파일 없음 — 실행 생략)") | {"blocked": False}
 
     ini = project_dir / "pytest.ini"      # 오케스트레이터가 매번 덮어쓴다
     ini.write_text(PYTEST_INI, encoding="utf-8")
@@ -192,6 +211,8 @@ def run_entry(project_dir, entry: str, timeout: int | None = None) -> dict:
 
 
 def summary_line(r: dict) -> str:
+    if r.get("blocked"):
+        return "테스트 실행 차단됨 (샌드박스 아님)"
     if r.get("skipped_run"):
         return "테스트 없음"
     if r["timed_out"]:

@@ -21,6 +21,7 @@ from app import approvals
 from app import attachments
 from app import bus
 from app import config
+from app import deploy
 from app.providers import gemini_client as gemini
 from app.providers import registry
 from app import scheduler
@@ -148,15 +149,29 @@ def state(run: str | None = None):
         # 안 그러면 사용자는 Mock 이 지어낸 글을 AI 의 작업 결과로 믿는다.
         "providers": registry.status(),
         "credits": credits.status(),
+        # 무엇이 막혀 있는지 화면이 말할 수 있어야 한다. 감추면 사용자는
+        # 기능이 고장 났다고 생각한다.
+        "deploy": deploy.status(),
         "busy": agent_core.busy(),
         "turns": len(agent_core.history),
         "screen": screen.status(),
     }
 
 
+def _require_local_tools() -> None:
+    """로컬 환경을 건드리는 기능의 공통 관문 (§18 · app/deploy.py).
+
+    이 검사를 라우트마다 손으로 넣지 않고 한 함수로 모은 이유: 라우트가
+    늘어날 때 하나를 빠뜨리면, 그 하나가 통째로 구멍이 된다.
+    """
+    if (reason := deploy.allow_local_tools()) is not None:
+        raise HTTPException(403, reason)
+
+
 # ── 작업 폴더 ───────────────────────────────────────────────────────
 @app.post("/api/workspace")
 def open_workspace(req: OpenReq):
+    _require_local_tools()
     try:
         root = workspace.use(req.path)
     except (workspace.Denied, OSError) as e:
@@ -173,6 +188,7 @@ def open_workspace(req: OpenReq):
 
 @app.get("/api/files")
 def files(path: str = ".", depth: int = 2):
+    _require_local_tools()
     if workspace.current() is None:
         raise HTTPException(400, "작업 폴더를 먼저 여세요")
     try:
@@ -183,6 +199,7 @@ def files(path: str = ".", depth: int = 2):
 
 @app.get("/api/file")
 def read_file(path: str):
+    _require_local_tools()
     try:
         p = workspace.resolve(path)
     except (workspace.Denied, RuntimeError) as e:
@@ -197,6 +214,7 @@ def read_file(path: str):
 @app.post("/api/file")
 def write_file(req: EditReq):
     """사람이 직접 고친다. 에이전트가 작업 중이면 막는다."""
+    _require_local_tools()
     if agent_core.busy():
         raise HTTPException(409, "에이전트가 작업 중입니다. 끝난 뒤에 편집하세요.")
     try:
@@ -211,6 +229,7 @@ def write_file(req: EditReq):
 
 @app.get("/api/diff")
 def diff(path: str | None = None):
+    _require_local_tools()
     if workspace.current() is None:
         raise HTTPException(400, "작업 폴더를 먼저 여세요")
     return {"diff": workspace.git_diff(path)}
@@ -219,6 +238,9 @@ def diff(path: str | None = None):
 # ── 대화 ────────────────────────────────────────────────────────────
 @app.post("/api/send")
 def send(req: SendReq):
+    # 이전 제품의 대화형 루프. 사용자의 로컬 폴더를 직접 고치므로
+    # SaaS 에서는 열어두면 안 된다.
+    _require_local_tools()
     if not secrets_broker.ready():
         raise HTTPException(400, "API 키가 등록되지 않았습니다. 설정에서 먼저 등록하세요.")
     try:
@@ -455,6 +477,12 @@ def route_work(req: RunReq):
     except Exception as e:                       # noqa: BLE001
         raise HTTPException(502, secrets_broker.scrub(f"{type(e).__name__}: {e}"))
     return r.model_dump()
+
+
+@app.get("/api/deploy")
+def deploy_status():
+    """이 서버가 어떤 자세로 도는가 (local / saas, 샌드박스 여부)."""
+    return deploy.status()
 
 
 # ── 크레딧 · 요금제 · 원가 (지시서 §15 §16 §17) ─────────────────────
@@ -709,6 +737,7 @@ def delete_attachment(aid: str):
 # ── 화면 ────────────────────────────────────────────────────────────
 @app.get("/api/screen/status")
 def screen_status():
+    _require_local_tools()
     st = screen.status()
     st.update(approvals.mode_info())
     st["pending"] = approvals.pending()
@@ -717,7 +746,11 @@ def screen_status():
 
 @app.post("/api/screen/capture")
 def screen_capture():
-    """사용자가 누를 때만 한 장 찍는다. 주기적 자동 캡처는 만들지 않았다."""
+    """사용자가 누를 때만 한 장 찍는다. 주기적 자동 캡처는 만들지 않았다.
+
+    SaaS 에서는 아예 막힌다 — 서버 화면은 사용자의 것이 아니다.
+    """
+    _require_local_tools()
     try:
         png = screen.capture()
     except RuntimeError as e:

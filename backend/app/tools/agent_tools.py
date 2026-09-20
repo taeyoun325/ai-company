@@ -14,6 +14,7 @@ from anthropic import beta_tool
 
 from app import approvals
 from app import bus
+from app import deploy
 from app import secrets_broker
 from app import workspace
 
@@ -227,6 +228,12 @@ def run_command(command: str, why: str = "") -> str:
         command: 실행할 명령.
         why: 왜 필요한지 한 문장. 승인 화면에 그대로 표시된다.
     """
+    # 승인 게이트보다 **먼저** 배포 자세를 본다 (§18 · app/deploy.py).
+    # 승인은 "사용자가 자기 컴퓨터에서 허락한다"를 전제로 만들어졌다.
+    # 서버에서는 그 승인이 남의 서버에 대한 승인이라 아무것도 보장하지 않는다.
+    if (reason := deploy.allow_local_tools()) is not None:
+        return f"실행 차단: {reason}"
+
     cmd = command.strip()
     low = cmd.lower()
     # 상태를 바꾸지 않는 명령은 자동 모드에서만 건너뛴다.
