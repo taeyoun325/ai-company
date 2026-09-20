@@ -149,7 +149,40 @@ export const api = {
     }>(`/api/manual/${seg(slug)}`),
 
   // ── 프로젝트 (§12) ──────────────────────────────────────────────
-  projects: () => call<{ projects: Project[] }>("/api/projects"),
+  /**
+   * `source` 가 "disk" 면 색인이 깨져 파일에서 읽은 것이다. 화면이
+   * 그 사실을 감추면, 왜 느린지 아무도 모른다.
+   */
+  projects: (opts: {
+    q?: string;
+    status?: string;
+    sort?: string;
+    limit?: number;
+    offset?: number;
+  } = {}) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(opts)) {
+      if (v !== undefined && v !== "") p.set(k, String(v));
+    }
+    return call<{
+      projects: Project[];
+      total: number;
+      limit: number;
+      offset: number;
+      source: "index" | "disk";
+    }>(`/api/projects?${p.toString()}`);
+  },
+  projectStats: () =>
+    call<{
+      projects: number;
+      cost: number;
+      credits: number;
+      avg_score: number;
+      done: number;
+      stopped: number;
+      mock: number;
+    }>("/api/projects/stats"),
+  reindex: () => post<{ indexed: number }>("/api/projects/reindex"),
   projectFiles: (slug: string) => call<{ files: string[] }>(`/api/projects/${seg(slug)}/files`),
   projectFile: (slug: string, path: string) =>
     call<{

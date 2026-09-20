@@ -29,6 +29,7 @@ from app import secrets_broker
 from app.agents import employee as employees
 from app.agents import roles
 from app.agents import subagents
+from app.database import index as project_index
 from app.database import store
 from app import orchestrator
 from app.orchestrator import manual
@@ -38,6 +39,10 @@ from app.usage import credits
 from app import workspace
 
 secrets_broker.init()   # 기동 즉시 환경변수에서 키를 꺼내 지운다
+
+# 색인이 비어 있는데 디스크에 프로젝트가 있으면 다시 만든다 (§12).
+# 산출물은 멀쩡한데 목록만 비어 있으면 사용자는 잃어버렸다고 생각한다.
+_INDEX_READY = project_index.ensure_ready()
 
 app = FastAPI(title="AI Agent Company")
 
@@ -570,8 +575,32 @@ def manual_clear_history(slug: str, employee: str | None = None):
 
 # ── 프로젝트 (지시서 §12) ───────────────────────────────────────────
 @app.get("/api/projects")
-def list_projects():
-    return {"projects": store.list_projects()}
+def list_projects(owner: str | None = None, status: str | None = None,
+                  q: str | None = None, sort: str = "created",
+                  desc: bool = True, limit: int = 50, offset: int = 0):
+    """색인으로 검색·정렬·페이지. 색인이 깨졌으면 디스크에서 읽는다 (§12).
+
+    응답의 `source` 가 그 사실을 말한다 — 조용히 느려지는 것보다
+    왜 느린지 보이는 편이 낫다.
+    """
+    return project_index.search(owner=owner, status=status, q=q, sort=sort,
+                                desc=desc, limit=limit, offset=offset)
+
+
+@app.get("/api/projects/stats")
+def project_stats(owner: str | None = None):
+    """대시보드 요약 — 프로젝트 수 · 누적 비용 · 평균 완성도 (§12)."""
+    return project_index.stats(owner)
+
+
+@app.post("/api/projects/reindex")
+def reindex():
+    """디스크를 훑어 색인을 다시 만든다.
+
+    **파일이 진실**이라는 규칙이 실제로 성립하려면 이 길이 있어야 한다.
+    다른 곳에서 복사해 온 projects/ 폴더를 붙였을 때도 쓴다.
+    """
+    return {"indexed": project_index.rebuild()}
 
 
 @app.get("/api/projects/{slug}/files")

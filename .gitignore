@@ -40,3 +40,6 @@ next-env.d.ts
 *.db
 *.sqlite3
 .credits.json
+ai_company.db
+ai_company.db-wal
+ai_company.db-shm

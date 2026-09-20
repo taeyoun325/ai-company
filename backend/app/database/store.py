@@ -76,12 +76,27 @@ def meta(slug: str) -> dict:
 
 
 def save_meta(slug: str, patch: dict) -> dict:
+    """메타데이터를 파일에 쓰고 색인을 따라 갱신한다.
+
+    **파일이 먼저다.** 색인 쓰기가 실패해도 산출물과 메타데이터는 남는다 —
+    색인은 검색 편의지 진실이 아니다(§12).
+    """
     d = dir_of(slug)
     d.mkdir(parents=True, exist_ok=True)
     m = meta(slug)
     m.update(patch)
     (d / META).write_text(json.dumps(m, ensure_ascii=False, indent=2), encoding="utf-8")
+    _reindex(m)
     return m
+
+
+def _reindex(m: dict) -> None:
+    # 늦게 import 한다 — index 가 store 를 읽으므로 모듈 수준에서 하면 순환이다.
+    try:
+        from app.database import index
+        index.upsert(m)
+    except Exception:                      # noqa: BLE001
+        pass
 
 
 def files_of(slug: str) -> list[str]:
@@ -133,7 +148,13 @@ def delete_project(slug: str) -> bool:
     d = dir_of(slug).resolve()
     if not d.is_relative_to(root) or d == root or not d.is_dir():
         return False
+    # 파일 → 색인 순서. 반대로 하면 색인에 없는 유령 폴더가 남는다.
     shutil.rmtree(d)
+    try:
+        from app.database import index
+        index.remove(slug)
+    except Exception:                      # noqa: BLE001
+        pass
     return True
 
 

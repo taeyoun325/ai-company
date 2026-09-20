@@ -204,3 +204,21 @@ def test_unknown_plan_is_rejected_over_http(client):
 
 def test_state_carries_credits(client):
     assert "credits" in client.get("/api/state").json()
+
+
+def test_projects_endpoint_supports_search_and_paging(client):
+    body = client.get("/api/projects", params={"limit": 5}).json()
+    for field in ("projects", "total", "limit", "offset", "source"):
+        assert field in body, f"{field} 가 없으면 화면이 페이지를 못 그린다"
+
+
+def test_project_stats_endpoint(client):
+    body = client.get("/api/projects/stats").json()
+    for field in ("projects", "cost", "done", "stopped", "mock"):
+        assert field in body
+
+
+def test_stats_route_is_not_shadowed_by_slug_route(client):
+    """`/api/projects/stats` 가 `/api/projects/{slug}` 로 잡히면
+    통계 대신 404 가 돌아온다. 선언 순서에 기대는 종류의 버그다."""
+    assert client.get("/api/projects/stats").status_code == 200
