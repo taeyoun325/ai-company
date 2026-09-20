@@ -23,6 +23,7 @@ from app import bus
 from app import config
 from app import deploy
 from app.api import auth as auth_api
+from app.api import local_tools
 from app.auth import deps as auth
 from app import preflight
 from app.providers import gemini_client as gemini
@@ -50,6 +51,8 @@ _INDEX_READY = project_index.ensure_ready()
 
 app = FastAPI(title="AI Agent Company")
 app.include_router(auth_api.router)
+# 이전 제품(로컬 개발도구)의 라우트. DEPLOY_MODE=saas 에서는 전부 403.
+app.include_router(local_tools.router)
 
 
 # ── 요청 모델 ───────────────────────────────────────────────────────
@@ -129,7 +132,17 @@ class SchedulePatch(BaseModel):
 
 @app.get("/")
 def index():
-    return FileResponse(config.WEB / "index.html")
+    """백엔드 루트. **화면이 아니다.**
+
+    DAY 17 전에는 이전 제품의 단일 파일 UI(38KB)를 여기서 서빙했다.
+    지금 화면은 Next.js 쪽이고, 백엔드 루트에 또 하나의 UI 가 떠 있으면
+    "어느 쪽이 진짜인가"를 매번 헷갈린다. 그 파일은 legacy/web/ 으로
+    옮겼다 — 지우지 않은 이유는 설계 기록이기 때문이다.
+    """
+    return {"service": "ai-company-backend",
+            "ui": "프론트엔드(기본 :3000)로 접속하세요",
+            "deploy": deploy.mode(),
+            "docs": "/docs"}
 
 
 # ── 상태 ────────────────────────────────────────────────────────────
@@ -190,130 +203,6 @@ def _require_local_tools() -> None:
     """
     if (reason := deploy.allow_local_tools()) is not None:
         raise HTTPException(403, reason)
-
-
-# ── 작업 폴더 ───────────────────────────────────────────────────────
-@app.post("/api/workspace")
-def open_workspace(req: OpenReq):
-    _require_local_tools()
-    try:
-        root = workspace.use(req.path)
-    except (workspace.Denied, OSError) as e:
-        raise HTTPException(400, str(e))
-    bus.bind("main")
-    usage.bind("main")
-    g = workspace.git_status()
-    bus.say("SYSTEM", f"작업 폴더를 열었습니다 — `{root}`", kind="verdict")
-    if not g.get("repo"):
-        bus.say("SYSTEM", g.get("warning", ""), kind="error")
-    bus.state(workspace=workspace.summary())
-    return workspace.summary()
-
-
-@app.get("/api/files")
-def files(path: str = ".", depth: int = 2):
-    _require_local_tools()
-    if workspace.current() is None:
-        raise HTTPException(400, "작업 폴더를 먼저 여세요")
-    try:
-        return {"files": workspace.listdir(path, depth=depth)}
-    except workspace.Denied as e:
-        raise HTTPException(400, str(e))
-
-
-@app.get("/api/file")
-def read_file(path: str):
-    _require_local_tools()
-    try:
-        p = workspace.resolve(path)
-    except (workspace.Denied, RuntimeError) as e:
-        raise HTTPException(400, str(e))
-    if not p.is_file():
-        raise HTTPException(404, "없는 파일")
-    if workspace.is_secret(p.name):
-        raise HTTPException(403, "비밀이 담긴 파일로 보여 열지 않습니다")
-    return {"path": path, "content": p.read_text(encoding="utf-8", errors="replace")}
-
-
-@app.post("/api/file")
-def write_file(req: EditReq):
-    """사람이 직접 고친다. 에이전트가 작업 중이면 막는다."""
-    _require_local_tools()
-    if agent_core.busy():
-        raise HTTPException(409, "에이전트가 작업 중입니다. 끝난 뒤에 편집하세요.")
-    try:
-        p = workspace.resolve(req.path)
-    except (workspace.Denied, RuntimeError) as e:
-        raise HTTPException(400, str(e))
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(req.content, encoding="utf-8")
-    bus.state(changed=workspace.git_status().get("changed", []))
-    return {"ok": True, "path": req.path}
-
-
-@app.get("/api/diff")
-def diff(path: str | None = None):
-    _require_local_tools()
-    if workspace.current() is None:
-        raise HTTPException(400, "작업 폴더를 먼저 여세요")
-    return {"diff": workspace.git_diff(path)}
-
-
-# ── 대화 ────────────────────────────────────────────────────────────
-@app.post("/api/send")
-def send(req: SendReq):
-    # 이전 제품의 대화형 루프. 사용자의 로컬 폴더를 직접 고치므로
-    # SaaS 에서는 열어두면 안 된다.
-    _require_local_tools()
-    if not secrets_broker.ready():
-        raise HTTPException(400, "API 키가 등록되지 않았습니다. 설정에서 먼저 등록하세요.")
-    try:
-        agent_core.send(req.message.strip(), req.attachments)
-    except RuntimeError as e:
-        raise HTTPException(409, str(e))
-    return {"ok": True}
-
-
-@app.post("/api/reset")
-def reset_chat():
-    if agent_core.busy():
-        raise HTTPException(409, "에이전트가 작업 중입니다.")
-    agent_core.reset()
-    return {"ok": True}
-
-
-# ── 권한 모드 ───────────────────────────────────────────────────────
-@app.get("/api/permission")
-def get_permission():
-    return approvals.mode_info()
-
-
-@app.post("/api/permission")
-def set_permission(req: ModeReq):
-    try:
-        approvals.set_mode(req.mode)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return approvals.mode_info()
-
-
-@app.get("/api/approvals")
-def list_approvals():
-    return {"pending": approvals.pending(), **approvals.mode_info()}
-
-
-@app.post("/api/approvals/deny-all")
-def deny_all_approvals():
-    return {"denied": approvals.deny_all("사용자 비상 정지")}
-
-
-@app.post("/api/approvals/{aid}")
-def decide_approval(aid: str, req: DecisionReq):
-    if req.decision not in ("approve", "deny"):
-        raise HTTPException(400, "decision은 approve 또는 deny")
-    if not approvals.decide(aid, req.decision):
-        raise HTTPException(404, "이미 처리됐거나 없는 요청")
-    return {"ok": True}
 
 
 # ── 설정: API 키와 모델 ─────────────────────────────────────────────
@@ -798,75 +687,6 @@ def delete_attachment(aid: str):
     return {"ok": True}
 
 
-# ── 화면 ────────────────────────────────────────────────────────────
-@app.get("/api/screen/status")
-def screen_status():
-    _require_local_tools()
-    st = screen.status()
-    st.update(approvals.mode_info())
-    st["pending"] = approvals.pending()
-    return st
-
-
-@app.post("/api/screen/capture")
-def screen_capture():
-    """사용자가 누를 때만 한 장 찍는다. 주기적 자동 캡처는 만들지 않았다.
-
-    SaaS 에서는 아예 막힌다 — 서버 화면은 사용자의 것이 아니다.
-    """
-    _require_local_tools()
-    try:
-        png = screen.capture()
-    except RuntimeError as e:
-        raise HTTPException(503, str(e))
-    meta = attachments.save(screen.capture_name(), png, source="screen")
-    meta["data_url"] = attachments.data_url(meta["id"])
-    return meta
-
-
-# ── 타임라인 · 예약 ─────────────────────────────────────────────────
-@app.get("/api/timeline")
-def get_timeline():
-    tl = timeline.build("main")
-    tl["summary"] = timeline.summary("main")
-    return tl
-
-
-@app.get("/api/schedules")
-def list_schedules():
-    from datetime import datetime
-    now = datetime.now()
-    return {"schedules": [{**i, "when": scheduler.next_due(i, now)}
-                          for i in scheduler.listing()]}
-
-
-@app.post("/api/schedules")
-def add_schedule(req: ScheduleReq):
-    try:
-        return scheduler.add(req.requirement, req.at, req.days, req.enabled)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
-
-@app.patch("/api/schedules/{sid}")
-def patch_schedule(sid: str, req: SchedulePatch):
-    fields = {k: v for k, v in req.model_dump().items() if v is not None}
-    try:
-        it = scheduler.update(sid, **fields)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    if not it:
-        raise HTTPException(404, "없는 예약")
-    return it
-
-
-@app.delete("/api/schedules/{sid}")
-def delete_schedule(sid: str):
-    if not scheduler.remove(sid):
-        raise HTTPException(404, "없는 예약")
-    return {"ok": True}
-
-
 # ── 이벤트 스트림 ───────────────────────────────────────────────────
 @app.get("/api/stream")
 def stream(request: Request, run: str | None = None, after: int = 0):
@@ -920,20 +740,6 @@ def events(run: str | None = None, after: int = 0):
     rows = bus.replay(run, after)
     return {"events": rows, "last_id": rows[-1]["id"] if rows else after,
             "roster": bus.roster()}
-
-
-def _scheduled_send(requirement: str) -> str:
-    """예약이 착수할 때. 키와 작업 폴더가 준비돼 있어야 한다."""
-    if not secrets_broker.ready():
-        raise RuntimeError("API 키가 없어 예약을 실행하지 않았습니다")
-    if workspace.current() is None:
-        raise RuntimeError("작업 폴더가 열려 있지 않아 예약을 실행하지 않았습니다")
-    agent_core.send(requirement)
-    return "main"
-
-
-scheduler.configure(_scheduled_send)
-scheduler.start()
 
 
 if __name__ == "__main__":

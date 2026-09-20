@@ -22,7 +22,10 @@ APP = Path(__file__).resolve().parent          # backend/app
 BACKEND = APP.parent                           # backend
 ROOT = BACKEND.parent                          # 저장소 루트
 
-WEB = APP / "web"                              # 이전 제품의 단일 파일 UI
+# 이전 제품의 단일 파일 UI. DAY 17 에 legacy/ 로 옮겼다 — 백엔드 루트에
+# 또 하나의 화면이 떠 있으면 "어느 쪽이 진짜인가"를 매번 헷갈린다.
+# 지우지 않은 이유는 설계 기록이고, 그 불변식을 지키는 테스트가 있어서다.
+WEB = BACKEND / "legacy" / "web"
 PROMPTS = BACKEND / "prompts"
 PRICING_FILE = Path(os.getenv("PRICING_FILE", BACKEND / "pricing.json"))
 

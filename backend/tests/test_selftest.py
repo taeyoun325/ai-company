@@ -542,10 +542,20 @@ def test_bus_tags_events_with_run():
     bus.reset("t-run")
 
 
-# ── UI 불변식 ───────────────────────────────────────────────────────
+# ── UI 불변식 (이전 제품) ───────────────────────────────────────────
+#
+# 이 절이 검사하는 것은 **이전 제품의 단일 파일 UI** 다. DAY 17 에
+# `legacy/web/` 으로 옮겼고 백엔드가 더 이상 서빙하지 않는다.
+# 테스트를 지우지 않은 이유: 그 파일이 아직 설계 기록으로 남아 있고,
+# 외부 의존성 없음·대비비 같은 불변식은 지금 화면에도 그대로 옮겨온
+# 기준이라, 깨지면 알고 싶다. AI COMPANY 화면의 검사는 프론트엔드
+# 쪽(eslint·tsc·빌드)에 있다.
 @pytest.fixture(scope="module")
 def html():
-    return (config.WEB / "index.html").read_text(encoding="utf-8")
+    path = config.WEB / "index.html"
+    if not path.exists():
+        pytest.skip("이전 제품의 UI 파일이 없습니다 (legacy/web/index.html)")
+    return path.read_text(encoding="utf-8")
 
 
 def test_ui_has_no_external_deps(html):
