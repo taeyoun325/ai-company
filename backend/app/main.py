@@ -22,6 +22,7 @@ from app import attachments
 from app import bus
 from app import config
 from app import deploy
+from app import preflight
 from app.providers import gemini_client as gemini
 from app.providers import registry
 from app import scheduler
@@ -477,6 +478,17 @@ def route_work(req: RunReq):
     except Exception as e:                       # noqa: BLE001
         raise HTTPException(502, secrets_broker.scrub(f"{type(e).__name__}: {e}"))
     return r.model_dump()
+
+
+@app.get("/api/preflight")
+def get_preflight(strict: bool = False):
+    """출항 전 점검 (DAY 14).
+
+    `strict=true` 는 "지금 배포한다"는 뜻이다 — 경고 몇 개가 실패로
+    승격된다. 실제 모델을 부르지는 않는다. 점검이 돈을 쓰면 아무도
+    자주 돌리지 않는다.
+    """
+    return preflight.report(strict)
 
 
 @app.get("/api/deploy")

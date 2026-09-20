@@ -64,7 +64,7 @@ def _request(e: Employee, user: str, schema: type[BaseModel] | None,
     messages = [*(history or []), Message("user", user)]
     return GenerateRequest(
         system=system, messages=messages, model=e.model,
-        max_tokens=e.max_tokens, temperature=e.temperature,
+        max_tokens=e.max_tokens, temperature=e.temperature, effort=e.effort,
         agent=e.id,                      # ← 사용량이 이 키로 잡힌다 (§14)
     )
 

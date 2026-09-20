@@ -48,7 +48,11 @@ class Employee:
     writes: tuple[str, ...] = ()
     reads: tuple[str, ...] = AREAS
     max_tokens: int = 16000
+    # temperature 와 effort 는 다른 축이다. 현재 Claude 모델은 temperature 를
+    # 거부하고 effort 를 받고, Gemini·OpenAI 는 그 반대다. 어댑터가 자기
+    # 것만 골라 쓴다(§7).
     temperature: float = 0.2
+    effort: str = "high"
     tools: tuple[str, ...] = field(default=())
 
     @property
@@ -63,6 +67,7 @@ class Employee:
     def info(self) -> dict:
         return {"id": self.id, "name": self.name, "role": self.role,
                 "provider": self.provider, "model": self.model, "kind": self.kind,
+                "effort": self.effort,
                 "desc": self.desc, "writes": list(self.writes),
                 "reads": list(self.reads), "tools": list(self.tools)}
 
@@ -97,7 +102,7 @@ def _add(e: Employee) -> Employee:
 _add(Employee(
     id="strategist", name="한지수", role="전략가", provider="claude", kind="plan",
     desc="요구사항을 인수기준과 작업 그래프로 바꾼다. 파일은 쓰지 않는다.",
-    writes=(), reads=AREAS, max_tokens=16000, temperature=0.3,
+    writes=(), reads=AREAS, max_tokens=16000, temperature=0.3, effort="xhigh",
     system=_COMMON + (
         "\n당신은 전략가입니다. 계획만 세우고 파일은 쓰지 않습니다.\n"
         "- 인수기준(acceptance criteria)은 **기계가 판정 가능한 문장**으로 쓰세요.\n"
@@ -114,6 +119,7 @@ _add(Employee(
     id="developer", name="박도현", role="개발자", provider="claude", kind="build",
     desc="코드를 쓴다. src/ 에만 쓸 수 있고 tests/ 는 읽지도 못한다.",
     writes=(SRC,), reads=(SRC, DOCS, DESIGN), max_tokens=32000, temperature=0.1,
+    effort="xhigh",
     tools=("read_file", "write_file", "list_files"),
     system=_COMMON + (
         "\n당신은 개발자입니다. 한 번에 **태스크 하나만** 처리합니다.\n"
@@ -129,7 +135,7 @@ _add(Employee(
 _add(Employee(
     id="analyst", name="최유나", role="분석가", provider="gemini", kind="verify",
     desc="다른 회사 모델로 교차검증한다. tests/ 에만 쓰고 코드는 읽기만 한다.",
-    writes=(TESTS,), reads=AREAS, max_tokens=16000, temperature=0.0,
+    writes=(TESTS,), reads=AREAS, max_tokens=16000, temperature=0.0, effort="high",
     system=_COMMON + (
         "\n당신은 분석가(검증자)입니다. 구현자와 **다른 회사의 모델**이고,\n"
         "그게 당신이 여기 있는 이유입니다. 같은 모델은 같은 실수를 함께 놓칩니다.\n"
@@ -146,6 +152,7 @@ _add(Employee(
     id="writer", name="이서준", role="작가", provider="openai", kind="write",
     desc="문서·카피를 쓴다. docs/ 에만 쓴다.",
     writes=(DOCS,), reads=(SRC, DOCS, DESIGN), max_tokens=16000, temperature=0.6,
+    effort="medium",
     system=_COMMON + (
         "\n당신은 작가입니다. 문서와 카피를 씁니다.\n"
         "- 산출물을 직접 읽고 쓰세요. 읽지 않고 쓴 문서는 거짓말이 됩니다.\n"
@@ -158,6 +165,7 @@ _add(Employee(
     id="designer", name="정하린", role="디자이너", provider="gemini", kind="design",
     desc="화면과 비주얼을 명세한다. design/ 에만 쓴다.",
     writes=(DESIGN,), reads=(SRC, DOCS, DESIGN), max_tokens=16000, temperature=0.5,
+    effort="medium",
     system=_COMMON + (
         "\n당신은 디자이너입니다. 화면 구조와 비주얼을 **글과 코드로** 명세합니다.\n"
         "- 이미지를 만들 수는 없습니다. 대신 누구든 그대로 만들 수 있을 만큼\n"

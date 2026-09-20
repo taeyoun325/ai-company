@@ -89,13 +89,30 @@ class ClaudeProvider(AIProvider):
 
     # ── 호출 ────────────────────────────────────────────────────────
     def _payload(self, req: GenerateRequest) -> dict:
-        # system 을 블록 하나로 감싸고 cache_control 을 붙인다. 고정 프리픽스라
-        # 캐시가 걸리면 입력 비용이 크게 준다 — 다만 *걸렸는지*는 usage 의
-        # cached 값으로 확인해야 한다. 붙였다는 사실만으로는 근거가 없다.
+        """요청을 Anthropic 모양으로 옮긴다.
+
+        ## temperature 를 보내지 않는다
+
+        현재 Claude 모델(Opus 5 · Sonnet 5 · Opus 4.7+)은 `temperature` ·
+        `top_p` · `top_k` 를 **거부한다**(400). 대신 `output_config.effort` 가
+        "얼마나 공들일지"를 정한다. 다른 제공자는 여전히 temperature 를
+        받으므로, 요청 객체는 둘 다 들고 있고 각 어댑터가 자기 것만 쓴다.
+
+        이건 DAY 14 에 **유효하지 않은 키로 실제 SDK 를 태워보다가** 잡았다.
+        키를 꽂는 날 첫 호출에서 `TypeError: unexpected keyword argument
+        'temperature'` 로 터졌을 버그다 — 계약 테스트는 Mock 만 통과했고,
+        Mock 은 SDK 시그니처를 모른다.
+
+        ## system 에 cache_control 을 붙인다
+
+        고정 프리픽스라 캐시가 걸리면 입력 비용이 크게 준다. 다만
+        *걸렸는지*는 usage 의 cached 값으로 확인해야 한다 — 붙였다는
+        사실만으로는 근거가 없다.
+        """
         return {
             "model": self.model_for(req),
             "max_tokens": req.max_tokens,
-            "temperature": req.temperature,
+            "output_config": {"effort": req.effort},
             "system": [{"type": "text", "text": req.system,
                         "cache_control": {"type": "ephemeral"}}],
             "messages": [{"role": m.role, "content": m.content} for m in req.messages],

@@ -35,6 +35,7 @@ from typing import Literal
 from app import bus, config, usage
 
 Role = Literal["user", "assistant"]
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 
 # ── 주고받는 값 ────────────────────────────────────────────────────
@@ -67,7 +68,13 @@ class GenerateRequest:
     messages: list[Message] = field(default_factory=list)
     model: str | None = None
     max_tokens: int = 4096
+    # temperature 는 **모든 제공자가 받는 값이 아니다.** 현재 Claude 모델은
+    # 이 값을 아예 거부한다(400). 그래서 '얼마나 공들일지'를 뜻하는
+    # effort 를 따로 둔다 — Claude 는 effort 를, Gemini·OpenAI 는
+    # temperature 를 쓴다. 둘을 한 값으로 뭉개지 않는 이유: 창의성과
+    # 사고 깊이는 다른 축이고, 뭉개면 어느 쪽도 제대로 조절되지 않는다.
     temperature: float = 0.2
+    effort: Effort = "high"
     agent: str = "SYSTEM"
 
     @classmethod
