@@ -26,6 +26,8 @@ from app.providers import registry
 from app import scheduler
 from app import screen
 from app import secrets_broker
+from app.agents import employee as employees
+from app.agents import roles
 from app.agents import subagents
 from app import timeline
 from app import usage
@@ -66,6 +68,10 @@ class ProviderModelReq(BaseModel):
     model: str
 
 
+class ModelReq2(BaseModel):
+    model: str
+
+
 class DecisionReq(BaseModel):
     decision: str
 
@@ -100,6 +106,9 @@ def state():
     return {
         "workspace": workspace.summary(),
         "permission": approvals.mode_info(),
+        # 지시서 §8 의 직원 5명. subagents 는 이전 제품의 보조 에이전트이고
+        # 다른 것이다 — 화면이 둘을 섞으면 누가 일하는지 알 수 없게 된다.
+        "employees": employees.status(),
         "agents": subagents.roster(),
         "models": config.MODEL_OF,
         "keys_ready": secrets_broker.ready(),
@@ -350,6 +359,42 @@ def providers():
     가짜를 구분하지 못한다.
     """
     return registry.status()
+
+
+# ── AI 직원 (지시서 §8) ─────────────────────────────────────────────
+@app.get("/api/employees")
+def list_employees():
+    """직원 5명의 정의 · 권한 · 현재 모델 · Mock 여부 · 사용량."""
+    return {"employees": employees.status(),
+            "assignable": roles.assignable(),
+            "planner": roles.PLANNER, "verifier": roles.VERIFIER}
+
+
+@app.get("/api/employees/{employee_id}")
+def get_employee(employee_id: str):
+    if not roles.exists(employee_id):
+        raise HTTPException(404, f"없는 직원: {employee_id}")
+    e = roles.get(employee_id)
+    row = e.info()
+    row["mock"] = employees.is_mock(e)
+    row["system"] = e.system        # 무엇을 시켰는지 CEO 가 볼 수 있어야 한다
+    row["worst_case_usd"] = round(employees.worst_case_cost(employee_id), 4)
+    return row
+
+
+@app.post("/api/employees/{employee_id}/model")
+def set_employee_model(employee_id: str, req: ModelReq2):
+    """직원 한 명의 모델만 바꾼다 (§7).
+
+    단가를 모르는 모델은 거부한다 — 비용이 0 으로 잡히면 예산 상한(§18)이
+    그 직원에게는 걸리지 않는다.
+    """
+    if not roles.exists(employee_id):
+        raise HTTPException(404, f"없는 직원: {employee_id}")
+    if req.model not in config.PRICES:
+        raise HTTPException(400, f"단가표에 없는 모델입니다: {req.model}")
+    roles.set_model(employee_id, req.model)
+    return {"ok": True, "employee": roles.get(employee_id).info()}
 
 
 # ── 첨부 자료 ───────────────────────────────────────────────────────

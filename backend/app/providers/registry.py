@@ -83,13 +83,29 @@ def _real_provider(name: str) -> AIProvider:
         return _real[name]
 
 
+def _mock_responder():
+    """직원 대본(§1). 여기서 늦게 import 하는 이유는 순환 때문이다 —
+    `agents` 가 `providers` 를 읽고, `providers` 가 기동 시 `agents` 를
+    읽으면 둘 다 못 올라온다.
+
+    대본이 없더라도 Mock 자체는 떠야 한다. 키 없이 서버가 뜬다는 것이
+    이 제품의 전제이므로, 여기서 죽으면 전제가 무너진다.
+    """
+    try:
+        from app.agents import mock_script
+        return mock_script.responder
+    except Exception:                       # noqa: BLE001
+        return None
+
+
 def _mock_provider(name: str) -> MockProvider:
     with _lock:
         if name not in _mocks:
-            real_model = _FACTORIES[name]().default_model if name in _FACTORIES else name
+            real_model = config.default_model(name) or name
             # 모델 이름을 실제와 같게 둔다 — 화면과 사용량 집계가 실제와 같은
             # 모양으로 움직여야 마지막 날 바꿔 끼울 때 차이가 안 난다.
-            _mocks[name] = MockProvider(name=f"mock:{name}", model=real_model)
+            _mocks[name] = MockProvider(name=f"mock:{name}", model=real_model,
+                                        responder=_mock_responder())
         return _mocks[name]
 
 

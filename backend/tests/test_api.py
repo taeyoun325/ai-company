@@ -117,6 +117,34 @@ def test_model_change_applies(client):
         registry.reset()
 
 
+def test_employees_endpoint_lists_five(client):
+    body = client.get("/api/employees").json()
+    assert len(body["employees"]) == 5
+    assert body["planner"] and body["verifier"]
+
+
+def test_employee_detail_exposes_its_instructions(client):
+    """무엇을 시켰는지 CEO 가 볼 수 없으면, 결과가 왜 그런지도 알 수 없다."""
+    row = client.get("/api/employees/analyst").json()
+    assert row["system"].strip()
+    assert row["worst_case_usd"] >= 0
+
+
+def test_unknown_employee_is_404(client):
+    assert client.get("/api/employees/없는사람").status_code == 404
+
+
+def test_employee_model_change_rejects_unpriced_model(client):
+    r = client.post("/api/employees/developer/model", json={"model": "모르는모델"})
+    assert r.status_code == 400
+
+
+def test_state_carries_employees(client):
+    st = client.get("/api/state").json()
+    assert len(st["employees"]) == 5
+    assert "mock" in st["employees"][0], "Mock 여부가 화면까지 전달되어야 한다"
+
+
 def test_keys_endpoint_accepts_openai(client):
     r = client.post("/api/settings/keys", json={"openai": ""})
     assert r.status_code == 200

@@ -25,8 +25,25 @@ _EMPTY = {"input": 0, "output": 0, "cached": 0, "cache_written": 0,
 _runs: dict[str, dict[str, dict]] = {}
 
 
+def _keys() -> tuple[str, ...]:
+    """집계 칸을 미리 만들어 둘 대상.
+
+    DAY 1~3 에는 여기가 `("PM", "DEV", "QA")` 로 **하드코딩**되어 있었다.
+    직원이 5명이 되면서 그대로 두면 직원별 사용량이 세 칸에 섞여버린다.
+    이제 직원 표(§8)를 읽는다 — 직원을 늘려도 여기를 고칠 일이 없다.
+
+    import 를 함수 안에서 하는 이유: `agents.roles` 가 `config` 를 읽고
+    `usage` 는 `config` 보다 먼저 올라올 수 있다. 순환을 만들지 않는다.
+    """
+    try:
+        from app.agents import roles
+        return (*roles.ids(), "SYSTEM")
+    except Exception:                       # noqa: BLE001 — 집계가 기동을 막으면 안 된다
+        return ("SYSTEM",)
+
+
 def _blank() -> dict[str, dict]:
-    return {a: dict(_EMPTY) for a in ("PM", "DEV", "QA")}
+    return {a: dict(_EMPTY) for a in _keys()}
 
 
 def bind(run_id: str) -> None:
