@@ -47,10 +47,22 @@ def _blank() -> dict[str, dict]:
 
 
 def bind(run_id: str) -> None:
-    """이 스레드의 집계 대상을 정한다. 실행 시작 시 한 번."""
+    """이 스레드의 집계 대상을 정하고 **0부터 다시 센다.** 실행 시작 시 한 번."""
     _local.run = run_id
     with _lock:
         _runs[run_id] = _blank()
+
+
+def attach(run_id: str) -> None:
+    """집계 대상만 정한다. 이미 쌓인 값은 건드리지 않는다.
+
+    MANUAL(§11)은 한 프로젝트에 지시를 여러 번 내린다. 매번 `bind` 하면
+    그때마다 그 프로젝트의 누적 사용량이 0 이 되고, 예산 상한(§18)이
+    영영 걸리지 않는다 — 버튼을 스무 번 누르는 것으로 상한을 우회할 수 있다.
+    """
+    _local.run = run_id
+    with _lock:
+        _runs.setdefault(run_id, _blank())
 
 
 def current() -> str | None:

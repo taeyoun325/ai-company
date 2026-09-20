@@ -117,6 +117,34 @@ def test_model_change_applies(client):
         registry.reset()
 
 
+def test_manual_flow_over_http(client, tmp_path, monkeypatch):
+    """MANUAL 이 HTTP 로도 같은 규칙을 지키는지 (§11)."""
+    from app import config
+    monkeypatch.setenv("PROVIDER_MODE", "mock")
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    monkeypatch.setattr(config, "LOGS", tmp_path / "logs")
+    registry.reset()
+
+    slug = client.post("/api/manual", json={"requirement": "계산기"}).json()["slug"]
+    r = client.post(f"/api/manual/{slug}/instruct",
+                    json={"employee": "developer", "message": "사칙연산을 구현해주세요"})
+    assert r.status_code == 200
+    assert r.json()["files"] == ["src/calc.py"]
+
+    st = client.get(f"/api/manual/{slug}").json()
+    assert "src/calc.py" in st["files"]
+    assert st["busy"] is None
+
+
+def test_manual_rejects_unknown_employee(client, tmp_path, monkeypatch):
+    from app import config
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    slug = client.post("/api/manual", json={"requirement": "계산기"}).json()["slug"]
+    r = client.post(f"/api/manual/{slug}/instruct",
+                    json={"employee": "없는직원", "message": "안녕"})
+    assert r.status_code == 404
+
+
 def test_employees_endpoint_lists_five(client):
     body = client.get("/api/employees").json()
     assert len(body["employees"]) == 5

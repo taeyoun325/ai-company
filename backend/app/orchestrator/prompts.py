@@ -23,7 +23,7 @@ def _criteria(criteria: list[Criterion]) -> str:
     return json.dumps([c.model_dump() for c in criteria], ensure_ascii=False, indent=2)
 
 
-def _files(files: dict[str, str]) -> str:
+def files_block(files: dict[str, str]) -> str:
     if not files:
         return "(아직 산출물이 없습니다)"
     return "\n\n".join(f"### {p}\n```\n{c}\n```" for p, c in files.items())
@@ -57,7 +57,7 @@ def implement(task: Task, criteria: list[Criterion], files: dict[str, str],
     head = (
         f"# 맡은 태스크\n{task.model_dump_json(indent=2)}\n\n"
         f"# 인수기준 (전체)\n{_criteria(criteria)}\n\n"
-        f"# 지금까지의 산출물\n{_files(files)}\n\n"
+        f"# 지금까지의 산출물\n{files_block(files)}\n\n"
     )
     if feedback is None:
         return head + (
@@ -78,7 +78,7 @@ def review(task: Task, criteria: list[Criterion], files: dict[str, str],
         f"# 인수기준\n{_criteria(criteria)}\n\n"
         f"# 테스트 실행 결과 (오케스트레이터가 직접 돌렸습니다)\n"
         f"```json\n{json.dumps(report, ensure_ascii=False, indent=2)}\n```\n\n"
-        f"# 산출물 원문 (전체)\n{_files(files)}\n\n"
+        f"# 산출물 원문 (전체)\n{files_block(files)}\n\n"
         f"# 할 일\n이 태스크가 done_when 과 인수기준을 충족하는지 판정하세요.\n"
         f"- 담당자의 설명은 주어지지 않았습니다. 원문과 기준만 보세요.\n"
         f"- 변경분이 아니라 전체가 주어졌습니다. 회귀를 같이 보세요.\n"
@@ -103,7 +103,7 @@ def finalize(criteria: list[Criterion], files: dict[str, str], report: dict) -> 
         f"# 인수기준\n{_criteria(criteria)}\n\n"
         f"# 테스트 실행 결과\n```json\n"
         f"{json.dumps(report, ensure_ascii=False, indent=2)}\n```\n\n"
-        f"# 최종 산출물\n{_files(files)}\n\n"
+        f"# 최종 산출물\n{files_block(files)}\n\n"
         f"# 할 일\n각 인수기준이 충족됐는지 id 단위로 판정하세요.\n"
         f"met_criteria 와 unmet_criteria 의 합집합은 전체 인수기준이어야 합니다.\n"
         f"통과시키고 싶은 마음으로 보지 말고, 근거가 없으면 unmet 에 넣으세요."

@@ -31,6 +31,7 @@ from app.agents import roles
 from app.agents import subagents
 from app.database import store
 from app import orchestrator
+from app.orchestrator import manual
 from app import timeline
 from app import usage
 from app import workspace
@@ -77,6 +78,11 @@ class ModelReq2(BaseModel):
 class RunReq(BaseModel):
     requirement: str
     attachments: list[str] = []
+
+
+class InstructReq(BaseModel):
+    employee: str
+    message: str
 
 
 class DecisionReq(BaseModel):
@@ -425,6 +431,79 @@ def route_work(req: RunReq):
     except Exception as e:                       # noqa: BLE001
         raise HTTPException(502, secrets_broker.scrub(f"{type(e).__name__}: {e}"))
     return r.model_dump()
+
+
+# ── MANUAL 모드 (지시서 §11) ────────────────────────────────────────
+@app.post("/api/manual")
+def open_manual(req: RunReq):
+    """계획 단계 없이 바로 지시할 수 있는 빈 프로젝트를 연다."""
+    if not req.requirement.strip():
+        raise HTTPException(400, "요구사항이 비어 있습니다")
+    slug = manual.open_project(req.requirement.strip())
+    return {"slug": slug, "mode": "manual"}
+
+
+@app.post("/api/manual/{slug}/instruct")
+def manual_instruct(slug: str, req: InstructReq):
+    """CEO 가 직원을 지목해 직접 지시한다.
+
+    권한 경계는 AUTO 와 **같다**. "CEO 가 시켰다"는 작가가 src/ 에 쓸
+    근거가 아니다 — 두 경로가 다른 규칙을 가지면 그 차이가 곧 구멍이 된다.
+    """
+    if not roles.exists(req.employee):
+        raise HTTPException(404, f"없는 직원: {req.employee}")
+    if orchestrator.is_running(slug):
+        raise HTTPException(409, "AUTO 실행이 진행 중입니다")
+    try:
+        return manual.instruct(slug, req.employee, req.message)
+    except KeyError as e:
+        raise HTTPException(404, str(e))
+    except manual.Busy as e:
+        raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:          # 예산 상한 등
+        raise HTTPException(402, str(e))
+    except employees.EmployeeFailed as e:
+        raise HTTPException(502, secrets_broker.scrub(str(e)))
+
+
+@app.post("/api/manual/{slug}/verify")
+def manual_verify(slug: str):
+    """CEO 가 누를 때만 도는 검증. 검증 기준은 AUTO 와 같다."""
+    if orchestrator.is_running(slug):
+        raise HTTPException(409, "AUTO 실행이 진행 중입니다")
+    try:
+        return manual.verify(slug)
+    except KeyError as e:
+        raise HTTPException(404, str(e))
+    except manual.Busy as e:
+        raise HTTPException(409, str(e))
+    except RuntimeError as e:
+        raise HTTPException(402, str(e))
+    except employees.EmployeeFailed as e:
+        raise HTTPException(502, secrets_broker.scrub(str(e)))
+
+
+@app.get("/api/manual/{slug}")
+def manual_state(slug: str):
+    if not store.exists(slug):
+        raise HTTPException(404, "없는 프로젝트")
+    return {
+        "slug": slug,
+        "busy": manual.busy_employee(slug),
+        "employees": employees.status(),
+        "files": store.files_of(slug),
+        "history": {e: [{"role": m.role, "content": m.content}
+                        for m in manual.history(slug, e)]
+                    for e in roles.ids()},
+    }
+
+
+@app.delete("/api/manual/{slug}/history")
+def manual_clear_history(slug: str, employee: str | None = None):
+    manual.clear_history(slug, employee)
+    return {"ok": True}
 
 
 # ── 프로젝트 (지시서 §12) ───────────────────────────────────────────
