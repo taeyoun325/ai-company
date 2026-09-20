@@ -1,0 +1,28 @@
+{
+  "_주의": "모델 ID는 시점에 따라 바뀐다. 여기 적힌 것이 실제로 존재하는지는 키를 넣고 /api/settings/verify/{provider} 로 조회해야 확인된다. 코드에 박지 않고 파일로 둔 이유가 그것이다(§14 와 같은 원칙).",
+  "_형식": "provider -> { default, models: [ {id, label, tier} ] }. tier 는 화면이 '빠름/균형/최고'를 표시하는 데 쓴다.",
+  "providers": {
+    "claude": {
+      "default": "claude-opus-5",
+      "models": [
+        { "id": "claude-opus-5",   "label": "Opus 5",   "tier": "max" },
+        { "id": "claude-sonnet-5", "label": "Sonnet 5", "tier": "balanced" },
+        { "id": "claude-haiku-4-5","label": "Haiku 4.5","tier": "fast" }
+      ]
+    },
+    "gemini": {
+      "default": "gemini-2.5-pro",
+      "models": [
+        { "id": "gemini-2.5-pro",   "label": "Gemini 2.5 Pro",   "tier": "max" },
+        { "id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "tier": "fast" }
+      ]
+    },
+    "openai": {
+      "default": "gpt-5",
+      "models": [
+        { "id": "gpt-5",      "label": "GPT-5",      "tier": "max" },
+        { "id": "gpt-5-mini", "label": "GPT-5 mini", "tier": "fast" }
+      ]
+    }
+  }
+}

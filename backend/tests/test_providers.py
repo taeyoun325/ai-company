@@ -25,6 +25,10 @@ from app.providers.base import (AuthError, FallbackProvider,    # noqa: E402
                                 ProviderUnavailable, RateLimited,
                                 TransientError)
 from app.providers.claude import ClaudeProvider, translate      # noqa: E402
+from app.providers.gemini import GeminiProvider                 # noqa: E402
+from app.providers.gemini import translate as translate_gemini  # noqa: E402
+from app.providers.openai import OpenAIProvider                 # noqa: E402
+from app.providers.openai import translate as translate_openai  # noqa: E402
 from app.providers.mock import Failure, MockProvider, estimate_tokens  # noqa: E402
 
 SYSTEM = "당신은 테스트용 조수입니다. 짧게 답하세요."
@@ -53,16 +57,25 @@ def _clean_registry():
 
 
 # ── 계약: Mock 과 실제에 똑같이 건다 ───────────────────────────────
+# (계약을 걸 제공자, 키 이름, 생성자)
+_REAL = [
+    ("claude", "anthropic", ClaudeProvider),
+    ("gemini", "gemini", GeminiProvider),
+    ("openai", "openai", OpenAIProvider),
+]
+
+
 def _cases():
     yield pytest.param(lambda: MockProvider(), id="mock")
 
-    if secrets_broker.has("anthropic"):
-        yield pytest.param(lambda: ClaudeProvider(), id="claude")
-    else:
-        yield pytest.param(
-            None, id="claude",
-            marks=pytest.mark.skip(
-                reason="Anthropic 키 없음 — 키를 넣는 순간 이 계약이 자동으로 걸린다"))
+    for label, key, factory in _REAL:
+        if secrets_broker.has(key):
+            yield pytest.param(factory, id=label)
+        else:
+            yield pytest.param(
+                None, id=label,
+                marks=pytest.mark.skip(
+                    reason=f"{label} 키 없음 — 키를 넣는 순간 이 계약이 자동으로 걸린다"))
 
 
 @pytest.fixture(params=list(_cases()))
@@ -318,3 +331,133 @@ def test_claude_without_key_is_unavailable(monkeypatch):
     monkeypatch.setattr(ClaudeProvider, "available", lambda self: False)
     with pytest.raises(ProviderUnavailable):
         ClaudeProvider().generate(_req())
+
+
+# ── Gemini · OpenAI: 키 없이도 확인할 수 있는 것 ───────────────────
+#
+# 페이로드 변환과 사용량 해석은 **키가 있어야 볼 수 있는 것이 아니다.**
+# 역할 이름을 잘못 옮기거나 캐시 토큰을 두 번 세는 버그는 키를 꽂는 날이
+# 아니라 지금 잡아야 한다 — 키를 맨 마지막에 넣는 방침이 감춰버리는
+# 바로 그런 종류의 결함이다.
+
+class _Blob:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def test_gemini_translates_assistant_role_to_model():
+    """Anthropic 의 'assistant' 는 Google 에서 'model' 이다.
+
+    이 한 줄을 빠뜨리면 멀티턴에서 역할이 뒤집혀, 모델이 자기 말을
+    사용자 말로 읽는다. 증상은 '갑자기 이상한 답'이고 원인은 안 보인다.
+    """
+    req = GenerateRequest(system="S", messages=[
+        base.Message("user", "안녕"), base.Message("assistant", "네"),
+        base.Message("user", "더"),
+    ])
+    roles = [c["role"] for c in GeminiProvider()._payload(req)["contents"]]
+    assert roles == ["user", "model", "user"]
+
+
+def test_gemini_system_goes_to_system_instruction():
+    req = GenerateRequest.ask("지침", "질문")
+    cfg = GeminiProvider()._payload(req)["config"]
+    assert cfg["system_instruction"] == "지침"
+
+
+def test_gemini_does_not_double_count_cached_tokens():
+    """genai 의 prompt_token_count 에는 캐시분이 이미 들어 있다.
+
+    그대로 두면 usage 가 input+cached 를 더해 과금하므로 캐시분이 두 번
+    잡히고, §17 원가(판매가의 50% 이하)가 실제보다 나쁘게 나온다.
+    """
+    u = GeminiProvider._usage_of(_Blob(prompt_token_count=1000,
+                                       candidates_token_count=200,
+                                       cached_content_token_count=400))
+    assert (u.input_tokens, u.cached_tokens) == (600, 400)
+
+
+def test_openai_does_not_double_count_cached_tokens():
+    u = OpenAIProvider._usage_of(_Blob(
+        input_tokens=1000, output_tokens=200,
+        input_tokens_details=_Blob(cached_tokens=300)))
+    assert (u.input_tokens, u.cached_tokens) == (700, 300)
+
+
+def test_openai_payload_keeps_system_separate():
+    req = GenerateRequest.ask("지침", "질문")
+    pay = OpenAIProvider()._payload(req)
+    assert pay["instructions"] == "지침"
+    assert pay["input"] == [{"role": "user", "content": "질문"}]
+
+
+@pytest.mark.parametrize("xlate", [translate_gemini, translate_openai])
+def test_new_providers_translate_unknown_as_not_retryable(xlate):
+    assert xlate(_Fake("낯선오류")).retryable is False
+
+
+@pytest.mark.parametrize("xlate", [translate_gemini, translate_openai])
+def test_new_providers_translate_by_status_code(xlate):
+    assert isinstance(xlate(_Fake("낯선이름", status=503)), TransientError)
+    assert isinstance(xlate(_Fake("낯선이름", status=429)), RateLimited)
+    assert isinstance(xlate(_Fake("낯선이름", status=401)), AuthError)
+
+
+@pytest.mark.parametrize("xlate", [translate_gemini, translate_openai])
+def test_new_providers_scrub_secrets(xlate, monkeypatch):
+    monkeypatch.setitem(secrets_broker._store, "openai", "sk-proj-verysecret12345")
+    err = xlate(Exception("실패: sk-proj-verysecret12345"))
+    assert "verysecret" not in str(err)
+
+
+@pytest.mark.parametrize("factory", [GeminiProvider, OpenAIProvider])
+def test_new_providers_without_key_are_unavailable(factory, monkeypatch):
+    monkeypatch.setattr(factory, "available", lambda self: False)
+    with pytest.raises(ProviderUnavailable):
+        factory().generate(_req())
+
+
+# ── 대체 사슬은 회사를 건넌다 (§18) ────────────────────────────────
+def test_fallback_chain_crosses_companies():
+    """같은 회사 안에서 넘기는 것은 대체가 아니라 같은 문을 두 번 두드리는 것이다."""
+    for name, chain in registry._FALLBACKS.items():
+        assert name not in chain, f"{name} 이 자기 자신으로 대체된다"
+
+
+def test_reviewer_never_falls_back_to_the_implementer():
+    """검증자(gemini)가 Claude 로 넘어가면 교차검증 전제가 조용히 사라진다.
+
+    구현도 Claude, 검증도 Claude 면 같은 맹점을 함께 놓친다. 그건
+    '느리게라도 돌아감'이 아니라 '검증한 척'이다. 차라리 멈춘다.
+    """
+    assert "claude" not in registry._FALLBACKS["gemini"]
+
+
+def test_cross_check_flag_requires_two_companies(monkeypatch):
+    monkeypatch.setenv("PROVIDER_MODE", "auto")
+    monkeypatch.setattr(ClaudeProvider, "available", lambda self: True)
+    monkeypatch.setattr(GeminiProvider, "available", lambda self: False)
+    registry.reset()
+    assert registry.status()["cross_check"] is False
+
+    monkeypatch.setattr(GeminiProvider, "available", lambda self: True)
+    registry.reset()
+    assert registry.status()["cross_check"] is True
+
+
+def test_catalog_default_is_in_its_own_model_list():
+    """기본 모델이 목록에 없으면 설정 화면이 '선택된 것 없음'으로 뜬다."""
+    for name in ("claude", "gemini", "openai"):
+        ids = [m["id"] for m in config.models_of(name)]
+        assert config.default_model(name) in ids, f"{name} 기본 모델이 목록 밖이다"
+
+
+def test_every_catalog_model_has_a_price():
+    """단가 없는 모델을 고르게 두면 그 실행의 비용이 조용히 0 으로 잡힌다.
+
+    0 은 '공짜'가 아니라 '모른다'이고, 예산 상한(§18)이 그 모델에는
+    걸리지 않게 된다.
+    """
+    missing = [m["id"] for name in ("claude", "gemini", "openai")
+               for m in config.models_of(name) if m["id"] not in config.PRICES]
+    assert not missing, f"단가표에 없는 모델: {missing}"

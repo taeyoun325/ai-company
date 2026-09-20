@@ -29,7 +29,14 @@ from app import config
 KEYS = {
     "anthropic": ("ANTHROPIC_API_KEY", "Anthropic (Claude)"),
     "gemini": ("GEMINI_API_KEY", "Google (Gemini)"),
+    "openai": ("OPENAI_API_KEY", "OpenAI (GPT)"),
 }
+
+# `ready()` 가 요구하는 최소 집합. 제공자를 늘릴 때마다 "키가 다 있어야 시작"
+# 으로 만들면, 제공자 하나를 추가한 것이 기존 사용자를 못 쓰게 만든다.
+# 회사가 돌아가려면 구현자와 검증자가 **서로 다른 회사**여야 한다는 것이
+# 이 제품의 핵심 논리(§8)이므로, 그 둘만 필수로 둔다.
+REQUIRED = ("anthropic", "gemini")
 
 STORE_PATH = config.ROOT / ".secrets.json"
 
@@ -89,8 +96,17 @@ def has(name: str) -> bool:
 
 
 def ready() -> bool:
-    """실제 모델로 돌릴 수 있는 상태인가."""
-    return all(has(n) for n in KEYS)
+    """실제 모델로 돌릴 수 있는 상태인가.
+
+    전부가 아니라 REQUIRED 만 본다. OpenAI 키가 없다고 회사가 멈추면
+    제공자를 하나 추가한 일이 기존 사용자를 잠그는 변경이 된다.
+    """
+    return all(has(n) for n in REQUIRED)
+
+
+def missing() -> list[str]:
+    """없어서 막고 있는 키. 화면이 무엇을 넣으라고 말할 수 있어야 한다."""
+    return [n for n in REQUIRED if not has(n)]
 
 
 def mask(name: str) -> str | None:

@@ -73,3 +73,51 @@ def test_stream_route_is_registered():
     """
     paths = {r.path for r in main.app.routes if hasattr(r, "path")}
     assert "/api/stream" in paths
+
+
+def test_settings_exposes_model_catalog(client):
+    """설정 화면이 고를 수 있는 모델 목록을 내려받지 못하면,
+    사용자는 모델 ID 를 손으로 타이핑해야 한다."""
+    body = client.get("/api/settings").json()
+    assert set(body["catalog"]) >= {"claude", "gemini", "openai"}
+    for name, row in body["catalog"].items():
+        assert row["default"], f"{name} 기본 모델이 비어 있다"
+
+
+def test_state_reports_cross_check(client):
+    """구현자와 검증자가 같은 회사면 교차검증 전제가 사라진다 (§8).
+    화면이 그 사실을 말할 수 있어야 한다."""
+    assert "cross_check" in client.get("/api/state").json()["providers"]
+
+
+def test_model_change_rejects_model_without_price(client):
+    """단가를 모르는 모델은 비용이 0 으로 잡힌다. 0 은 공짜가 아니라
+    모른다는 뜻이고, 예산 상한이 그 모델에는 걸리지 않는다."""
+    r = client.post("/api/settings/model",
+                    json={"provider": "claude", "model": "단가없는모델"})
+    assert r.status_code == 400
+
+
+def test_model_change_rejects_unknown_provider(client):
+    r = client.post("/api/settings/model",
+                    json={"provider": "없는회사", "model": "claude-opus-5"})
+    assert r.status_code == 400
+
+
+def test_model_change_applies(client):
+    from app import config
+    before = config.default_model("claude")
+    try:
+        r = client.post("/api/settings/model",
+                        json={"provider": "claude", "model": "claude-sonnet-5"})
+        assert r.status_code == 200
+        assert config.default_model("claude") == "claude-sonnet-5"
+    finally:
+        config.CATALOG["claude"]["default"] = before
+        registry.reset()
+
+
+def test_keys_endpoint_accepts_openai(client):
+    r = client.post("/api/settings/keys", json={"openai": ""})
+    assert r.status_code == 200
+    assert "openai" in r.json()["keys"]

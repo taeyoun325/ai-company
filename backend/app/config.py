@@ -29,11 +29,51 @@ PRICING_FILE = Path(os.getenv("PRICING_FILE", BACKEND / "pricing.json"))
 PROJECTS = ROOT / "projects"     # 산출물이 프로젝트별로 쌓이는 저장소
 LOGS = ROOT / "logs"
 
-# --- 모델 ---
-PM_MODEL = os.getenv("PM_MODEL", "claude-opus-5")
-DEV_MODEL = os.getenv("DEV_MODEL", "claude-opus-5")
+# --- 모델 카탈로그 (지시서 §7) ---
+# 단가와 같은 이유로 코드 밖에 둔다: 모델 ID는 **사실**이고, 시점에 따라 바뀐다.
+MODELS_FILE = Path(os.getenv("MODELS_FILE", BACKEND / "models.json"))
+
+_CATALOG_FALLBACK = {
+    "claude": {"default": "claude-opus-5", "models": []},
+    "gemini": {"default": "gemini-2.5-pro", "models": []},
+    "openai": {"default": "gpt-5", "models": []},
+}
+
+
+def _load_catalog() -> dict:
+    try:
+        data = json.loads(MODELS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return dict(_CATALOG_FALLBACK)
+    return data.get("providers") or dict(_CATALOG_FALLBACK)
+
+
+CATALOG = _load_catalog()
+
+
+def default_model(provider: str) -> str:
+    row = CATALOG.get(provider) or _CATALOG_FALLBACK.get(provider, {})
+    return row.get("default", "")
+
+
+def models_of(provider: str) -> list[dict]:
+    row = CATALOG.get(provider) or {}
+    return list(row.get("models", []))
+
+
+def reload_catalog() -> None:
+    """모델 파일을 다시 읽는다. 재배포 없이 모델을 갈아끼울 수 있어야 한다."""
+    global CATALOG
+    CATALOG = _load_catalog()
+
+
+# --- 모델 (환경변수가 카탈로그 기본값을 덮는다) ---
+PM_MODEL = os.getenv("PM_MODEL") or default_model("claude")
+DEV_MODEL = os.getenv("DEV_MODEL") or default_model("claude")
 # Gemini 모델 ID는 시점에 따라 바뀐다. 실행 전 client.models.list()로 확인할 것.
-QA_MODEL = os.getenv("QA_MODEL", "gemini-2.5-pro")
+QA_MODEL = os.getenv("QA_MODEL") or default_model("gemini")
+WRITER_MODEL = os.getenv("WRITER_MODEL") or default_model("openai")
+DESIGNER_MODEL = os.getenv("DESIGNER_MODEL") or default_model("gemini")
 
 MODEL_OF = {"PM": PM_MODEL, "DEV": DEV_MODEL, "QA": QA_MODEL}
 

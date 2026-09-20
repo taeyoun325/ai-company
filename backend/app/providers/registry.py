@@ -28,9 +28,13 @@ from __future__ import annotations
 import os
 import threading
 
+from app import config
+
 from app.providers.base import AIProvider, FallbackProvider, ProviderUnavailable
 from app.providers.claude import ClaudeProvider
+from app.providers.gemini import GeminiProvider
 from app.providers.mock import MockProvider
+from app.providers.openai import OpenAIProvider
 
 MODES = ("auto", "mock", "real")
 
@@ -38,14 +42,26 @@ _lock = threading.RLock()
 _real: dict[str, AIProvider] = {}
 _mocks: dict[str, MockProvider] = {}
 
-# 실제 제공자 생성자. DAY 3 에 gemini · openai, DAY 4 에 higgsfield 가 붙는다.
+# 실제 제공자 생성자.
 _FACTORIES: dict[str, callable] = {
     "claude": ClaudeProvider,
+    "gemini": GeminiProvider,
+    "openai": OpenAIProvider,
 }
 
 # 대체 순서 (§18). 실제 → 실제 만 적는다. Mock 은 여기 오지 않는다.
+#
+# 사슬을 **회사가 다른 쪽으로** 건다. 한 회사가 장애면 그 회사의 다른 모델도
+# 같이 죽는 경우가 많으므로, 같은 회사 안에서 넘기는 것은 대체가 아니라
+# 같은 문을 두 번 두드리는 것이다.
+#
+# 검증자(gemini)의 대체에 claude 를 두지 **않는다**: 구현이 Claude 인데
+# 검증까지 Claude 로 넘어가면 교차검증이라는 전제가 조용히 사라진다.
+# 그건 "느리게라도 돌아감"이 아니라 "검증한 척"이다. 차라리 멈춘다.
 _FALLBACKS: dict[str, tuple[str, ...]] = {
-    "claude": (),
+    "claude": ("openai",),
+    "gemini": (),
+    "openai": ("claude",),
 }
 
 
@@ -92,6 +108,8 @@ def get(name: str) -> AIProvider:
     m = mode()
     if name == "mock":
         return _mock_provider("claude")
+    if name not in _FACTORIES:
+        raise ProviderUnavailable(f"알 수 없는 제공자: {name}", provider=name)
     if m == "mock":
         return _mock_provider(name)
 
@@ -138,10 +156,19 @@ def status() -> dict:
             "key": p.available(),
             "mock": is_mock(name),
             "fallbacks": list(_FALLBACKS.get(name, ())),
+            "models": config.models_of(name),
         })
     return {
         "mode": mode(),
         "providers": rows,
         "any_real": any(r["key"] for r in rows),
         "all_mock": all(r["mock"] for r in rows) if rows else True,
+        # 교차검증이 성립하는가 (§8). 구현자와 검증자가 같은 회사면 이 제품의
+        # 핵심 논리가 사라지므로, 화면이 그 사실을 말할 수 있어야 한다.
+        "cross_check": _cross_check_ok(rows),
     }
+
+
+def _cross_check_ok(rows: list[dict]) -> bool:
+    live = {r["name"] for r in rows if r["key"] and not r["mock"]}
+    return "claude" in live and "gemini" in live

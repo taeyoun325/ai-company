@@ -53,11 +53,17 @@ class ModeReq(BaseModel):
 class KeysReq(BaseModel):
     anthropic: str | None = None
     gemini: str | None = None
+    openai: str | None = None
     remember: bool = False
 
 
 class ModelReq(BaseModel):
     qa_model: str
+
+
+class ProviderModelReq(BaseModel):
+    provider: str
+    model: str
 
 
 class DecisionReq(BaseModel):
@@ -226,14 +232,18 @@ def decide_approval(aid: str, req: DecisionReq):
 @app.get("/api/settings")
 def get_settings():
     return {"keys": secrets_broker.status(), "models": config.MODEL_OF,
+            "catalog": {n: {"default": config.default_model(n),
+                            "models": config.models_of(n)}
+                        for n in registry.names()},
             "stored": secrets_broker.STORE_PATH.exists(),
+            "missing": secrets_broker.missing(),
             "ready": secrets_broker.ready()}
 
 
 @app.post("/api/settings/keys")
 def set_keys(req: KeysReq):
     changed = []
-    for name in ("anthropic", "gemini"):
+    for name in secrets_broker.KEYS:
         val = getattr(req, name)
         if val is None:
             continue
@@ -249,6 +259,12 @@ def set_keys(req: KeysReq):
             pass
     if "gemini" in changed:
         gemini.reset_client()
+    if "openai" in changed:
+        try:
+            from app.providers import openai_client
+            openai_client.reset_client()
+        except ImportError:
+            pass
     if changed:
         # 키가 생겼으면 다음 호출부터는 Mock 이 아니라 실제로 가야 한다.
         registry.reset()
@@ -276,11 +292,17 @@ def verify_key(provider: str):
             models = gemini.list_models()
             return {"ok": True, "detail": f"모델 {len(models)}개 조회됨",
                     "models": models[:60]}
+        if provider == "openai":
+            from app.providers import openai_client
+            models = openai_client.list_models()
+            return {"ok": True, "detail": f"모델 {len(models)}개 조회됨",
+                    "models": models[:60]}
         raise HTTPException(400, "알 수 없는 제공자")
     except HTTPException:
         raise
     except ImportError as e:
-        pkg = "anthropic" if provider == "anthropic" else "google-genai"
+        pkg = {"anthropic": "anthropic", "gemini": "google-genai",
+               "openai": "openai"}.get(provider, provider)
         return {"ok": False,
                 "detail": f"{pkg} 패키지가 설치되지 않았습니다. "
                           f"pip install -r requirements.txt 를 실행하세요. ({e})"}
@@ -294,6 +316,29 @@ def set_qa_model(req: ModelReq):
     config.MODEL_OF["QA"] = req.qa_model
     config.PRICES.setdefault(req.qa_model, config.PRICES.get("gemini-2.5-pro", (0.0, 0.0)))
     return {"ok": True, "models": config.MODEL_OF}
+
+
+@app.post("/api/settings/model")
+def set_provider_model(req: ProviderModelReq):
+    """제공자의 기본 모델을 바꾼다 (§7 모델 설정).
+
+    카탈로그 밖의 모델도 허용한다 — 모델 ID 는 시점에 따라 바뀌고,
+    `models.json` 이 낡았다는 이유로 새 모델을 못 쓰게 막으면 파일을
+    코드 밖에 둔 의미가 없다. 다만 **단가를 모르는 모델**은 거부한다:
+    단가가 없으면 비용이 0 으로 잡히고, 0 은 공짜가 아니라 모른다는 뜻이며,
+    예산 상한(§18)이 그 모델에는 걸리지 않게 된다.
+    """
+    if req.provider not in registry.names():
+        raise HTTPException(400, f"알 수 없는 제공자: {req.provider}")
+    if req.model not in config.PRICES:
+        raise HTTPException(
+            400, f"단가표에 없는 모델입니다: {req.model}. "
+                 f"pricing.json 에 단가를 먼저 등록하세요 — "
+                 f"단가를 모르면 비용 상한이 걸리지 않습니다.")
+    config.CATALOG.setdefault(req.provider, {"models": []})["default"] = req.model
+    registry.reset()
+    return {"ok": True, "provider": req.provider, "model": req.model,
+            "providers": registry.status()}
 
 
 # ── AI 제공자 (지시서 §7) ───────────────────────────────────────────
