@@ -35,8 +35,6 @@ from pathlib import Path
 from app import config
 from app.database import store
 
-DB_PATH = Path(config.ROOT / "ai_company.db")
-
 _local = threading.local()
 _lock = threading.RLock()
 
@@ -64,7 +62,7 @@ CREATE INDEX IF NOT EXISTS ix_projects_status ON projects (status);
 
 def path() -> Path:
     """설정이 바뀌어도(테스트 등) 따라오도록 매번 계산한다."""
-    return Path(config.ROOT / "ai_company.db")
+    return config.data_dir() / "ai_company.db"
 
 
 def _connect() -> sqlite3.Connection:

@@ -1,0 +1,4 @@
+# 개발·테스트용.
+-r requirements-local.txt
+pytest>=8.0
+httpx>=0.27            # fastapi TestClient 가 쓴다

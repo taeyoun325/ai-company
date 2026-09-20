@@ -88,7 +88,7 @@ CREATE INDEX IF NOT EXISTS ix_identities_user ON identities (user_id);
 
 def path() -> Path:
     """설정이 바뀌어도(테스트 등) 따라오도록 매번 계산한다."""
-    return Path(config.ROOT / "ai_company_auth.db")
+    return config.data_dir() / "ai_company_auth.db"
 
 
 def conn() -> sqlite3.Connection:

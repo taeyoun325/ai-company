@@ -26,8 +26,22 @@ WEB = APP / "web"                              # 이전 제품의 단일 파일 
 PROMPTS = BACKEND / "prompts"
 PRICING_FILE = Path(os.getenv("PRICING_FILE", BACKEND / "pricing.json"))
 
-PROJECTS = ROOT / "projects"     # 산출물이 프로젝트별로 쌓이는 저장소
-LOGS = ROOT / "logs"
+PROJECTS = Path(os.getenv("PROJECTS_DIR") or ROOT / "projects")
+LOGS = Path(os.getenv("LOGS_DIR") or ROOT / "logs")
+
+
+def data_dir() -> Path:
+    """DB 와 비밀 파일이 사는 곳 (DAY 16).
+
+    컨테이너에서는 이 폴더 하나만 볼륨으로 빼면 상태가 전부 보존된다.
+    `DATA_DIR` 이 없으면 저장소 루트를 쓴다 — 로컬 개발의 기존 동작 그대로다.
+
+    함수인 이유: 테스트가 `config.ROOT` 를 임시 폴더로 바꿔 끼운다.
+    모듈 로드 시점에 한 번 계산해두면 그 교체가 반영되지 않는다.
+    """
+    d = Path(os.getenv("DATA_DIR") or ROOT)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 # --- 모델 카탈로그 (지시서 §7) ---
 # 단가와 같은 이유로 코드 밖에 둔다: 모델 ID는 **사실**이고, 시점에 따라 바뀐다.

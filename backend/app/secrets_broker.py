@@ -38,7 +38,7 @@ KEYS = {
 # 이 제품의 핵심 논리(§8)이므로, 그 둘만 필수로 둔다.
 REQUIRED = ("anthropic", "gemini")
 
-STORE_PATH = config.ROOT / ".secrets.json"
+STORE_PATH = config.data_dir() / ".secrets.json"
 
 _store: dict[str, str] = {}
 _loaded = False

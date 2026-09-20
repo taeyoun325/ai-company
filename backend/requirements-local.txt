@@ -1,0 +1,6 @@
+# 로컬 개발도구 기능(화면 캡처·조작). DEPLOY_MODE=local 에서만 의미가 있다.
+#
+#   pip install -r backend/requirements-local.txt
+-r requirements.txt
+pillow>=10.0
+pyautogui>=0.9.54

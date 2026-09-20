@@ -1,32 +1,101 @@
-# 개발용. 지금 필요한 것은 PostgreSQL 하나뿐이다.
+# AI COMPANY 배포 (DAY 16).
 #
-# SQLite 로도 개발이 되므로(지시서 §5) 이 파일은 "PostgreSQL 로 옮겨도
-# 되는지" 확인할 때 쓴다. 백엔드·프론트엔드는 아직 이미지로 굽지 않는다 —
-# MVP가 굳기 전에 Dockerfile 을 유지하는 비용이 이득보다 크다.
+#   docker compose up -d --build
+#   http://localhost:3000
 #
-#   docker compose up -d db
-#   DATABASE_URL=postgresql://aicompany:aicompany@localhost:5432/aicompany python backend/run.py
+# ## 아직 실행으로 검증되지 않았다
 #
-# 주의: 이 개발 머신에는 docker 가 설치되어 있지 않다(DAY 1 확인).
-# 이 파일은 아직 실행으로 검증되지 않았다.
+# 이 개발 머신에는 docker 가 없다(DAY 1·DAY 16 확인). 파일은 문법과 의도를
+# 맞춰 썼지만 **한 번도 뜬 적이 없다.** 처음 올릴 때는 실패를 예상하고
+# `docker compose logs -f` 를 보면서 하는 편이 낫다.
 #
-# 서버에 올릴 때 (DAY 13 · docs/security.md):
-#   DEPLOY_MODE=saas    로컬 접근 기능을 전부 막는다
-#   SANDBOXED=1         생성된 코드를 실행하려면 필요. 다만 **먼저**
-#                       네트워크 송신 제한과 자원 제한을 컨테이너에 걸 것.
-#                       그 둘 없이 켜는 것은 거짓 서명이다
-#   PROVIDER_MODE=real  키가 없으면 실패한다. auto 로 두면 조용히 Mock 이
-#                       돌고 가짜 결과물이 진짜처럼 나간다
+# ## 생성된 코드는 백엔드 컨테이너 안에서 돈다
+#
+# 이게 이 파일에서 제일 중요한 사실이다. 백엔드는 모델을 부르기 위해
+# 바깥 네트워크가 필요하고, 같은 컨테이너에서 모델이 쓴 코드도 돈다.
+# 그래서 컨테이너 수준에서는 둘을 갈라놓을 수 없다.
+#
+# 대신 **프로세스 수준**에서 끊는다 — `unshare --net` 으로 pytest 자식에게
+# 빈 네트워크를 준다(app/orchestrator/isolation.py). 되는지 여부는 리포트의
+# `network_isolated` 로 나가고, 안 되면 안 된다고 적힌다.
+#
+# 진짜로 갈라놓고 싶다면 실행 전용 서비스를 따로 두고 `network_mode: none`
+# 을 걸어야 한다. 그건 오케스트레이터가 테스트 실행을 다른 컨테이너로
+# 넘기는 구조 변경이라 아직 하지 않았다. docs/security.md §3 참조.
 
 services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      # 서버 배포다. 로컬 접근 기능(임의 명령·폴더 열기·화면 캡처)이 전부 막힌다.
+      DEPLOY_MODE: saas
+      # 컨테이너 안이라는 선언. **이 값을 적기 전에** 아래 자원 제한과
+      # 네트워크 정책을 확인할 것 — 그 둘 없이 적는 것은 거짓 서명이다.
+      SANDBOXED: "1"
+      RUNNER_ISOLATE_NETWORK: "1"
+      # 키가 없으면 실패한다. auto 로 두면 조용히 Mock 이 돌고
+      # 가짜 결과물이 진짜처럼 나간다.
+      PROVIDER_MODE: real
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DATABASE_URL: ${DATABASE_URL:-}
+      # 상태가 사는 곳. 이 한 폴더만 볼륨으로 빼면 전부 보존된다.
+      DATA_DIR: /app/data
+      PROJECTS_DIR: /app/projects
+      LOGS_DIR: /app/logs
+    volumes:
+      # 산출물과 로그. 컨테이너를 갈아끼워도 남아야 한다.
+      - projects:/app/projects
+      - logs:/app/logs
+      # 계정·색인 DB. **계정은 지우면 복구할 방법이 없다** — 백업 대상.
+      - data:/app/data
+    # unshare 로 네트워크 네임스페이스를 만들려면 이 권한이 필요하다.
+    # 컨테이너 전체를 privileged 로 열지 않고 하나만 준다.
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      # 기본 seccomp 는 unshare 를 막는다. 이 옵션이 없으면 격리가 조용히 꺼지고,
+      # 리포트에 "커널이 거부했습니다"가 찍힌다.
+      - seccomp:unconfined
+    # 생성된 코드가 메모리·CPU 를 채우는 것을 막는다. isolation.py 가
+    # 막지 못한다고 적어둔 바로 그 부분이다.
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    pids_limit: 256
+    restart: unless-stopped
+    expose:
+      - "8000"
+    # 바깥으로 포트를 열지 않는다. 프론트엔드만 접근한다.
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      # Next 의 /api rewrite 가 여기로 넘긴다. 컨테이너 이름이 곧 호스트다.
+      BACKEND_ORIGIN: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  # PostgreSQL 은 아직 쓰지 않는다. §5 의 "옮길 수 있게" 를 확인할 때만 켠다.
+  #   docker compose --profile postgres up -d db
   db:
+    profiles: ["postgres"]
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: aicompany
-      POSTGRES_PASSWORD: aicompany
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aicompany}
       POSTGRES_DB: aicompany
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -36,4 +105,7 @@ services:
       retries: 10
 
 volumes:
+  projects:
+  logs:
+  data:
   pgdata:

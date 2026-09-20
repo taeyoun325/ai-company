@@ -1,3 +1,9 @@
+# 서버(컨테이너)가 필요로 하는 것만. 로컬 전용 기능은 requirements-local.txt 로 뺐다.
+#
+# 화면 캡처(pillow·pyautogui)를 여기서 제외한 이유: 서버에는 화면이 없고,
+# DEPLOY_MODE=saas 에서는 그 기능이 어차피 403 이다(docs/security.md).
+# 컨테이너 이미지에 넣으면 설치 시간과 공격면만 늘어난다.
+# `app/screen.py` 는 import 실패를 견디도록 쓰여 있어 없어도 앱이 뜬다.
 anthropic>=0.116.0
 google-genai>=1.0.0
 openai>=1.60.0
@@ -5,5 +11,3 @@ pydantic>=2.0
 fastapi>=0.115.0
 uvicorn>=0.30.0
 python-multipart>=0.0.9
-pillow>=10.0
-pyautogui>=0.9.54

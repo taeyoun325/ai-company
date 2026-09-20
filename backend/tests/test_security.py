@@ -285,3 +285,71 @@ def test_security_doc_lists_the_saas_premise_change():
 
 def test_registry_is_reset_after_tests():
     registry.reset()
+
+
+# ── 네트워크 격리 (DAY 16) ─────────────────────────────────────────
+def test_isolation_reports_honestly_when_unavailable():
+    """막았다고 믿게 만드는 것이 안 막는 것보다 나쁘다.
+
+    이 개발 머신(Windows)에서는 네임스페이스를 쓸 수 없다. 그 사실이
+    조용히 넘어가지 않고 이유와 함께 나와야 한다.
+    """
+    from app.orchestrator import isolation
+    st = isolation.status()
+    assert isinstance(st["available"], bool)
+    assert st["detail"], "왜 안 되는지가 비어 있으면 아무도 못 고친다"
+    if not st["available"]:
+        assert st["effective"] is False
+
+
+def test_isolation_falls_back_to_the_plain_command():
+    """격리가 안 된다고 테스트를 못 돌리게 하면 개발 머신에서 아무것도
+    검증할 수 없다. 대신 격리 안 됐다는 사실이 따라 나온다."""
+    from app.orchestrator import isolation
+    cmd, isolated, why = isolation.wrap(["echo", "hi"])
+    assert cmd[:2] == ["echo", "hi"] or cmd[0] == "unshare"
+    assert isinstance(isolated, bool) and why
+
+
+def test_isolation_can_be_turned_off(monkeypatch):
+    from app.orchestrator import isolation
+    monkeypatch.setenv(isolation.ENV_FLAG, "0")
+    assert isolation.requested() is False
+    _cmd, isolated, why = isolation.wrap(["echo", "hi"])
+    assert isolated is False and "0" in why
+
+
+def test_isolation_is_on_by_default(monkeypatch):
+    """안전한 쪽이 기본이어야 한다. 안 되는 환경에서는 자동으로 꺼지고
+    그 사실이 보고된다."""
+    from app.orchestrator import isolation
+    monkeypatch.delenv(isolation.ENV_FLAG, raising=False)
+    assert isolation.requested() is True
+
+
+def test_test_report_states_whether_the_network_was_cut(tmp_path):
+    """검증자와 화면이 이 값을 본다."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_ok.py").write_text(
+        "def test_ok():\n    assert True\n", encoding="utf-8")
+    r = runner.run(tmp_path)
+    assert "network_isolated" in r and "isolation_detail" in r
+
+
+def test_blocked_report_also_carries_the_field(tmp_path, saas):
+    """필드가 어떤 경로에서는 빠지면, 화면이 '없음'을 '격리됨'으로 읽는다."""
+    (tmp_path / "tests").mkdir()
+    r = runner.run(tmp_path)
+    assert r["network_isolated"] is False
+
+
+def test_review_prompt_warns_about_unrun_tests():
+    """차단된 테스트를 '실패 0건'으로 읽으면 검증이 무의미해진다."""
+    from app.orchestrator import prompts
+    from app.agents.schemas import Criterion, Task
+    task = Task(id="t1", title="x", assignee="developer", deps=[], files=[],
+                covers=["ac1"], done_when="된다")
+    text = prompts.review(task, [Criterion(id="ac1", text="기준")], {},
+                          {"blocked": True, "ok": False})
+    assert "blocked" in text and "통과한 테스트가 아닙니다" in text

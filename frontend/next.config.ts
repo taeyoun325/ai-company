@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   // 홈 디렉터리의 package-lock.json 을 집어 경고를 낸다.
   turbopack: { root: path.resolve(__dirname) },
 
+  // 컨테이너 배포용 (DAY 16). 실행에 필요한 것만 추려 `.next/standalone` 에
+  // 담아준다 — node_modules 전체를 이미지에 넣지 않아도 된다.
+  output: "standalone",
+
   async rewrites() {
     // 개발 중에는 프론트(3000)에서 /api 를 백엔드(8000)로 그대로 넘긴다.
     // CORS 설정을 따로 두지 않기 위해서다.

@@ -9,9 +9,13 @@
   - 좀비 프로세스: 프로세스 그룹/작업 단위로 트리 전체 종료
   - 무한 루프: 타임아웃
 
+부분적으로 막는 것:
+  - 네트워크 송신. **리눅스에서는** 빈 네트워크 네임스페이스로 끊는다
+    (app/orchestrator/isolation.py). 다른 OS 나 네임스페이스가 막힌 커널에서는
+    끊지 못하며, 그 사실이 리포트의 `network_isolated` 로 나간다.
+    막았다고 믿게 만드는 것이 안 막는 것보다 나쁘기 때문이다.
+
 막지 못하는 것 (정직하게):
-  - 네트워크 송신. 생성된 코드가 로컬 파일을 읽어 외부로 보내는 것을 OS 수준에서
-    막으려면 컨테이너나 방화벽 규칙이 필요하다. 이건 subprocess로는 불가능하다.
   - 홈 디렉터리 읽기. 프로세스는 사용자 권한을 그대로 갖는다.
   정말로 신뢰할 수 없는 요구사항을 돌릴 거라면 컨테이너 안에서 이 앱을 통째로 실행해라.
 """
@@ -22,6 +26,7 @@ import sys
 
 from app import config
 from app import deploy
+from app.orchestrator import isolation
 from app import secrets_broker
 
 TIMEOUT = int(os.getenv("TEST_TIMEOUT", "120"))
@@ -78,7 +83,8 @@ def _kill_tree(proc: subprocess.Popen) -> None:
 _SUMMARY = re.compile(r"(\d+) (passed|failed|error|errors|skipped)")
 
 
-def _parse(out: str, returncode: int, timed_out: bool) -> dict:
+def _parse(out: str, returncode: int, timed_out: bool,
+           isolated: bool = False, isolation_detail: str = "") -> dict:
     counts = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0}
     for n, kind in _SUMMARY.findall(out):
         key = "errors" if kind.startswith("error") else kind
@@ -88,6 +94,10 @@ def _parse(out: str, returncode: int, timed_out: bool) -> dict:
         "ok": returncode == 0 and not timed_out,
         "timed_out": timed_out,
         "returncode": returncode,
+        # 이 코드가 네트워크 없이 돌았는가. 검증자와 화면이 이 값을 본다 —
+        # 조용히 실패해서 "격리된 줄 알았는데 아니었다"가 되지 않게 한다.
+        "network_isolated": isolated,
+        "isolation_detail": isolation_detail,
         **counts,
         "failed_tests": failures[:40],
         # 앞뒤를 모두 남긴다. 뒤에서만 자르면 실패 원인이 통째로 사라진다.
@@ -102,7 +112,7 @@ def _clip(s: str, head: int = 2500, tail: int = 2500) -> str:
     return f"{s[:head]}\n\n... (중략 {len(s) - head - tail}자) ...\n\n{s[-tail:]}"
 
 
-def blocked(reason: str) -> dict:
+def blocked(reason: str) -> dict:  # noqa: D401
     """실행하지 않았다는 사실을 **실패로** 돌려준다.
 
     통과로 돌려주면 검증자가 "테스트 통과"를 근거로 승인한다. 돌리지
@@ -111,6 +121,7 @@ def blocked(reason: str) -> dict:
     return {"ok": False, "skipped_run": True, "timed_out": False,
             "returncode": -1, "passed": 0, "failed": 0, "errors": 0,
             "skipped": 0, "failed_tests": [], "blocked": True,
+            "network_isolated": False, "isolation_detail": "실행하지 않았습니다",
             "output": reason}
 
 
@@ -132,9 +143,11 @@ def run(project_dir) -> dict:
     ini = project_dir / "pytest.ini"      # 오케스트레이터가 매번 덮어쓴다
     ini.write_text(PYTEST_INI, encoding="utf-8")
 
-    proc = subprocess.Popen(
+    cmd, isolated, why = isolation.wrap(
         [sys.executable, "-I", "-m", "pytest", "-c", str(ini),
-         "--rootdir", str(project_dir)],
+         "--rootdir", str(project_dir)])
+    proc = subprocess.Popen(
+        cmd,
         cwd=project_dir, env=_clean_env(), text=True, encoding="utf-8",
         errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         **_popen_kwargs(),
@@ -148,7 +161,7 @@ def run(project_dir) -> dict:
         out, _ = proc.communicate()
         out = (out or "") + f"\n\n[타임아웃 {TIMEOUT}초 — 프로세스 트리 강제 종료]"
 
-    return _parse(out or "", proc.returncode or 0, timed_out)
+    return _parse(out or "", proc.returncode or 0, timed_out, isolated, why)
 
 
 ENTRY_CANDIDATES = ("main.py", "app.py", "__main__.py", "run.py", "cli.py")
@@ -186,8 +199,10 @@ def run_entry(project_dir, entry: str, timeout: int | None = None) -> dict:
     stdin은 막는다. 입력을 기다리는 프로그램이 타임아웃까지 매달리지 않게.
     """
     limit = timeout or min(TIMEOUT, 30)
+    cmd, isolated, why = isolation.wrap(
+        [sys.executable, "-I", entry.replace("/", os.sep)])
     proc = subprocess.Popen(
-        [sys.executable, "-I", entry.replace("/", os.sep)],
+        cmd,
         cwd=project_dir, env=_clean_env(), text=True, encoding="utf-8",
         errors="replace", stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -203,6 +218,8 @@ def run_entry(project_dir, entry: str, timeout: int | None = None) -> dict:
         out = (out or "") + f"\n\n[타임아웃 {limit}초 — 프로세스 트리 강제 종료]"
     return {
         "entry": entry,
+        "network_isolated": isolated,
+        "isolation_detail": why,
         "ok": proc.returncode == 0 and not timed_out,
         "timed_out": timed_out,
         "returncode": proc.returncode or 0,

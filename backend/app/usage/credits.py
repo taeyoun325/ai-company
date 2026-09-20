@@ -35,7 +35,7 @@ from app import config
 
 _lock = threading.RLock()
 
-WALLET_FILE = config.ROOT / ".credits.json"
+WALLET_FILE = config.data_dir() / ".credits.json"
 
 
 class InsufficientCredits(RuntimeError):
