@@ -60,6 +60,9 @@ def test_global_subscriber_sees_everything():
     """대시보드(§12)는 여러 프로젝트를 한 화면에서 본다."""
     sub = bus.subscribe()
     try:
+        # 구독 즉시 오는 것은 다른 테스트가 남긴 과거 이력이다. 비우고 본다.
+        while not sub.q.empty():
+            sub.q.get_nowait()
         _emit("run-a", "A")
         _emit("run-b", "B")
         got = [sub.q.get_nowait()["text"] for _ in range(sub.q.qsize())]
