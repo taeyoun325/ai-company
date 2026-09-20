@@ -1,0 +1,448 @@
+"""상태머신 — 누가 다음에 말할지는 LLM 이 아니라 여기가 정한다 (지시서 §9 · §10).
+
+## 왜 코드가 정하는가
+
+LLM 라우터는 디버깅이 지옥이다. "왜 저 직원을 불렀나"에 답할 수 없고,
+무한 루프에 빠지면 멈출 방법이 없다. 순서·정지조건·예산은 전부 파이썬이
+쥔다. 모델은 **각 칸을 채우는 일**만 한다.
+
+AUTO(§10)에서 모델이 고르는 것은 딱 하나다: 태스크별 담당 직원.
+그것도 `assignable()` 안에서만 고를 수 있고, 벗어나면 오케스트레이터가
+기본 담당자로 되돌린다. "모델이 정한다"와 "모델이 고른 것을 검사 없이
+따른다"는 다르다.
+
+## 흐름
+
+    PLAN ─▶ WRITE_TESTS ─▶ ┌─ IMPLEMENT ─▶ TEST ─▶ REVIEW ─┐ ─▶ FINALIZE ─▶ DONE
+                           └──── 반려면 되돌아간다 ────────┘
+
+정지 조건(OR): 태스크 전부 완료 / 라운드 상한 / 비용 상한 / 재기획 상한.
+
+## 비용은 호출 *전에* 검사한다
+
+사후 감지는 상한이 아니라 부고다. 개발자 한 번이 예산을 통째로 넘길 수
+있으므로, 다음 호출의 **최악 비용**을 더해서 넘으면 그 자리에서 멈춘다.
+
+## 실행 하나가 스레드 하나
+
+`bus` · `usage` · `project_fs` 가 전부 스레드 로컬로 현재 실행을 찾는다.
+그래서 여러 프로젝트를 동시에 돌려도 이벤트와 비용이 섞이지 않는다.
+이것이 제공자 인터페이스를 동기로 둔 이유이기도 하다(§7 이탈 기록).
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+import threading
+
+from app import bus, config, usage
+from app.agents import employee, roles
+from app.agents.schemas import (Criterion, FinalReport, Plan, Routing, Task,
+                                TestSuite, Verdict, WorkResult)
+from app.database import store
+from app.orchestrator import prompts, runner
+from app.orchestrator.score import Score
+from app.tools import project_fs as pfs
+
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "3"))
+
+_runs: dict[str, threading.Thread] = {}
+_runs_lock = threading.RLock()
+_cancelled: set[str] = set()
+
+
+class Stop(Exception):
+    """계획된 중단. 예산·라운드·재기획 상한에 닿았을 때."""
+
+
+# ── 실행 관리 ───────────────────────────────────────────────────────
+def _reap() -> None:
+    with _runs_lock:
+        for slug in [s for s, t in _runs.items() if not t.is_alive()]:
+            _runs.pop(slug, None)
+            _cancelled.discard(slug)
+
+
+def running_slugs() -> list[str]:
+    _reap()
+    with _runs_lock:
+        return sorted(_runs)
+
+
+def is_running(slug: str | None = None) -> bool:
+    _reap()
+    with _runs_lock:
+        return slug in _runs if slug else bool(_runs)
+
+
+def cancel(slug: str) -> bool:
+    """CEO 의 정지 버튼 (§18).
+
+    스레드를 강제로 죽이지 않는다 — 파일을 반쯤 쓴 상태로 끊기면 산출물이
+    깨진다. 대신 표시만 해두고, 다음 단계 경계에서 스스로 멈춘다.
+    """
+    _reap()
+    with _runs_lock:
+        if slug not in _runs:
+            return False
+        _cancelled.add(slug)
+    bus.say("SYSTEM", "CEO 가 정지를 요청했습니다 — 현재 단계가 끝나면 멈춥니다.",
+            kind="error")
+    return True
+
+
+def _check_cancelled(slug: str) -> None:
+    with _runs_lock:
+        if slug in _cancelled:
+            raise Stop("CEO 가 정지시켰습니다.")
+
+
+def start(requirement: str, attachment_ids: list[str] | None = None,
+          owner: str = "local") -> str:
+    """새 실행을 시작하고 프로젝트 slug 를 돌려준다 (AUTO, §10).
+
+    동시 실행 수를 제한하는 이유: 각 실행이 모델을 호출하므로 무제한이면
+    비용과 요청 한도가 동시에 터진다.
+    """
+    _reap()
+    with _runs_lock:
+        if len(_runs) >= MAX_CONCURRENT:
+            raise RuntimeError(
+                f"동시 실행 한도({MAX_CONCURRENT})에 도달했습니다. "
+                f"진행 중인 작업이 끝난 뒤에 시작하세요.")
+
+    slug = store.new_project(requirement, owner=owner)
+    t = threading.Thread(target=_run, args=(requirement, slug, attachment_ids or []),
+                         daemon=True, name=f"run:{slug}")
+    with _runs_lock:
+        _runs[slug] = t
+    t.start()
+    return slug
+
+
+# ── 보조 ────────────────────────────────────────────────────────────
+def _spend_guard(rounds: int, about_to_spend: float = 0.0) -> None:
+    """호출 *전에* 검사한다. 사후 감지는 예산 상한이 아니라 예산 부고다."""
+    if rounds > config.MAX_ROUNDS:
+        raise Stop(f"라운드 상한({config.MAX_ROUNDS}) 도달 — 중단합니다.")
+    projected = usage.total_cost() + about_to_spend
+    if projected > config.MAX_PROJECT_COST:
+        raise Stop(f"비용 상한(${config.MAX_PROJECT_COST}) — 다음 호출의 최악 비용까지 "
+                   f"더하면 ${projected:.2f}가 되어 중단합니다.")
+
+
+def _topo(tasks: list[Task]) -> list[Task]:
+    """의존성 순서로 정렬. 순환이 있으면 남은 걸 그냥 뒤에 붙인다.
+
+    순환을 오류로 올리지 않는 이유: 계획을 세운 것도 모델이다. 모델이 만든
+    순환 하나 때문에 실행 전체를 버리는 것보다, 순서를 포기하고 진행한 뒤
+    검증자에게 판정을 맡기는 편이 낫다.
+    """
+    done: set[str] = set()
+    out: list[Task] = []
+    pending = list(tasks)
+    while pending:
+        ready = [t for t in pending if all(d in done for d in t.deps)]
+        if not ready:
+            bus.say("SYSTEM", "태스크 의존성에 순환이 있습니다 — 남은 것은 정의된 "
+                              "순서대로 진행합니다.", kind="error")
+            out.extend(pending)
+            break
+        for t in ready:
+            out.append(t)
+            done.add(t.id)
+            pending.remove(t)
+    return out
+
+
+def _sig(task: Task) -> str:
+    """태스크의 '의미' 지문.
+
+    done 을 `task.id` 로만 관리하면, 재기획에서 전략가가 같은 id 로 다른
+    태스크를 정의했을 때 이미 끝났다고 착각하고 건너뛴다. 그래서 id 가
+    아니라 지문으로 기억한다.
+    """
+    raw = f"{task.id}|{task.title}|{task.done_when}|{sorted(task.covers)}|{task.assignee}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _assignee(task: Task) -> str:
+    """담당자를 검사한다 (§10).
+
+    모델이 없는 직원이나 맡길 수 없는 직원(기획자·검증자)을 적을 수 있다.
+    그대로 따르면 KeyError 로 실행이 죽거나, 검증자가 자기 코드를 검증하게
+    된다. 벗어나면 되돌린다 — **고르게 하되 검사 없이 따르지는 않는다.**
+    """
+    if task.assignee in roles.assignable():
+        return task.assignee
+    fallback = roles.assignable()[0]
+    bus.say("SYSTEM", f"'{task.title}' 의 담당자 `{task.assignee}` 는 맡길 수 없는 "
+                      f"직원이라 {roles.get(fallback).name}에게 배정합니다.", kind="error")
+    return fallback
+
+
+def _board(plan: Plan, done: set[str], current: str | None) -> list[dict]:
+    rows = [{"id": t.id, "title": t.title, "assignee": _assignee(t),
+             "status": ("done" if _sig(t) in done
+                        else "doing" if t.id == current else "todo")}
+            for t in plan.tasks]
+    bus.state(tasks=rows)
+    return rows
+
+
+def _apply(result: WorkResult, employee_id: str) -> list[str]:
+    """직원이 낸 파일을 실제로 쓴다.
+
+    권한 위반은 실행을 죽이지 않는다 — 그 파일만 거부하고 사실을 남긴다.
+    한 파일의 경로가 틀렸다고 나머지 산출물까지 버릴 이유가 없고,
+    거부 사실이 로그에 남아야 검증자와 CEO 가 판단할 수 있다.
+    """
+    written: list[str] = []
+    for f in result.files:
+        try:
+            info = pfs.write(f.path, f.content, employee_id)
+        except pfs.Denied as e:
+            bus.say(employee_id, f"`{f.path}` 거부됨 — {e}", kind="error")
+            continue
+        written.append(f.path)
+        verb = "새로 만듦" if info["created"] else f"수정 ({info['new_lines']}줄)"
+        bus.say(employee_id, f"`{f.path}` {verb}", kind="tool")
+    return written
+
+
+def _run_tests(score: Score) -> dict:
+    bus.say("SYSTEM", "격리 환경에서 pytest 실행 중…", kind="tool")
+    r = runner.run(pfs.root())
+    score.tests_ran = not r.get("skipped_run")
+    score.tests_pass = r["ok"]
+    score.tests = {k: r.get(k, 0) for k in ("passed", "failed", "errors")}
+    head = "테스트 통과" if r["ok"] else f"테스트 실패 — {runner.summary_line(r)}"
+    detail = "\n".join(r["failed_tests"][:5])
+    bus.say("SYSTEM", head + (f"\n```\n{detail}\n```" if detail else ""), kind="tool")
+    return r
+
+
+def route(requirement: str) -> Routing:
+    """AUTO 라우팅 한 번 (§10). MANUAL 화면이 '누가 맡을까'를 물을 때도 쓴다."""
+    roster = [roles.get(i).info() for i in roles.assignable()]
+    r = employee.ask(roles.PLANNER, prompts.route(requirement, roster), Routing)
+    if r.employee not in roles.assignable():
+        r = Routing(employee=roles.assignable()[0],
+                    why=f"{r.employee} 는 맡길 수 없는 직원이라 기본 담당자로 배정했습니다.")
+    return r
+
+
+# ── 본체 ────────────────────────────────────────────────────────────
+def _run(requirement: str, slug: str, attachment_ids: list[str]) -> None:
+    # 이 스레드의 컨텍스트를 묶는다. 이후 bus/usage/pfs 호출은 전부 이 실행 소유다.
+    bus.bind(slug)
+    usage.bind(slug)
+    pfs.use(slug)
+    bus.reset(slug)
+
+    score = Score()
+    m = store.meta(slug)
+    any_mock = any(employee.is_mock(e) for e in roles.EMPLOYEES.values())
+    store.save_meta(slug, {"mock": any_mock})
+    bus.state(project={"slug": slug, "name": m.get("name", ""),
+                       "requirement": requirement, "mock": any_mock})
+    bus.emit("projects", list=store.list_projects())
+
+    rounds = 0
+    done: set[str] = set()
+    rows: list[dict] = []
+    plan: Plan | None = None
+    report: dict = {}
+
+    bus.say("USER", requirement)
+    if any_mock:
+        bus.say("SYSTEM", "지금은 **Mock 직원**이 일합니다. 산출물은 실제 AI 의 "
+                          "작업 결과가 아닙니다. 설정에서 API 키를 등록하세요.",
+                kind="error")
+    attachments_note = ""
+    if attachment_ids:
+        from app import attachments
+        attachments_note = attachments.summary(attachment_ids)
+        bus.say("USER", f"첨부: {attachments_note}", kind="tool")
+        store.save_meta(slug, {"attachments": attachments_note})
+
+    bus.phase("PLAN", "전략가가 계획을 세우는 중")
+    score.push()
+
+    try:
+        # 1) 기획 ────────────────────────────────────────────────────
+        _check_cancelled(slug)
+        _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.PLANNER))
+        plan = employee.ask(roles.PLANNER,
+                            prompts.plan(requirement, attachments_note), Plan)
+        employee.say(roles.get(roles.PLANNER), plan.message_to_team)
+        criteria: list[Criterion] = plan.acceptance_criteria
+        if not plan.tasks:
+            raise Stop("계획에 태스크가 하나도 없습니다 — 진행할 수 없습니다.")
+        score.total_tasks = len(plan.tasks)
+        score.ac_total = len(criteria)
+        store.save_meta(slug, {"name": plan.project_name,
+                               "criteria": [c.model_dump() for c in criteria]})
+        bus.state(project={"slug": slug, "name": plan.project_name,
+                           "requirement": requirement, "mock": any_mock})
+        rows = _board(plan, done, None)
+        score.push()
+
+        # 2) 검증자가 테스트를 **먼저** 쓴다 ─────────────────────────
+        #    구현자는 이 파일들을 읽지도 못한다. 보면 맞춰 짜기 때문이다.
+        bus.phase("WRITE_TESTS", "분석가가 인수기준으로 테스트 작성")
+        _check_cancelled(slug)
+        _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.VERIFIER))
+        suite: TestSuite = employee.ask(
+            roles.VERIFIER, prompts.write_tests(criteria, plan.tasks), TestSuite)
+        employee.say(roles.get(roles.VERIFIER), suite.message_to_team)
+        covered: set[str] = set()
+        for tf in suite.files:
+            path = tf.path if tf.path.startswith("tests/") else f"tests/{tf.path}"
+            try:
+                pfs.write(path, tf.content, roles.VERIFIER)
+            except pfs.Denied as e:
+                bus.say(roles.VERIFIER, f"테스트 파일 거부됨 — `{path}` ({e})", kind="error")
+                continue
+            covered.update(tf.covers)
+            bus.say(roles.VERIFIER,
+                    f"`{path}` 작성 — 검증 대상 {', '.join(tf.covers) or '미지정'}",
+                    kind="tool")
+        score.ac_covered = len(covered & {c.id for c in criteria})
+        if suite.uncovered:
+            bus.say(roles.VERIFIER,
+                    "자동 검증 불가로 남긴 인수기준: " + ", ".join(suite.uncovered),
+                    kind="verdict")
+        bus.state(files=store.files_of(slug))
+        score.push()
+
+        # 3) 태스크 루프 ─────────────────────────────────────────────
+        queue = _topo(plan.tasks)
+        i = 0
+        while i < len(queue):
+            task = queue[i]
+            if _sig(task) in done:
+                i += 1
+                continue
+            who = _assignee(task)
+            rows = _board(plan, done, task.id)
+            rework = 0
+            feedback: Verdict | None = None
+
+            while True:
+                _check_cancelled(slug)
+                bus.phase("IMPLEMENT", f"{roles.get(who).name} · {task.title}")
+                _spend_guard(rounds := rounds + 1, employee.worst_case_cost(who))
+                bus.state(round=rounds)
+                work: WorkResult = employee.ask(
+                    who, prompts.implement(task, criteria, pfs.snapshot(who), feedback),
+                    WorkResult)
+                employee.say(roles.get(who), work.message_to_team)
+                _apply(work, who)
+                bus.state(files=store.files_of(slug))
+
+                bus.phase("TEST", task.title)
+                report = _run_tests(score)
+                score.push()
+
+                bus.phase("REVIEW", task.title)
+                _check_cancelled(slug)
+                _spend_guard(rounds, employee.worst_case_cost(roles.VERIFIER))
+                # 변경분이 아니라 전체를 보여준다. 부분만 보면 회귀를 놓친다.
+                # 담당자의 설명(work.summary)은 **넘기지 않는다** — 자기 합리화에
+                # 오염되지 않아야 교차검증이 성립한다.
+                verdict: Verdict = employee.ask(
+                    roles.VERIFIER,
+                    prompts.review(task, criteria, pfs.snapshot(roles.VERIFIER), report),
+                    Verdict)
+                score.reviews += 1
+                icon = "통과" if verdict.verdict == "pass" else f"반려 ({verdict.severity})"
+                bus.say(roles.VERIFIER, f"**{icon}** — {verdict.message_to_team}",
+                        kind="verdict")
+                for f in verdict.findings:
+                    bus.say(roles.VERIFIER, f"`{f.file}` · {f.issue}", kind="tool")
+
+                if verdict.verdict == "pass":
+                    score.passes += 1
+                    done.add(_sig(task))
+                    score.done_tasks = len(done)
+                    rows = _board(plan, done, None)
+                    score.push()
+                    _persist(slug, plan, rows, score)
+                    break
+
+                score.reworks += 1
+                score.push()
+                rework += 1
+                feedback = verdict
+                if rework >= config.MAX_REWORK:
+                    score.replans += 1
+                    if score.replans > config.MAX_REPLANS:
+                        raise Stop(f"재기획 상한({config.MAX_REPLANS}) 도달 — "
+                                   f"'{task.title}' 에서 진전이 없습니다.")
+                    bus.phase("REPLAN", task.title)
+                    _spend_guard(rounds := rounds + 1,
+                                 employee.worst_case_cost(roles.PLANNER))
+                    plan = employee.ask(roles.PLANNER,
+                                        prompts.replan(plan, task, verdict), Plan)
+                    employee.say(roles.get(roles.PLANNER), plan.message_to_team)
+                    score.total_tasks = len(plan.tasks)
+                    queue = _topo(plan.tasks)
+                    i = -1                       # 큐를 처음부터 다시 훑는다
+                    break
+            i += 1
+
+        # 4) 최종 검수 ───────────────────────────────────────────────
+        bus.phase("FINALIZE", "최종 검수")
+        _check_cancelled(slug)
+        _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.PLANNER))
+        final: FinalReport = employee.ask(
+            roles.PLANNER,
+            prompts.finalize(criteria, pfs.snapshot("SYSTEM"), report), FinalReport)
+        employee.say(roles.get(roles.PLANNER), final.message_to_team)
+        ids = {c.id for c in criteria}
+        score.ac_met = len(set(final.met_criteria) & ids)
+        score.push()
+
+        _persist(slug, plan, rows, score, status="done", report=final)
+        bus.emit("projects", list=store.list_projects())
+        bus.emit("done", ok=not final.unmet_criteria, summary=final.summary,
+                 unmet=final.unmet_criteria, score=score.value())
+
+    except Stop as e:
+        _fail(slug, plan, rows, score, str(e))
+    except employee.EmployeeFailed as e:
+        _fail(slug, plan, rows, score, f"직원 호출 실패 — {e}")
+    except Exception as e:                       # noqa: BLE001
+        _fail(slug, plan, rows, score, f"{type(e).__name__}: {e}")
+    finally:
+        with _runs_lock:
+            _runs.pop(slug, None)
+            _cancelled.discard(slug)
+        pfs.release()
+
+
+def _persist(slug, plan, rows, score, status="running",
+             report: FinalReport | None = None) -> None:
+    patch = {
+        "status": status,
+        "score": score.value(),
+        "score_detail": score.detail(),
+        "tasks": rows,
+        "usage": usage.agents_of(slug),
+        "cost": round(usage.total_cost(slug), 4),
+        "cache_ok": usage.cache_working(slug),
+        "criteria": [c.model_dump() for c in plan.acceptance_criteria] if plan else [],
+        "files": store.files_of(slug),
+    }
+    if report is not None:
+        patch["report"] = report.model_dump()
+    store.save_meta(slug, patch)
+
+
+def _fail(slug, plan, rows, score, msg: str) -> None:
+    bus.say("SYSTEM", f"중단: {msg}", kind="error")
+    _persist(slug, plan, rows, score, status="stopped")
+    store.save_meta(slug, {"stopped_reason": msg})
+    bus.emit("projects", list=store.list_projects())
+    bus.emit("done", ok=False, summary=msg, unmet=[], score=score.value())

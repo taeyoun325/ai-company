@@ -29,6 +29,8 @@ from app import secrets_broker
 from app.agents import employee as employees
 from app.agents import roles
 from app.agents import subagents
+from app.database import store
+from app import orchestrator
 from app import timeline
 from app import usage
 from app import workspace
@@ -70,6 +72,11 @@ class ProviderModelReq(BaseModel):
 
 class ModelReq2(BaseModel):
     model: str
+
+
+class RunReq(BaseModel):
+    requirement: str
+    attachments: list[str] = []
 
 
 class DecisionReq(BaseModel):
@@ -359,6 +366,108 @@ def providers():
     가짜를 구분하지 못한다.
     """
     return registry.status()
+
+
+# ── 실행 (지시서 §9 · §10 AUTO) ─────────────────────────────────────
+@app.post("/api/runs")
+def start_run(req: RunReq):
+    """AUTO 모드. 오케스트레이터가 직원을 골라 끝까지 돌린다.
+
+    키가 없어도 막지 않는다 — Mock 으로 전 구간을 만드는 것이 현재 방침이고,
+    Mock 으로 돌고 있다는 사실은 `mock: true` 로 화면까지 전달된다.
+    """
+    requirement = req.requirement.strip()
+    if not requirement:
+        raise HTTPException(400, "요구사항이 비어 있습니다")
+    try:
+        slug = orchestrator.start(requirement, req.attachments)
+    except RuntimeError as e:
+        raise HTTPException(429, str(e))
+    return {"slug": slug, "running": True,
+            "mock": registry.status()["all_mock"]}
+
+
+@app.get("/api/runs")
+def list_runs():
+    return {"running": orchestrator.running_slugs(),
+            "projects": store.list_projects()}
+
+
+@app.get("/api/runs/{slug}")
+def get_run(slug: str):
+    m = store.meta(slug)
+    if not m:
+        raise HTTPException(404, "없는 프로젝트")
+    m["running"] = orchestrator.is_running(slug)
+    m["events"] = bus.history(slug)
+    return m
+
+
+@app.post("/api/runs/{slug}/cancel")
+def cancel_run(slug: str):
+    """정지 버튼 (§18).
+
+    스레드를 강제로 죽이지 않는다 — 파일을 반쯤 쓴 상태로 끊기면 산출물이
+    깨진다. 다음 단계 경계에서 스스로 멈춘다.
+    """
+    if not orchestrator.cancel(slug):
+        raise HTTPException(404, "진행 중이 아닙니다")
+    return {"ok": True}
+
+
+@app.post("/api/route")
+def route_work(req: RunReq):
+    """이 일을 누구에게 맡길지만 물어본다 (§10). 화면이 미리 보여줄 수 있어야 한다."""
+    if not req.requirement.strip():
+        raise HTTPException(400, "요구사항이 비어 있습니다")
+    try:
+        r = orchestrator.route(req.requirement.strip())
+    except Exception as e:                       # noqa: BLE001
+        raise HTTPException(502, secrets_broker.scrub(f"{type(e).__name__}: {e}"))
+    return r.model_dump()
+
+
+# ── 프로젝트 (지시서 §12) ───────────────────────────────────────────
+@app.get("/api/projects")
+def list_projects():
+    return {"projects": store.list_projects()}
+
+
+@app.get("/api/projects/{slug}/files")
+def project_files(slug: str):
+    if not store.exists(slug):
+        raise HTTPException(404, "없는 프로젝트")
+    return {"files": store.files_of(slug)}
+
+
+@app.get("/api/projects/{slug}/file")
+def project_file(slug: str, path: str):
+    if not store.exists(slug):
+        raise HTTPException(404, "없는 프로젝트")
+    try:
+        return {"path": path, "content": store.read_file(slug, path),
+                "versions": store.versions(slug, path)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/projects/{slug}/diff")
+def project_diff(slug: str, path: str, a: int, b: int = 0):
+    if not store.exists(slug):
+        raise HTTPException(404, "없는 프로젝트")
+    try:
+        return {"path": path, "a": a, "b": b, "diff": store.diff(slug, path, a, b)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/projects/{slug}")
+def delete_project(slug: str):
+    if orchestrator.is_running(slug):
+        raise HTTPException(409, "진행 중인 프로젝트는 지울 수 없습니다")
+    if not store.delete_project(slug):
+        raise HTTPException(404, "없는 프로젝트")
+    return {"ok": True}
 
 
 # ── AI 직원 (지시서 §8) ─────────────────────────────────────────────
