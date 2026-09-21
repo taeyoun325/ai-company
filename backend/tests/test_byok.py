@@ -92,9 +92,18 @@ def test_byok_posture_never_falls_back_to_operator_keys():
     assert secrets_broker.get("anthropic") == "sk-operator-XXXXXXXX"
 
 
-def test_free_plan_never_reaches_a_real_key():
-    """결제하지 않은 사용자가 우리 키를 태우는 경로를 여기서 끊는다."""
-    credits.set_plan(A, "free")
+def test_unplanned_account_never_reaches_a_real_key(monkeypatch):
+    """결제하지 않은 사용자가 우리 키를 태우는 경로를 여기서 끊는다.
+
+    실행은 `require_runnable` 이 이미 거부한다. 키까지 끊는 것은 방어를
+    겹치기 위해서다 — 게이트를 빠뜨린 경로가 하나라도 생기면 그 경로가
+    곧 무료 이용권이 된다.
+    """
+    monkeypatch.setenv("DEPLOY_MODE", "saas")
+    credits.reset()
+    assert credits.wallet(A).plan == "none"
+    with pytest.raises(tenant.NoPlan):
+        tenant.require_runnable(A)
     with tenant.bind(A):
         assert registry.mode() == "mock"
         assert secrets_broker.get("anthropic") is None

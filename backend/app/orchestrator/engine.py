@@ -106,6 +106,12 @@ def start(requirement: str, attachment_ids: list[str] | None = None,
     비용과 요청 한도가 동시에 터진다.
     """
     _reap()
+    # **요금제부터 본다.** 좌석 검사보다 먼저여야 한다 — 요금제를 고르지
+    # 않은 계정은 좌석이 0 이라, 순서가 바뀌면 "요금제를 고르세요" 대신
+    # "동시 실행 한도(0)에 도달했습니다"라는 말이 나간다. 같은 거절이지만
+    # 사용자가 할 일이 전혀 다르다.
+    tenant.require_runnable(owner)
+
     # 동시 실행 한도는 요금제가 정한다 (§16). 환경변수 MAX_CONCURRENT 는
     # 그 위의 하드 상한이다 — 요금제를 잘못 적어도 서버가 무너지지 않게.
     seats = min(MAX_CONCURRENT,
@@ -116,11 +122,6 @@ def start(requirement: str, attachment_ids: list[str] | None = None,
             raise RuntimeError(
                 f"동시 실행 한도({seats})에 도달했습니다. "
                 f"진행 중인 작업이 끝난 뒤에 시작하세요.")
-
-    # 어느 키로 부를지 먼저 정한다 (DAY 19 · app/tenant.py). BYOK 요금제인데
-    # 고객 키가 없으면 **여기서** 멈춘다 — 중간에 터지면 절반쯤 만들어진
-    # 프로젝트와 "왜 멈췄는지 모르겠는" 화면이 남는다.
-    tenant.require_runnable(owner)
 
     # 잔액을 **시작 전에** 본다 (§15). 0 이 된 다음에 막으면 이미 쓴 것이다.
     # 다만 프로젝트 상한 전액이 아니라 **한 번 부를 돈**만 요구한다.

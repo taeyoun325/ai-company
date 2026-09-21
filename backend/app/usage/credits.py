@@ -92,15 +92,17 @@ def all_plans() -> dict:
 def default_plan() -> str:
     """새 지갑의 기본 요금제.
 
-    SaaS 에서는 `free`(Mock 전용) — 결제하지 않은 사람이 운영자 키를
-    태우면 안 된다. 로컬에서는 `local` — 거기서 돌리는 사람은 고객이
-    아니라 자기 키를 꽂은 운영자 자신이고, 그 사람을 Mock 에 가두면
-    요금제가 제품을 막는다.
+    SaaS 에서는 `none` — **무료 요금제가 없다.** 계정을 만든 직후에는
+    아무것도 시작할 수 없고, 요금제를 골라야 한다. Mock 을 기본으로 주면
+    없앤 무료 요금제를 이름만 바꿔 되살리는 것이다.
+
+    로컬에서는 `local` — 거기서 돌리는 사람은 고객이 아니라 자기 키를
+    꽂은 운영자 자신이고, 그 사람을 요금제로 막으면 요금제가 제품을 막는다.
     """
     from app import deploy
     if deploy.is_saas():
-        return "free"
-    return "local" if "local" in config.PLANS else "free"
+        return "none"
+    return "local" if "local" in config.PLANS else "none"
 
 
 def topups() -> dict:
@@ -345,6 +347,10 @@ def margin_report() -> dict:
         "all_topups_ok": all(t["ok"] and t["dearer_than_subscription"]
                              for t in topups) if topups else False,
         "all_paid_plans_ok": all(r["ok"] for r in paid) if paid else False,
+        # 무료 요금제는 없앴다(DAY 19). 0 이 아니라 **없다**는 사실을
+        # 그대로 내보낸다 — 0 으로 적으면 "손실 없는 무료 요금제가 있다"로
+        # 읽힌다.
+        "has_free_plan": any(r["price_usd"] == 0 for r in rows),
         "free_plan_max_loss_usd": next(
             (r["worst_cost_usd"] for r in rows if r["price_usd"] == 0), 0.0),
         "prices_verified": config.PRICES_VERIFIED,

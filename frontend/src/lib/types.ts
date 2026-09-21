@@ -168,7 +168,7 @@ export interface ByokStatus {
    *  사람이 고객 키도 가져간다 — 화면이 그 사실을 말해야 한다. */
   kek_from_env: boolean;
   plan: string;
-  source: "platform" | "byok" | "mock";
+  source: "platform" | "byok" | "mock" | "none";
   charge_credits: boolean;
   byok_ready: boolean | null;
 }
@@ -188,7 +188,7 @@ export interface CreditStatus {
   /** 고객이 **자기 키로** 쓴 금액. 우리가 청구하는 돈이 아니다 (DAY 19). */
   byok_usd: number;
   /** 이 요금제가 누구의 키로 도는가. */
-  source: "platform" | "byok" | "mock";
+  source: "platform" | "byok" | "mock" | "none";
   /** 크레딧을 깎는 요금제인가. 우리 키로 나간 비용만 깎는다. */
   charges_credits: boolean;
   /** 단가가 공식 문서와 대조됐는가. 아니면 이 숫자들은 추측이다 (§14). */
@@ -202,7 +202,7 @@ export interface PlanRow {
   credits: number;
   max_concurrent: number;
   max_project_cost: number;
-  source?: "platform" | "byok" | "mock";
+  source?: "platform" | "byok" | "mock" | "none";
   /** 고객에게 보이는 한 줄. 우리끼리의 근거(`_why`)는 화면에 오지 않는다. */
   blurb?: string;
 }

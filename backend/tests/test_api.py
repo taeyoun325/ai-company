@@ -188,8 +188,11 @@ def test_credits_endpoint_reports_verification(client):
 
 def test_plans_endpoint(client):
     body = client.get("/api/plans").json()
-    assert set(body["plans"]) >= {"free", "starter", "pro", "business", "byok"}
-    assert "local" not in body["plans"], "팔지 않는 요금제가 목록에 있다"
+    assert set(body["plans"]) == {"starter", "pro", "business", "byok"}
+    assert not any(p["price_usd"] == 0 for p in body["plans"].values()), (
+        "무료 요금제가 목록에 있다 — 결제해야만 쓸 수 있어야 한다")
+    for hidden in ("local", "none"):
+        assert hidden not in body["plans"], "팔지 않는 요금제가 목록에 있다"
     assert body["topups"], "충전 묶음이 내려가지 않는다"
     assert body["credit_usd"] > 0
 

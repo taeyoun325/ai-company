@@ -108,7 +108,11 @@ export default function PricingPage() {
             <span className="text-xs text-dim">{wallet.plan_label} 요금제</span>
           }
         >
-          {wallet.source === "byok" ? (
+          {wallet.source === "none" ? (
+            <p className="text-sm text-muted">
+              요금제를 고르면 여기에 잔액이 표시됩니다.
+            </p>
+          ) : wallet.source === "byok" ? (
             <div className="flex flex-wrap items-end gap-6">
               <div>
                 <p className="text-3xl font-bold tabular-nums">
@@ -146,6 +150,13 @@ export default function PricingPage() {
                 <dd>{money(wallet.max_project_cost)}</dd>
               </dl>
             </div>
+          )}
+
+          {wallet.source === "none" && (
+            <p className="mt-3 text-sm text-muted">
+              <strong>아직 요금제가 없습니다.</strong> 무료 요금제는 없습니다 —
+              아래에서 하나를 고르기 전까지 프로젝트를 시작할 수 없습니다.
+            </p>
           )}
 
           {wallet.source === "mock" && (
@@ -187,7 +198,7 @@ export default function PricingPage() {
                 많이 쓰면 요금제를 올리는 편이 쌉니다.
               </p>
             </div>
-          ) : (
+          ) : wallet.source === "none" ? null : (
             <p className="mt-4 border-t border-line pt-3 text-[11px] text-dim">
               이 요금제는 크레딧을 쓰지 않습니다 — 충전할 것도 없습니다.
             </p>

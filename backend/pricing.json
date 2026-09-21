@@ -46,12 +46,11 @@
   "_요금제_개정": "DAY 19. 이전 값(프로 1200cr · 비즈니스 4500cr · 무료 150cr)은 원가 비율이 41~46% 였다. 그 숫자에는 API 원가만 들어 있고 결제 수수료(2.9%+$0.30)·서버·환불·지원·모델 단가 인상 여지가 빠져 있었다. 다 넣으면 50% 벽에 붙는다. 크레딧을 줄여 여유를 만들었다 — 나중에 늘리는 것은 선물이고 줄이는 것은 배신이다.",
 
   "_source": "요금제마다 어느 키로 호출할지를 여기서 정한다. 코드가 아니라 요금제가 정해야, 새 요금제를 넣는 일이 분기 추가가 되지 않는다. platform=운영자 키(크레딧 차감) · byok=고객 키(차감 없음) · mock=실제 호출 없음.",
+  "_무료요금제_없음": "DAY 19 에 무료 요금제를 뒀다가 같은 날 없앴다. Mock 전용 무료는 우리 돈이 나가지는 않지만, 가입한 사람이 받는 것이 '대본이 지어낸 산출물'이다. 그건 체험이 아니라 오해를 파는 것이고, 오해는 결제 직후에 깨진다. 데모는 로그인 이전(랜딩)에서 보여주고, 계정을 만든 사람에게는 진짜만 준다. 요금제를 고르기 전의 계정은 아래 none 상태이며 아무것도 시작할 수 없다 — 그 사실을 화면이 분명히 말한다.",
   "_로컬": "로컬(DEPLOY_MODE=local)에서 이 프로그램을 돌리는 사람은 고객이 아니라 **운영자 자신**이다. 자기 키로 자기 컴퓨터에서 돌리는데 무료 요금제가 Mock 을 강제하면, 요금제가 제품을 막는 꼴이 된다. 그래서 로컬의 기본 요금제는 이것이고, hidden 이라 요금제 화면에서 고를 수 없으며 마진 검사(§17)에서도 빠진다 — 팔지 않는 것을 팔리는 것과 같은 자로 재면 숫자가 거짓말을 한다.",
   "plans": {
     "local":    { "label": "로컬(개발)", "price_usd": 0, "credits": 100000, "max_concurrent": 3, "max_project_cost": 5.0, "source": "platform", "hidden": true },
-    "free":     { "label": "무료",     "price_usd": 0,  "credits": 0,    "max_concurrent": 1, "max_project_cost": 1.5,  "source": "mock",
-                  "blurb": "화면과 흐름을 전부 볼 수 있습니다. 산출물은 대본이 만든 것입니다.",
-                  "_why": "Mock 전용. 결제 없이 실제 키를 태우면 스크립트 한 줄로 우리 돈이 나간다(이메일 인증이 아직 없다). blurb 는 고객에게 보이는 문장이고 _why 는 우리끼리의 근거다 — 섞으면 내부 사정이 요금제 화면에 걸린다." },
+    "none":     { "label": "요금제 없음", "price_usd": 0, "credits": 0,  "max_concurrent": 0, "max_project_cost": 0,    "source": "none", "hidden": true },
     "starter":  { "label": "스타터",   "price_usd": 9,  "credits": 250,  "max_concurrent": 1, "max_project_cost": 2.0,  "source": "platform" },
     "pro":      { "label": "프로",     "price_usd": 29, "credits": 900,  "max_concurrent": 3, "max_project_cost": 3.0,  "source": "platform" },
     "business": { "label": "비즈니스", "price_usd": 99, "credits": 3200, "max_concurrent": 5, "max_project_cost": 10.0, "source": "platform" },

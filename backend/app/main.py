@@ -376,6 +376,10 @@ def start_run(req: RunReq, request: Request):
     owner = auth.owner_of(request)
     try:
         slug = orchestrator.start(requirement, req.attachments, owner=owner)
+    except tenant.NoPlan as e:
+        # 이건 진짜로 결제 문제다 — 무료 요금제가 없으므로, 고르기 전에는
+        # 아무것도 시작할 수 없다.
+        raise HTTPException(402, str(e))
     except tenant.KeysMissing as e:
         # 402(결제 필요)로 보내지 않는다. 돈 문제가 아니라 **설정** 문제이고,
         # 사용자가 할 일이 다르다 — 충전이 아니라 키 등록이다.
@@ -596,6 +600,8 @@ def manual_instruct(slug: str, req: InstructReq, request: Request):
     try:
         return manual.instruct(slug, req.employee, req.message,
                                owner=auth.owner_of(request))
+    except tenant.NoPlan as e:
+        raise HTTPException(402, str(e))
     except tenant.KeysMissing as e:
         raise HTTPException(409, str(e))
     except KeyError as e:
@@ -620,6 +626,8 @@ def manual_verify(slug: str, request: Request):
         raise HTTPException(409, "AUTO 실행이 진행 중입니다")
     try:
         return manual.verify(slug, owner=auth.owner_of(request))
+    except tenant.NoPlan as e:
+        raise HTTPException(402, str(e))
     except tenant.KeysMissing as e:
         raise HTTPException(409, str(e))
     except KeyError as e:

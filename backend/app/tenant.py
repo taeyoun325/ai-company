@@ -7,7 +7,8 @@
 
 | source | 키 | 크레딧 |
 |---|---|---|
-| `mock` (무료) | 없음 — 실제 호출을 하지 않는다 | 차감 없음 (원가 0) |
+| `none` (요금제 미선택) | 없음 — 아무것도 시작할 수 없다 | 해당 없음 |
+| `mock` | 없음 — 실제 호출을 하지 않는다 | 차감 없음 (원가 0) |
 | `byok` (자체 키) | 고객의 키 | 차감 없음 — **고객이 직접 낸다** |
 | `platform` (유료) | 운영자의 키 | 차감 |
 
@@ -40,11 +41,20 @@ from dataclasses import dataclass, field
 
 from app import byok
 
-SOURCES = ("platform", "byok", "mock")
+SOURCES = ("platform", "byok", "mock", "none")
 
 
 class KeysMissing(RuntimeError):
     """BYOK 요금제인데 고객 키가 없다. 우리 키로 대신 부르지 않는다."""
+
+
+class NoPlan(RuntimeError):
+    """요금제를 고르지 않았다.
+
+    무료 요금제가 없으므로 계정을 만든 직후의 상태다. Mock 으로 돌려주지
+    **않는다** — 그건 없앤 무료 요금제를 이름만 바꿔 되살리는 것이고,
+    사용자는 대본이 지어낸 산출물을 제품의 실력으로 읽는다.
+    """
 
 
 @dataclass(frozen=True)
@@ -91,6 +101,9 @@ def require_runnable(owner: str) -> Posture:
     만들어진 프로젝트와 함께 "왜 멈췄는지 모르겠는" 화면이 남는다.
     """
     p = posture_for(owner)
+    if p.source == "none":
+        raise NoPlan("요금제를 선택해야 시작할 수 있습니다. "
+                     "요금제 화면에서 하나를 고르세요.")
     if p.source == "byok":
         missing = byok.missing(owner)
         if missing:

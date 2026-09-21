@@ -91,12 +91,31 @@ def test_new_wallet_gets_its_plan_credits():
 
 
 def test_default_plan_depends_on_where_this_runs(monkeypatch):
-    """로컬에서 돌리는 사람은 고객이 아니라 자기 키를 꽂은 운영자다.
-    그 사람을 무료 요금제(Mock 전용)에 가두면 요금제가 제품을 막는다."""
+    """SaaS 에서 계정을 만든 직후에는 **아무 요금제도 없다.** 무료 요금제를
+    없앴으므로 결제 전에는 아무것도 시작할 수 없다.
+
+    로컬에서 돌리는 사람은 고객이 아니라 자기 키를 꽂은 운영자다. 그
+    사람까지 요금제로 막으면 요금제가 제품을 막는다."""
     monkeypatch.setenv("DEPLOY_MODE", "saas")
-    assert credits.default_plan() == "free"
+    assert credits.default_plan() == "none"
     monkeypatch.setenv("DEPLOY_MODE", "local")
     assert credits.default_plan() == "local"
+
+
+def test_there_is_no_free_plan():
+    """Mock 전용 무료는 우리 돈이 나가지는 않지만, 가입한 사람이 받는 것이
+    '대본이 지어낸 산출물'이다. 그건 체험이 아니라 오해를 파는 것이다."""
+    sellable = credits.plans()
+    assert "free" not in sellable
+    assert all(p["price_usd"] > 0 for p in sellable.values()), (
+        "판매가 0 인 요금제가 있다 — 무료 요금제를 없앤 의미가 사라진다")
+    assert credits.margin_report()["has_free_plan"] is False
+
+
+def test_no_plan_cannot_be_chosen_either():
+    assert "none" not in credits.plans()
+    with pytest.raises(ValueError):
+        credits.set_plan("someone", "none")
 
 
 def test_local_plan_cannot_be_chosen(monkeypatch):
@@ -173,7 +192,9 @@ def test_every_plan_can_afford_one_developer_call():
     첫 구현 단계에서 항상 멈춘다. 시작조차 못 하는 요금제는 요금제가 아니다."""
     from app.agents import employee
     worst = employee.worst_case_cost("developer")
-    for name, p in config.PLANS.items():
+    # 팔지 않는 것(로컬 기본·요금제 미선택)은 뺀다. 요금제 미선택은 상한이
+    # 0 인 것이 **정상**이다 — 그 상태에서는 아무것도 시작할 수 없다.
+    for name, p in credits.plans().items():
         assert p["max_project_cost"] >= worst, (
             f"{name} 요금제의 상한 ${p['max_project_cost']} 가 "
             f"개발자 한 번(${worst:.2f})보다 작다")
@@ -186,13 +207,24 @@ def test_paid_plans_meet_the_cost_ratio():
         (p["plan"], p["cost_ratio"]) for p in r["plans"] if not p["ok"]]
 
 
-def test_margin_report_does_not_call_the_free_plan_ok():
-    """무료 요금제는 판매가가 0 이라 비율이 정의되지 않는다.
-    '통과'로 적으면 거짓말이 된다."""
-    free = next(p for p in credits.margin_report()["plans"] if p["plan"] == "free")
-    assert free["ok"] is False
-    assert free["cost_ratio"] is None
-    assert free["note"]
+def test_margin_report_would_not_call_a_zero_price_plan_ok():
+    """판매가 0 인 요금제는 비율이 정의되지 않는다. '통과'로 적으면
+    거짓말이 된다. 지금은 그런 요금제가 없지만, 다시 생기면 이 규칙이
+    살아 있어야 한다 — 검사 자체를 지우면 다음에 조용히 통과한다."""
+    import copy
+    saved = copy.deepcopy(config.PLANS)
+    config.PLANS["gift"] = {"label": "선물", "price_usd": 0, "credits": 150,
+                            "max_concurrent": 1, "max_project_cost": 1.5,
+                            "source": "platform"}
+    try:
+        row = next(p for p in credits.margin_report()["plans"]
+                   if p["plan"] == "gift")
+        assert row["ok"] is False
+        assert row["cost_ratio"] is None
+        assert row["note"]
+    finally:
+        config.PLANS.clear()
+        config.PLANS.update(saved)
 
 
 def test_margin_report_carries_the_verification_flag():
@@ -201,14 +233,14 @@ def test_margin_report_carries_the_verification_flag():
     assert "prices_verified" in credits.margin_report()
 
 
-def test_free_plan_costs_us_nothing_because_it_never_calls_a_model():
+def test_every_sellable_plan_is_paid():
     """DAY 18 까지 무료 요금제는 월 150 크레딧($1.50)을 **우리 키로** 줬다.
     이메일 인증이 없는 상태에서 그건 스크립트 한 줄에 열린 지갑이다.
-    DAY 19 에 Mock 전용으로 바꿨고, 그러면 최대 손실은 정확히 0 이다."""
+    DAY 19 에 Mock 전용으로 바꿨다가, 같은 날 아예 없앴다 — 결제해야만
+    쓸 수 있다."""
     r = credits.margin_report()
-    free = next(p for p in r["plans"] if p["plan"] == "free")
-    assert free["source"] == "mock", "무료 요금제가 실제 모델을 부른다"
-    assert free["credits"] == 0
+    assert r["plans"], "팔 요금제가 하나도 없다"
+    assert all(p["price_usd"] > 0 for p in r["plans"])
     assert r["free_plan_max_loss_usd"] == 0
 
 
@@ -229,9 +261,16 @@ def test_byok_plan_starts_even_with_zero_credits():
     credits.reserve("byok-user", 5.0)            # 예외가 나면 실패
 
 
-def test_free_plan_starts_even_with_zero_credits():
-    credits.set_plan("free-user", "free")
-    credits.reserve("free-user", 5.0)            # Mock 은 원가가 0 이다
+def test_plan_must_be_chosen_before_anything_starts(monkeypatch):
+    """무료 요금제가 없으므로 계정을 만든 직후에는 아무것도 못 한다.
+    Mock 으로 돌려주지 않는다 — 그건 없앤 무료 요금제를 이름만 바꿔
+    되살리는 것이다."""
+    from app import tenant
+    monkeypatch.setenv("DEPLOY_MODE", "saas")
+    credits.reset()
+    assert credits.wallet("newcomer").plan == "none"
+    with pytest.raises(tenant.NoPlan):
+        tenant.require_runnable("newcomer")
 
 
 def test_paid_plan_still_spends_credits():

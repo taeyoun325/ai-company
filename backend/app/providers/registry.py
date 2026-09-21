@@ -81,7 +81,10 @@ def mode() -> str:
     except Exception:                                          # noqa: BLE001
         p = None
     if p is not None:
-        if p.source == "mock":
+        if p.source in ("mock", "none"):
+            # `none`(요금제 미선택)은 애초에 실행 자체가 거부된다. 여기서도
+            # 막는 이유는 방어를 겹치기 위해서다 — 게이트를 빠뜨린 경로가
+            # 생기면 그 경로가 곧 무료 이용권이 된다.
             return "mock"
         if p.source == "byok":
             return "real"

@@ -61,8 +61,13 @@ export default function OfficePage() {
       setSlug(r.slug);
     } catch (e) {
       setError(
+        // 402 는 두 가지다 — 요금제를 아직 안 골랐거나, 크레딧이 모자라거나.
+        // 서버 문장이 이미 할 일을 말하고 있으면 덧붙이지 않는다. 겹쳐 적으면
+        // "고르세요 — 충전하세요"가 되어 무엇부터 할지가 흐려진다.
         e instanceof ApiError && e.isBudget
-          ? `${e.message} — 요금제 화면에서 충전하거나 요금제를 올리세요.`
+          ? e.message.includes("요금제를 선택")
+            ? e.message
+            : `${e.message} — 요금제 화면에서 충전하거나 요금제를 올리세요.`
           : e instanceof ApiError && e.isBusy
             ? `${e.message} (동시 실행 한도는 비용과 요청 한도를 함께 막는 장치입니다)`
             : e instanceof Error
