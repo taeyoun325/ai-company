@@ -139,6 +139,18 @@ def drop(run_id: str) -> None:
         _runs.pop(run_id, None)
 
 
+def drop_all() -> None:
+    """집계를 통째로 비운다.
+
+    테스트용이다. 집계는 **slug 문자열**을 전역 키로 쓰므로, 같은 이름의
+    프로젝트가 서로 다른 폴더에서 만들어지면(테스트가 매번 임시 폴더를
+    쓰는 경우) 두 프로젝트의 비용이 한 통에 섞인다. 그러면 예산 상한이
+    엉뚱한 곳에서 걸린다.
+    """
+    with _lock:
+        _runs.clear()
+
+
 def push() -> None:
     rid = current()
     if rid is None:

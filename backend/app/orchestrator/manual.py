@@ -18,6 +18,16 @@ AUTO(§10)는 오케스트레이터가 계획부터 검수까지 끝까지 돌�
 라고 말할 수 있다. 다만 직원끼리는 섞지 않는다 — 검증자가 개발자의
 자기 설명을 읽으면 교차검증이 오염된다(§9 와 같은 이유).
 
+## 대화는 파일에 남는다 (DAY 22 에 고침)
+
+그 전까지 대화 이력은 프로세스 메모리에만 있었다. 서버를 다시 켜면
+**진행 중이던 대화가 통째로 사라졌고**, 사용자는 자기가 무슨 지시를
+했는지 다시 떠올려야 했다. 인스턴스를 둘 띄우면 요청마다 다른 기억을
+가진 회사를 만나게 되는 것도 같은 이유다.
+
+이제 프로젝트 폴더 안(`.manual.json`)에 쓴다. 메모리는 사본이고 파일이
+진실이다 — §12 의 규칙을 대화에도 적용한다.
+
 ## 예산은 AUTO 와 같은 상한을 쓴다
 
 MANUAL 이라고 상한이 없으면, 버튼을 스무 번 누르는 것으로 상한을 우회할
@@ -35,6 +45,7 @@ AUTO 는 결제하고 MANUAL 은 공짜인 제품이 되기 때문이다.
 """
 from __future__ import annotations
 
+import json
 import threading
 
 from app import bus, config, tenant, usage
@@ -49,8 +60,8 @@ from app.usage import credits
 MAX_HISTORY = 12          # 직원 한 명당 유지할 메시지 수(user+assistant 합계)
 
 _lock = threading.RLock()
-# (slug, employee_id) -> 메시지 목록
-_history: dict[tuple[str, str], list[Message]] = {}
+# slug -> {직원 id -> 메시지 목록}. **메모리는 사본이고 파일이 진실이다.**
+_history: dict[str, dict[str, list[Message]]] = {}
 # slug -> 지금 이 프로젝트에서 누가 일하는 중인가
 _busy: dict[str, str] = {}
 
@@ -59,28 +70,92 @@ class Busy(RuntimeError):
     """이 프로젝트에서 이미 누군가 일하고 있다."""
 
 
+# 대화 이력이 사는 파일. 프로젝트 폴더 안이다 — 산출물과 같은 자리에
+# 두면 프로젝트를 지울 때 대화도 함께 사라진다(§12: 파일이 진실).
+HISTORY_FILE = ".manual.json"
+
+
+def _history_path(slug: str):
+    return store.dir_of(slug) / HISTORY_FILE
+
+
+def _load_history(slug: str) -> dict[str, list[Message]]:
+    """파일에서 이 프로젝트의 대화를 읽는다.
+
+    읽지 못하면 **빈 대화**로 친다. 여기서 예외를 올리면 파일 하나가
+    깨진 것 때문에 MANUAL 화면 전체가 열리지 않는다 — 그건 대화를
+    잃는 것보다 나쁘다.
+    """
+    try:
+        raw = json.loads(_history_path(slug).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    out: dict[str, list[Message]] = {}
+    for who, msgs in (raw.items() if isinstance(raw, dict) else []):
+        if not isinstance(msgs, list):
+            continue
+        out[who] = [Message(m.get("role", "user"), m.get("content", ""))
+                    for m in msgs if isinstance(m, dict)]
+    return out
+
+
+def _save_history(slug: str, table: dict[str, list[Message]]) -> None:
+    try:
+        _history_path(slug).write_text(
+            json.dumps(
+                {who: [{"role": m.role, "content": m.content} for m in msgs]
+                 for who, msgs in table.items() if msgs},
+                ensure_ascii=False, indent=1),
+            encoding="utf-8")
+    except OSError:
+        # 저장 실패가 지시를 막지는 않는다. 이번 대화는 메모리에 남는다.
+        pass
+
+
+def _table(slug: str) -> dict[str, list[Message]]:
+    """이 프로젝트의 대화표. 메모리에 없으면 파일에서 올린다.
+
+    메모리는 **사본**이다. 서버를 다시 켜면 비어 있고, 그때 파일에서
+    다시 올라온다 — DAY 22 이전에는 그 자리에서 대화가 사라졌다.
+    """
+    table = _history.get(slug)
+    if table is None:
+        table = _load_history(slug)
+        _history[slug] = table
+    return table
+
+
 def history(slug: str, employee_id: str) -> list[Message]:
     with _lock:
-        return list(_history.get((slug, employee_id), []))
+        return list(_table(slug).get(employee_id, []))
 
 
 def clear_history(slug: str, employee_id: str | None = None) -> None:
     with _lock:
+        table = _table(slug)
         if employee_id is None:
-            for key in [k for k in _history if k[0] == slug]:
-                _history.pop(key, None)
+            table.clear()
         else:
-            _history.pop((slug, employee_id), None)
+            table.pop(employee_id, None)
+        _save_history(slug, table)
 
 
 def _remember(slug: str, employee_id: str, user: str, assistant: str) -> None:
     with _lock:
-        msgs = _history.setdefault((slug, employee_id), [])
+        table = _table(slug)
+        msgs = table.setdefault(employee_id, [])
         msgs.append(Message("user", user))
         msgs.append(Message("assistant", assistant))
         # 오래된 것부터 버린다. 무한히 쌓이면 한 번 호출에 컨텍스트 전체를
         # 다시 보내게 되고, 비용이 대화 길이의 제곱으로 자란다.
         del msgs[:-MAX_HISTORY]
+        _save_history(slug, table)
+
+
+def forget_cached_history() -> None:
+    """메모리 사본을 버린다. 테스트와, 파일을 밖에서 고친 경우에 쓴다."""
+    with _lock:
+        _history.clear()
 
 
 def busy_employee(slug: str) -> str | None:

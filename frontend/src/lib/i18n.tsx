@@ -210,11 +210,6 @@ const S = {
     en: "The BYOK plan runs on your own API keys. The provider bills you for the model usage directly, so it costs less here.",
     ja: "自前キープランはご自身の API キーで動きます。モデル料金はプロバイダが直接請求するため、こちらは安くなります。",
   },
-  "plan.starter": { ko: "스타터", en: "Starter", ja: "スターター" },
-  "plan.pro": { ko: "프로", en: "Pro", ja: "プロ" },
-  "plan.business": { ko: "비즈니스", en: "Business", ja: "ビジネス" },
-  "plan.byok": { ko: "자체 키", en: "Bring your own key", ja: "自前キー" },
-  "plan.none": { ko: "요금제 없음", en: "No plan", ja: "プランなし" },
   "plan.perMonth": { ko: "/ 월", en: "/ mo", ja: "/ 月" },
   "plan.credits": { ko: "월 {n} 크레딧", en: "{n} credits / mo", ja: "月 {n} クレジット" },
   "plan.byokCredits": {
@@ -256,6 +251,81 @@ const S = {
     en: "If you have reduced motion turned on (prefers-reduced-motion), nothing on this page moves.",
     ja: "視差効果を減らす設定（prefers-reduced-motion）が有効なら、この画面は動きません。",
   },
+
+  // ── 요금제 화면 (DAY 22) ──────────────────────────────────────
+  "price.myCredits": { ko: "내 크레딧", en: "My credits", ja: "マイクレジット" },
+  "price.planSuffix": { ko: "요금제", en: "plan", ja: "プラン" },
+  "price.pickFirst": {
+    ko: "요금제를 고르면 여기에 잔액이 표시됩니다.",
+    en: "Pick a plan and your balance appears here.",
+    ja: "プランを選ぶと、ここに残高が表示されます。",
+  },
+  "price.byokSpent": {
+    ko: "내 API 키로 나간 금액 · 우리가 청구하지 않습니다",
+    en: "Spent on your own API key · we do not bill this",
+    ja: "自分の API キーで使った金額 · 当社は請求しません",
+  },
+  "price.concurrent": { ko: "동시 실행", en: "Concurrent runs", ja: "同時実行" },
+  "price.perProject": { ko: "프로젝트당 상한", en: "Cap per project", ja: "プロジェクトごとの上限" },
+  "price.left": { ko: "남은 크레딧 · 원가로 {usd}", en: "Credits left · {usd} at cost", ja: "残りクレジット · 原価で {usd}" },
+  "price.granted": { ko: "받은 크레딧", en: "Granted", ja: "付与" },
+  "price.spent": { ko: "쓴 크레딧", en: "Spent", ja: "使用" },
+  "price.noPlan": { ko: "아직 요금제가 없습니다.", en: "You have no plan yet.", ja: "まだプランがありません。" },
+  "price.noPlanBody": {
+    ko: "무료 요금제는 없습니다 — 아래에서 하나를 고르기 전까지 프로젝트를 시작할 수 없습니다.",
+    en: "There is no free plan — you cannot start a project until you pick one below.",
+    ja: "無料プランはありません — 下で選ぶまでプロジェクトを開始できません。",
+  },
+  "price.mockPlan": { ko: "이 요금제는 실제 모델을 부르지 않습니다.", en: "This plan never calls a real model.", ja: "このプランは実際のモデルを呼びません。" },
+  "price.mockPlanBody": {
+    ko: "산출물은 대본이 만든 것이고 AI 의 작업 결과가 아닙니다. 실제로 돌리려면 유료 요금제로 바꾸거나, 자체 키 요금제에서 본인 API 키를 등록하세요.",
+    en: "The output comes from a script, not from a model. To run for real, move to a paid plan or register your own keys on the bring-your-own-key plan.",
+    ja: "成果物は台本が作ったもので、AI の作業結果ではありません。実際に動かすには有料プランに変えるか、自前キープランでご自身のキーを登録してください。",
+  },
+  "price.negative": {
+    ko: "잔액이 마이너스입니다. 초과분은 지워지지 않고 그대로 남습니다 — 다음 달에 그만큼 덜 받습니다.",
+    en: "Your balance is negative. The overage is not wiped — next month grants that much less.",
+    ja: "残高がマイナスです。超過分は消えずに残ります — 翌月はその分だけ少なく付与されます。",
+  },
+  "price.topup": { ko: "크레딧 충전", en: "Top up credits", ja: "クレジットをチャージ" },
+  "price.topupNote": {
+    ko: "결제 연동은 없습니다. 잔액이 실제로 줄고 막히는지 확인하기 위한 데모용 버튼입니다. 충전은 크레딧당 단가가 구독보다 비쌉니다 — 많이 쓰면 요금제를 올리는 편이 쌉니다.",
+    en: "Payments are not wired up. These buttons exist to show that the balance really drops and really blocks you. Top-ups cost more per credit than a subscription — if you use a lot, moving up a plan is cheaper.",
+    ja: "決済連携はありません。残高が実際に減り実際に止まることを確認するためのデモ用ボタンです。チャージはクレジット単価が定期より高くなります — たくさん使うならプランを上げる方が安いです。",
+  },
+  "price.noTopup": {
+    ko: "이 요금제는 크레딧을 쓰지 않습니다 — 충전할 것도 없습니다.",
+    en: "This plan does not use credits — there is nothing to top up.",
+    ja: "このプランはクレジットを使いません — チャージするものもありません。",
+  },
+  "price.creditWorth": { ko: "1 크레딧 = 원가 {usd}", en: "1 credit = {usd} at cost", ja: "1 クレジット = 原価 {usd}" },
+  "price.verifiedOn": { ko: " · 단가 대조일 {date}", en: " · prices checked {date}", ja: " · 単価照合日 {date}" },
+  "price.unverified": { ko: "단가가 검증되지 않았습니다.", en: "Prices are not verified.", ja: "単価が検証されていません。" },
+  "price.unverifiedBody": { ko: "잔액과 비용은 추측입니다.", en: "The balance and costs are guesses.", ja: "残高とコストは推測です。" },
+  "price.inUse": { ko: "사용 중", en: "in use", ja: "使用中" },
+  "price.free": { ko: "무료", en: "Free", ja: "無料" },
+  "price.current": { ko: "현재 요금제", en: "Current plan", ja: "現在のプラン" },
+  "price.choose": { ko: "이 요금제로", en: "Choose this", ja: "このプランにする" },
+  "price.maxPerProject": { ko: "프로젝트당 최대 {usd}", en: "Up to {usd} per project", ja: "プロジェクトごとに最大 {usd}" },
+  "price.byokFirst": {
+    ko: "바꾸기 전에 설정 화면에서 본인 API 키를 먼저 등록하세요. 키가 없으면 실행이 거부됩니다 — 운영자 키로 대신 부르지 않습니다.",
+    en: "Register your own API keys in settings before switching. Without them runs are refused — we never fall back to the operator's keys.",
+    ja: "切り替える前に設定でご自身の API キーを登録してください。キーがないと実行は拒否されます — 運営者のキーで代わりに呼ぶことはありません。",
+  },
+  "price.estimate": { ko: "프로젝트당 크레딧은 추정입니다.", en: "Credits per project are an estimate.", ja: "プロジェクトごとのクレジットは推定です。" },
+  "price.estimateBody": {
+    ko: "아직 실제 모델로 프로젝트를 완주해본 적이 없습니다 — 실측 후 요금제가 조정될 수 있습니다.",
+    en: "No project has been run end-to-end on a real model yet — the plans may change once we measure.",
+    ja: "まだ実際のモデルでプロジェクトを完走したことがありません — 実測後にプランが調整される可能性があります。",
+  },
+  "price.noRealCalls": { ko: "실제 모델을 부르지 않습니다", en: "never calls a real model", ja: "実際のモデルを呼びません" },
+  "price.byokBilling": { ko: "모델 요금은 {strong} 결제", en: "Model usage billed {strong}", ja: "モデル料金は{strong}決済" },
+  "price.byokBilling.strong": { ko: "내 API 키로 직접", en: "to your own API key", ja: "自分の API キーで直接" },
+  "price.creditsPerMonth": { ko: "월 {n} 크레딧", en: "{n} credits / mo", ja: "月 {n} クレジット" },
+  "price.perMonthEst": { ko: "월 {a}~{b}건 (추정)", en: "about {a}–{b} projects / mo", ja: "月 {a}〜{b} 件（推定）" },
+  "price.perMonthMax": { ko: "월 최대 {n}건 (추정)", en: "up to {n} projects / mo", ja: "月 最大 {n} 件（推定）" },
+  "price.perMonthAbout": { ko: "월 {n}건 남짓 (추정)", en: "about {n} projects / mo", ja: "月 {n} 件ほど（推定）" },
+  "price.lessThanOne": { ko: "프로젝트 1건도 안 될 수 있음", en: "possibly less than one project", ja: "プロジェクト 1 件に満たない可能性" },
 
   // ── 실행 중 화면 (DAY 22) ─────────────────────────────────────
   "run.mockWarn": { ko: "지금은 Mock 직원이 일합니다.", en: "Mock employees are working right now.", ja: "今は Mock 社員が働いています。" },
@@ -684,10 +754,6 @@ export function useLang(): Ctx {
   return ctx;
 }
 
-/** 요금제 키 → 번역된 이름. 표에 없으면 서버가 보낸 이름을 쓴다. */
-export function planName(
-  t: Ctx["t"], key: string, fallback: string,
-): string {
-  const id = `plan.${key}` as Key;
-  return id in S ? t(id) : fallback;
-}
+// 요금제 이름은 **서버가 언어에 맞춰 보낸다**(backend/app/usage/credits.py
+// 의 `localized()`). 화면에도 같은 표를 두면 값이 두 곳에 살게 되고,
+// 요금제를 하나 추가할 때 두 곳을 고쳐야 한다. 여기에는 두지 않는다.

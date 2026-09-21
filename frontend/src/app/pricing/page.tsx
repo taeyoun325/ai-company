@@ -28,6 +28,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, ErrorBox, MockBadge, Panel, Screen, Warning, money }
   from "@/components/ui";
 import { api } from "@/lib/api";
+import { useLang, type Key } from "@/lib/i18n";
 import type { PlanRow } from "@/lib/types";
 import { T, revealFrom, stagger, withScope } from "@/lib/motion";
 import { useLoader } from "@/lib/useLoader";
@@ -41,34 +42,43 @@ import { useLoader } from "@/lib/useLoader";
  */
 const PER_PROJECT = { low: 100, high: 500 };
 
-function projectsPerMonth(credits: number): string {
+function projectsPerMonth(
+  credits: number, t: (k: Key, v?: Record<string, string | number>) => string,
+): string {
   if (credits <= 0) return "";
   const most = Math.floor(credits / PER_PROJECT.low);
   const least = Math.floor(credits / PER_PROJECT.high);
-  if (most < 1) return "프로젝트 1건도 안 될 수 있음";
-  if (least < 1) return `월 최대 ${most}건 (추정)`;
+  if (most < 1) return t("price.lessThanOne");
+  if (least < 1) return t("price.perMonthMax", { n: most });
   return least === most
-    ? `월 ${most}건 남짓 (추정)`
-    : `월 ${least}~${most}건 (추정)`;
+    ? t("price.perMonthAbout", { n: most })
+    : t("price.perMonthEst", { a: least, b: most });
 }
 
 function SourceNote({ plan }: { plan: PlanRow }) {
+  const { t } = useLang();
   if (plan.source === "mock")
     return (
       <li className="flex items-center gap-1.5">
-        <MockBadge /> 실제 모델을 부르지 않습니다
+        <MockBadge /> {t("price.noRealCalls")}
       </li>
     );
   if (plan.source === "byok")
     return (
       <li>
-        모델 요금은 <strong>내 API 키로 직접</strong> 결제
+        <Filled
+          text={t("price.byokBilling")}
+          strong={t("price.byokBilling.strong")}
+        />
       </li>
     );
-  return <li>월 {plan.credits.toLocaleString()} 크레딧</li>;
+  return (
+    <li>{t("price.creditsPerMonth", { n: plan.credits.toLocaleString() })}</li>
+  );
 }
 
 export default function PricingPage() {
+  const { t } = useLang();
   const { data, error, reload } = useLoader("pricing", async () => {
     const [plans, credits] = await Promise.all([api.plans(), api.credits()]);
     return { plans, credits };
@@ -114,20 +124,22 @@ export default function PricingPage() {
 
       {wallet && !wallet.prices_verified && (
         <Warning>
-          <strong>단가가 검증되지 않았습니다.</strong> 잔액과 비용은 추측입니다.
+          <strong>{t("price.unverified")}</strong> {t("price.unverifiedBody")}
         </Warning>
       )}
 
       {wallet && (
         <Panel
-          title="내 크레딧"
+          title={t("price.myCredits")}
           right={
-            <span className="text-xs text-dim">{wallet.plan_label} 요금제</span>
+            <span className="text-xs text-dim">
+              {wallet.plan_label} {t("price.planSuffix")}
+            </span>
           }
         >
           {wallet.source === "none" ? (
             <p className="text-sm text-muted">
-              요금제를 고르면 여기에 잔액이 표시됩니다.
+              {t("price.pickFirst")}
             </p>
           ) : wallet.source === "byok" ? (
             <div className="flex flex-wrap items-end gap-6">
@@ -136,13 +148,13 @@ export default function PricingPage() {
                   {money(wallet.byok_usd)}
                 </p>
                 <p className="text-[11px] text-dim">
-                  내 API 키로 나간 금액 · 우리가 청구하지 않습니다
+                  {t("price.byokSpent")}
                 </p>
               </div>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
-                <dt className="text-dim">동시 실행</dt>
-                <dd>{wallet.max_concurrent}건</dd>
-                <dt className="text-dim">프로젝트당 상한</dt>
+                <dt className="text-dim">{t("price.concurrent")}</dt>
+                <dd>{wallet.max_concurrent}</dd>
+                <dt className="text-dim">{t("price.perProject")}</dt>
                 <dd>{money(wallet.max_project_cost)}</dd>
               </dl>
             </div>
@@ -153,17 +165,17 @@ export default function PricingPage() {
                   {wallet.balance.toFixed(1)}
                 </p>
                 <p className="text-[11px] text-dim">
-                  남은 크레딧 · 원가로 {money(wallet.balance_usd)}
+                  {t("price.left", { usd: money(wallet.balance_usd) })}
                 </p>
               </div>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
-                <dt className="text-dim">받은 크레딧</dt>
+                <dt className="text-dim">{t("price.granted")}</dt>
                 <dd className="tabular-nums">{wallet.granted.toFixed(0)}</dd>
-                <dt className="text-dim">쓴 크레딧</dt>
+                <dt className="text-dim">{t("price.spent")}</dt>
                 <dd className="tabular-nums">{wallet.spent.toFixed(1)}</dd>
-                <dt className="text-dim">동시 실행</dt>
-                <dd>{wallet.max_concurrent}건</dd>
-                <dt className="text-dim">프로젝트당 상한</dt>
+                <dt className="text-dim">{t("price.concurrent")}</dt>
+                <dd>{wallet.max_concurrent}</dd>
+                <dt className="text-dim">{t("price.perProject")}</dt>
                 <dd>{money(wallet.max_project_cost)}</dd>
               </dl>
             </div>
@@ -171,8 +183,7 @@ export default function PricingPage() {
 
           {wallet.source === "none" && (
             <p className="mt-3 text-sm text-muted">
-              <strong>아직 요금제가 없습니다.</strong> 무료 요금제는 없습니다 —
-              아래에서 하나를 고르기 전까지 프로젝트를 시작할 수 없습니다.
+              <strong>{t("price.noPlan")}</strong> {t("price.noPlanBody")}
             </p>
           )}
 
@@ -180,24 +191,20 @@ export default function PricingPage() {
             <p className="mt-3 flex items-center gap-2 text-sm">
               <MockBadge />
               <span className="text-muted">
-                이 요금제는 <strong>실제 모델을 부르지 않습니다.</strong> 산출물은
-                대본이 만든 것이고 AI 의 작업 결과가 아닙니다. 실제로 돌리려면
-                유료 요금제로 바꾸거나, 자체 키 요금제에서 본인 API 키를
-                등록하세요.
+                <strong>{t("price.mockPlan")}</strong> {t("price.mockPlanBody")}
               </span>
             </p>
           )}
 
           {wallet.balance < 0 && (
             <p className="mt-3 text-sm" style={{ color: "var(--bad)" }}>
-              잔액이 마이너스입니다. 초과분은 지워지지 않고 그대로 남습니다 —
-              다음 달에 그만큼 덜 받습니다.
+              {t("price.negative")}
             </p>
           )}
 
           {wallet.charges_credits ? (
             <div className="mt-4 border-t border-line pt-3">
-              <p className="text-xs text-muted">크레딧 충전</p>
+              <p className="text-xs text-muted">{t("price.topup")}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {Object.entries(topups).map(([name, t]) => (
                   <Button
@@ -210,21 +217,19 @@ export default function PricingPage() {
                 ))}
               </div>
               <p className="mt-2 text-[11px] text-dim">
-                결제 연동은 없습니다. 잔액이 실제로 줄고 막히는지 확인하기 위한
-                데모용 버튼입니다. 충전은 크레딧당 단가가 구독보다 비쌉니다 —
-                많이 쓰면 요금제를 올리는 편이 쌉니다.
+                {t("price.topupNote")}
               </p>
             </div>
           ) : wallet.source === "none" ? null : (
             <p className="mt-4 border-t border-line pt-3 text-[11px] text-dim">
-              이 요금제는 크레딧을 쓰지 않습니다 — 충전할 것도 없습니다.
+              {t("price.noTopup")}
             </p>
           )}
 
           <p className="mt-2 text-[11px] text-dim">
-            1 크레딧 = 원가 {money(wallet.credit_usd)}
+            {t("price.creditWorth", { usd: money(wallet.credit_usd) })}
             {wallet.prices_verified_on &&
-              ` · 단가 대조일 ${wallet.prices_verified_on}`}
+              t("price.verifiedOn", { date: wallet.prices_verified_on })}
           </p>
         </Panel>
       )}
@@ -232,7 +237,7 @@ export default function PricingPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {Object.entries(plans).map(([name, p]) => {
           const current = wallet?.plan === name;
-          const per = projectsPerMonth(p.credits);
+          const per = projectsPerMonth(p.credits, t);
           return (
             <Panel
               key={name}
@@ -244,21 +249,21 @@ export default function PricingPage() {
               right={
                 current && (
                   <span className="text-[11px]" style={{ color: "var(--accent)" }}>
-                    사용 중
+                    {t("price.inUse")}
                   </span>
                 )
               }
             >
               <p className="text-2xl font-bold tabular-nums">
-                {p.price_usd === 0 ? "무료" : `$${p.price_usd}`}
+                {p.price_usd === 0 ? t("price.free") : `$${p.price_usd}`}
                 {p.price_usd > 0 && (
                   <span className="text-xs font-normal text-dim"> / 월</span>
                 )}
               </p>
               <ul className="mt-3 space-y-1 text-xs text-muted">
                 <SourceNote plan={p} />
-                <li>동시 실행 {p.max_concurrent}건</li>
-                <li>프로젝트당 최대 {money(p.max_project_cost)}</li>
+                <li>{t("plan.concurrent", { n: p.max_concurrent })}</li>
+                <li>{t("price.maxPerProject", { usd: money(p.max_project_cost) })}</li>
                 {per && <li className="text-dim">{per}</li>}
               </ul>
               {p.blurb && <p className="mt-2 text-[11px] text-dim">{p.blurb}</p>}
@@ -268,12 +273,11 @@ export default function PricingPage() {
                 disabled={busy || current}
                 onClick={() => void act(() => api.changePlan(name))}
               >
-                {current ? "현재 요금제" : "이 요금제로"}
+                {current ? t("price.current") : t("price.choose")}
               </Button>
               {p.source === "byok" && !current && (
                 <p className="mt-2 text-[11px] text-dim">
-                  바꾸기 전에 설정 화면에서 본인 API 키를 먼저 등록하세요. 키가
-                  없으면 실행이 거부됩니다 — 운영자 키로 대신 부르지 않습니다.
+                  {t("price.byokFirst")}
                 </p>
               )}
             </Panel>
@@ -282,10 +286,21 @@ export default function PricingPage() {
       </div>
 
       <p className="text-[11px] text-dim">
-        프로젝트당 크레딧은 <strong>추정</strong>입니다. 아직 실제 모델로
-        프로젝트를 완주해본 적이 없습니다 — 실측 후 요금제가 조정될 수 있습니다.
+        <strong>{t("price.estimate")}</strong> {t("price.estimateBody")}
       </p>
     </div>
     </Screen>
+  );
+}
+
+/** `{strong}` 자리에 굵은 조각을 끼운다. 번역문마다 위치가 다르다. */
+function Filled({ text, strong }: { text: string; strong: string }) {
+  const [before, after = ""] = text.split("{strong}");
+  return (
+    <>
+      {before}
+      <strong className="text-fg">{strong}</strong>
+      {after}
+    </>
   );
 }

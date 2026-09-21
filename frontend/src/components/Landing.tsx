@@ -33,7 +33,7 @@ import { PipelineFigure } from "./PipelineFigure";
 import { Icon, iconOfAgent } from "./icons";
 import { Button, Panel } from "./ui";
 import { api } from "@/lib/api";
-import { planName, useLang } from "@/lib/i18n";
+import { useLang } from "@/lib/i18n";
 import { T, animate, onScroll, revealFrom, stagger, withScope }
   from "@/lib/motion";
 import type { PlanRow } from "@/lib/types";
@@ -249,7 +249,7 @@ export function Landing({ children }: { children: ReactNode }) {
                 data-reveal
               >
                 <p className="text-xs text-dim">
-                  {planName(t, name, p.label)}
+                  {p.label}
                 </p>
                 <p className="mt-1 text-2xl font-bold tabular-nums">
                   ${p.price_usd}

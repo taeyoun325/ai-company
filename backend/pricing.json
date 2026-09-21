@@ -50,20 +50,20 @@
   "_무료요금제_없음": "DAY 19 에 무료 요금제를 뒀다가 같은 날 없앴다. Mock 전용 무료는 우리 돈이 나가지는 않지만, 가입한 사람이 받는 것이 '대본이 지어낸 산출물'이다. 그건 체험이 아니라 오해를 파는 것이고, 오해는 결제 직후에 깨진다. 데모는 로그인 이전(랜딩)에서 보여주고, 계정을 만든 사람에게는 진짜만 준다. 요금제를 고르기 전의 계정은 아래 none 상태이며 아무것도 시작할 수 없다 — 그 사실을 화면이 분명히 말한다.",
   "_로컬": "로컬(DEPLOY_MODE=local)에서 이 프로그램을 돌리는 사람은 고객이 아니라 **운영자 자신**이다. 자기 키로 자기 컴퓨터에서 돌리는데 무료 요금제가 Mock 을 강제하면, 요금제가 제품을 막는 꼴이 된다. 그래서 로컬의 기본 요금제는 이것이고, hidden 이라 요금제 화면에서 고를 수 없으며 마진 검사(§17)에서도 빠진다 — 팔지 않는 것을 팔리는 것과 같은 자로 재면 숫자가 거짓말을 한다.",
   "plans": {
-    "local":    { "label": "로컬(개발)", "price_usd": 0, "credits": 100000, "max_concurrent": 3, "max_project_cost": 5.0, "source": "platform", "hidden": true },
-    "none":     { "label": "요금제 없음", "price_usd": 0, "credits": 0,  "max_concurrent": 0, "max_project_cost": 0,    "source": "none", "hidden": true },
-    "starter":  { "label": "스타터",   "price_usd": 29, "credits": 500,  "max_concurrent": 2, "max_project_cost": 3.0,  "source": "platform" },
-    "pro":      { "label": "프로",     "price_usd": 49, "credits": 1300, "max_concurrent": 3, "max_project_cost": 5.0,  "source": "platform" },
-    "business": { "label": "비즈니스", "price_usd": 79, "credits": 2700, "max_concurrent": 5, "max_project_cost": 10.0, "source": "platform" },
-    "byok":     { "label": "자체 키",  "price_usd": 29, "credits": 0,    "max_concurrent": 3, "max_project_cost": 5.0,  "source": "byok",
-                  "blurb": "본인 API 키로 돌립니다. 모델 요금은 제공자가 직접 청구하고, 우리는 오케스트레이션만 받습니다.",
+    "local":    { "label": "로컬(개발)", "label_en": "Local (dev)", "label_ja": "ローカル（開発）", "price_usd": 0, "credits": 100000, "max_concurrent": 3, "max_project_cost": 5.0, "source": "platform", "hidden": true },
+    "none":     { "label": "요금제 없음", "label_en": "No plan", "label_ja": "プランなし", "price_usd": 0, "credits": 0,  "max_concurrent": 0, "max_project_cost": 0,    "source": "none", "hidden": true },
+    "starter":  { "label": "스타터", "label_en": "Starter", "label_ja": "スターター",   "price_usd": 29, "credits": 500,  "max_concurrent": 2, "max_project_cost": 3.0,  "source": "platform" },
+    "pro":      { "label": "프로", "label_en": "Pro", "label_ja": "プロ",     "price_usd": 49, "credits": 1300, "max_concurrent": 3, "max_project_cost": 5.0,  "source": "platform" },
+    "business": { "label": "비즈니스", "label_en": "Business", "label_ja": "ビジネス", "price_usd": 79, "credits": 2700, "max_concurrent": 5, "max_project_cost": 10.0, "source": "platform" },
+    "byok":     { "label": "자체 키", "label_en": "Bring your own key", "label_ja": "自前キー",  "price_usd": 29, "credits": 0,    "max_concurrent": 3, "max_project_cost": 5.0,  "source": "byok",
+                  "blurb": "본인 API 키로 돌립니다. 모델 요금은 제공자가 직접 청구하고, 우리는 오케스트레이션만 받습니다.", "blurb_en": "Runs on your own API keys. The provider bills you for model usage directly; we charge only for the orchestration.", "blurb_ja": "ご自身の API キーで動きます。モデル料金はプロバイダが直接請求し、当社はオーケストレーションのみを受け取ります。",
                   "_why": "모델 원가 리스크가 0 이라 싸게 줄 수 있다. max_project_cost 는 그래도 남긴다 — 고객의 돈도 폭주하면 안 된다." }
   },
 
   "_충전": "충전 크레딧당 단가는 **구독보다 항상 비싸야 한다**. 싸지면 구독할 이유가 사라지고, 가장 무거운 사용자만 충전으로 남는다. 이 불변식은 test_credits.py 가 검사한다.",
   "topups": {
-    "small":  { "label": "150 크레딧",   "credits": 150,  "price_usd": 6 },
-    "medium": { "label": "400 크레딧",   "credits": 400,  "price_usd": 15 },
-    "large":  { "label": "1,000 크레딧", "credits": 1000, "price_usd": 35 }
+    "small":  { "label": "150 크레딧", "label_en": "150 credits", "label_ja": "150 クレジット",   "credits": 150,  "price_usd": 6 },
+    "medium": { "label": "400 크레딧", "label_en": "400 credits", "label_ja": "400 クレジット",   "credits": 400,  "price_usd": 15 },
+    "large":  { "label": "1,000 크레딧", "label_en": "1,000 credits", "label_ja": "1,000 クレジット", "credits": 1000, "price_usd": 35 }
   }
 }

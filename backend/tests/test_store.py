@@ -268,3 +268,14 @@ def test_partially_emptied_index_is_refilled_from_disk(tmp_path, monkeypatch):
     slugs = {p["slug"] for p in index.search()["projects"]}
     assert lost in slugs, "디스크에 있는데 목록에서 사라졌다"
     assert kept in slugs
+
+
+def test_two_projects_in_the_same_second_do_not_collide(tmp_path, monkeypatch):
+    """slug 는 `시각-요구사항` 이라 1초 안에 같은 문장으로 두 번 시작하면
+    같은 이름이 된다. 둘째가 첫째의 폴더에 겹쳐 쓰면, 사용자는 프로젝트
+    하나를 잃었다는 사실조차 모른다."""
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    a = store.new_project("계산기를 만들어주세요")
+    b = store.new_project("계산기를 만들어주세요")
+    assert a != b
+    assert store.exists(a) and store.exists(b)

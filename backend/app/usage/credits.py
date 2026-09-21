@@ -81,8 +81,30 @@ def plans() -> dict:
     없이 실제 키를 태우면 우리 돈이 나간다"), 고객이 읽을 문장이 아니다.
     고객에게 보일 한 줄은 `blurb` 에 따로 있다.
     """
-    return {n: {k: v for k, v in p.items() if not k.startswith("_")}
-            for n, p in config.PLANS.items() if not p.get("hidden")}
+    return {n: localized(p) for n, p in config.PLANS.items()
+            if not p.get("hidden")}
+
+
+def localized(row: dict) -> dict:
+    """요금제 한 줄을 **이 요청의 언어로** 고른다 (DAY 22).
+
+    이름과 설명은 서버가 가진 값이라 화면이 번역할 수 없다. 화면에
+    `plan.starter` 같은 표를 또 두면 값이 두 곳에 살게 되고, 요금제를
+    하나 추가할 때 두 곳을 고쳐야 한다. 서버는 이미 언어를 알고 있으니
+    (`Accept-Language` → app/lang.py) 여기서 고른다.
+
+    `_` 로 시작하는 항목은 뺀다. 그건 우리끼리 적어둔 근거이고
+    (예: "결제 없이 실제 키를 태우면 우리 돈이 나간다") 고객이 읽을
+    문장이 아니다.
+    """
+    from app import lang
+    code = lang.current()
+    out = {}
+    for key, value in row.items():
+        if key.startswith("_") or key.endswith(("_en", "_ja")):
+            continue
+        out[key] = row.get(f"{key}_{code}", value) if code != "ko" else value
+    return out
 
 
 def all_plans() -> dict:
@@ -108,7 +130,7 @@ def default_plan() -> str:
 def topups() -> dict:
     """충전 묶음 (DAY 19). 크레딧당 단가는 구독보다 **항상 비싸다** —
     싸지면 구독할 이유가 사라지고 무거운 사용자만 충전으로 남는다."""
-    return dict(config.TOPUPS)
+    return {n: localized(t) for n, t in config.TOPUPS.items()}
 
 
 def source_of(plan_name: str) -> str:
@@ -239,7 +261,7 @@ def refund(owner: str, credits: float) -> float:
 
 def status(owner: str = "local") -> dict:
     w = wallet(owner)
-    p = plan(w.plan)
+    p = localized(plan(w.plan))
     return {
         "owner": w.owner,
         "plan": w.plan,

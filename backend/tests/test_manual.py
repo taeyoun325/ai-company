@@ -33,7 +33,14 @@ def _isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
     monkeypatch.setattr(config, "LOGS", tmp_path / "logs")
     registry.reset()
+    # 집계는 slug 문자열을 전역 키로 쓴다. 테스트마다 임시 폴더가 달라도
+    # 같은 초에 같은 요구사항이면 slug 가 같아서, 앞 테스트의 비용이
+    # 이번 테스트의 예산 상한에 걸린다.
+    usage.drop_all()
+    manual.forget_cached_history()
     yield
+    usage.drop_all()
+    manual.forget_cached_history()
     registry.reset()
 
 
@@ -265,3 +272,47 @@ def test_manual_is_refused_when_credits_run_out(slug, wallet):
     with pytest.raises(credits.InsufficientCredits):
         with manual._Session(slug, "developer", "ceo"):
             pass
+
+
+# ── 대화는 파일에 남는다 (§12 · DAY 22) ────────────────────────────
+def test_history_survives_a_restart(slug):
+    """그 전까지 대화는 프로세스 메모리에만 있었다. 서버를 다시 켜면
+    진행 중이던 대화가 통째로 사라졌고, 사용자는 자기가 무슨 지시를
+    했는지 다시 떠올려야 했다."""
+    manual.instruct(slug, "developer", "더하기를 만들어주세요")
+    before = manual.history(slug, "developer")
+    assert before, "대화가 기록되지 않았다"
+
+    manual.forget_cached_history()          # 프로세스가 죽었다 살아난 셈
+    after = manual.history(slug, "developer")
+    assert [m.content for m in after] == [m.content for m in before]
+
+
+def test_history_file_lives_with_the_project(slug):
+    """산출물과 같은 자리에 둔다 — 프로젝트를 지우면 대화도 함께 사라진다."""
+    manual.instruct(slug, "developer", "더하기를 만들어주세요")
+    assert (store.dir_of(slug) / manual.HISTORY_FILE).exists()
+
+
+def test_broken_history_file_does_not_break_the_screen(slug):
+    """파일 하나가 깨진 것 때문에 MANUAL 화면 전체가 열리지 않으면,
+    그건 대화를 잃는 것보다 나쁘다."""
+    manual.instruct(slug, "developer", "더하기를 만들어주세요")
+    (store.dir_of(slug) / manual.HISTORY_FILE).write_text("{깨진", encoding="utf-8")
+    manual.forget_cached_history()
+    assert manual.history(slug, "developer") == []
+
+
+def test_clearing_history_also_clears_the_file(slug):
+    manual.instruct(slug, "developer", "더하기를 만들어주세요")
+    manual.clear_history(slug, "developer")
+    manual.forget_cached_history()
+    assert manual.history(slug, "developer") == []
+
+
+def test_two_employees_keep_separate_conversations(slug):
+    """검증자가 개발자의 자기 설명을 읽으면 교차검증이 오염된다(§9)."""
+    manual.instruct(slug, "developer", "더하기를 만들어주세요")
+    manual.forget_cached_history()
+    assert manual.history(slug, "analyst") == []
+    assert manual.history(slug, "developer")

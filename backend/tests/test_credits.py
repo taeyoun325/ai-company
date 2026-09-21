@@ -322,3 +322,31 @@ def test_status_exposes_what_the_screen_needs():
     for field in ("balance", "plan", "plan_label", "credit_usd", "balance_usd",
                   "max_concurrent", "max_project_cost", "prices_verified"):
         assert field in st, f"{field} 가 없으면 화면이 잔액을 설명할 수 없다"
+
+
+# ── 요금제 이름은 서버가 언어에 맞춰 보낸다 (DAY 22) ───────────────
+def test_plan_labels_follow_the_request_language():
+    """이름과 설명은 서버가 가진 값이라 화면이 번역할 수 없다. 화면에
+    같은 표를 또 두면 값이 두 곳에 살게 되고, 요금제를 하나 추가할 때
+    두 곳을 고쳐야 한다."""
+    from app import lang
+    with lang.bind("en"):
+        assert credits.plans()["pro"]["label"] == "Pro"
+    with lang.bind("ja"):
+        assert credits.plans()["pro"]["label"] == "プロ"
+    with lang.bind("ko"):
+        assert credits.plans()["pro"]["label"] == "프로"
+
+
+def test_language_variants_do_not_leak_to_the_screen():
+    """`label_en` 같은 원본이 그대로 나가면 화면이 그걸 보여줄 수도 있고,
+    무엇보다 한 요금제가 세 개의 이름을 가진 것처럼 보인다."""
+    for row in credits.plans().values():
+        assert not any(k.endswith(("_en", "_ja")) for k in row)
+    for row in credits.topups().values():
+        assert not any(k.endswith(("_en", "_ja")) for k in row)
+
+
+def test_internal_notes_never_reach_the_screen():
+    for row in credits.plans().values():
+        assert not any(k.startswith("_") for k in row)

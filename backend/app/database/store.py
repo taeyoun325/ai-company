@@ -35,8 +35,26 @@ def _slug(text: str) -> str:
 
 
 def new_project(requirement: str, owner: str = "local") -> str:
+    """새 프로젝트 폴더를 만들고 slug 를 돌려준다.
+
+    ## 같은 초에 같은 요구사항이 들어오면
+
+    slug 는 `시각-요구사항` 이라 **1초 안에 같은 문장으로 두 번 시작하면
+    같은 이름**이 된다. 그러면 둘째가 첫째의 폴더에 겹쳐 쓰고, 첫째의
+    메타데이터와 대화 이력이 조용히 덮인다. 사용자는 프로젝트 하나를
+    잃었다는 사실조차 모른다.
+
+    드물어 보이지만 실제로 난다 — 화면에서 버튼을 두 번 누르거나,
+    같은 문장으로 다시 시작할 때. 비어 있는 이름을 찾을 때까지 뒤에
+    번호를 붙인다.
+    """
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    slug = f"{stamp}-{_slug(requirement)}"
+    base = f"{stamp}-{_slug(requirement)}"
+    slug = base
+    n = 2
+    while exists(slug):
+        slug = f"{base}-{n}"
+        n += 1
     d = config.PROJECTS / slug
     for area in AREAS:
         (d / area).mkdir(parents=True, exist_ok=True)
