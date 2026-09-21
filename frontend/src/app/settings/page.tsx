@@ -23,7 +23,8 @@
 import { useState } from "react";
 
 import { ByokPanel } from "@/components/ByokPanel";
-import { Button, ErrorBox, MockBadge, Panel, Warning } from "@/components/ui";
+import { Button, ErrorBox, MockBadge, Panel, Screen, Warning }
+  from "@/components/ui";
 import { api } from "@/lib/api";
 import type { ByokStatus, Employee, ProviderStatus, Settings } from "@/lib/types";
 import { useLoader } from "@/lib/useLoader";
@@ -99,6 +100,7 @@ export default function SettingsPage() {
   };
 
   return (
+    <Screen>
     <div className="space-y-4">
       {(error || loadError) && <ErrorBox>{error ?? loadError}</ErrorBox>}
 
@@ -243,5 +245,6 @@ export default function SettingsPage() {
         </ul>
       </Panel>
     </div>
+    </Screen>
   );
 }

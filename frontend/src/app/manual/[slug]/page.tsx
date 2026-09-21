@@ -17,7 +17,9 @@ import { use, useState } from "react";
 import { ChatLog } from "@/components/ChatLog";
 import { FileViewer } from "@/components/FileViewer";
 import { Office } from "@/components/Office";
-import { Button, ErrorBox, Panel, Warning } from "@/components/ui";
+import {
+  Button, ErrorBox, Panel, Screen, Warning,
+} from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import type { Employee, Verdict } from "@/lib/types";
 import { useLoader } from "@/lib/useLoader";
@@ -85,6 +87,7 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
   };
 
   return (
+    <Screen>
     <div className="space-y-4">
       {allMock && (
         <Warning>
@@ -184,5 +187,6 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
         </Panel>
       </div>
     </div>
+    </Screen>
   );
 }

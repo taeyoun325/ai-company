@@ -32,7 +32,8 @@ import type { ReactNode } from "react";
 
 export type IconName =
   | "strategist" | "developer" | "analyst" | "writer" | "designer"
-  | "building" | "req" | "verify" | "package" | "person" | "system";
+  | "building" | "req" | "verify" | "package" | "person" | "system"
+  | "plus" | "play" | "stop";
 
 /** 24×24 격자 위의 path 들. 바깥에서 stroke 속성을 걸어준다. */
 const GLYPHS: Record<IconName, ReactNode> = {
@@ -120,6 +121,14 @@ const GLYPHS: Record<IconName, ReactNode> = {
       <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
     </>
   ),
+  plus: (
+    <>
+      <line x1="12" y1="5.5" x2="12" y2="18.5" />
+      <line x1="5.5" y1="12" x2="18.5" y2="12" />
+    </>
+  ),
+  play: <path d="M8 5.5 18.5 12 8 18.5Z" />,
+  stop: <rect x="6.5" y="6.5" width="11" height="11" rx="2" />,
   // 톱니 — 시스템이 하는 말. 사람이 한 말과 섞이면 안 된다.
   system: (
     <>

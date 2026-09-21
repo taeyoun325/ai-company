@@ -271,6 +271,38 @@ const S = {
   },
 
   // ── 사무실 ────────────────────────────────────────────────────
+  "office.alt": {
+    ko: "위에서 내려다본 도트 사무실. 자리마다 직원이 앉아 있고, 머리 자리에는 그 직원을 돌리는 AI 제공자의 표식이 있습니다.",
+    en: "A top-down pixel office. Each seat holds an employee, and the head shows the mark of the AI provider that runs them.",
+    ja: "上から見たドットのオフィス。各席に社員が座り、頭の位置にはその社員を動かす AI プロバイダの印があります。",
+  },
+  "office.title": { ko: "사무실", en: "Office", ja: "オフィス" },
+  "office.log": { ko: "작업 로그", en: "Activity log", ja: "作業ログ" },
+  "office.projects": { ko: "프로젝트", en: "Projects", ja: "プロジェクト" },
+  "office.newProject": { ko: "새 프로젝트", en: "New project", ja: "新規プロジェクト" },
+  "office.ask": {
+    ko: "무엇을 만들까요?",
+    en: "What should we build?",
+    ja: "何を作りましょうか？",
+  },
+  "office.placeholder": {
+    ko: "예) 사칙연산을 하는 계산기 모듈과 사용법 문서를 만들어주세요",
+    en: "e.g. Build a calculator module with the four basic operations, plus usage docs",
+    ja: "例）四則演算ができる電卓モジュールと使い方ドキュメントを作ってください",
+  },
+  "office.auto": { ko: "AUTO 로 맡기기", en: "Hand it to AUTO", ja: "AUTO に任せる" },
+  "office.manual": { ko: "직접 지시하기", en: "Direct it myself", ja: "自分で指示する" },
+  "office.whoFirst": { ko: "누가 맡을지 먼저 보기", en: "See who would take it", ja: "誰が担当するか先に見る" },
+  "office.empty": {
+    ko: "아직 프로젝트가 없습니다. 위에 한 줄 적어 시작하세요.",
+    en: "No projects yet. Write one line above to start.",
+    ja: "まだプロジェクトがありません。上に一行書いて始めてください。",
+  },
+  "office.logEmpty": {
+    ko: "작업이 시작되면 여기에 직원들의 대화가 흐릅니다.",
+    en: "Once work starts, the team's messages flow here.",
+    ja: "作業が始まると、ここにチームのやり取りが流れます。",
+  },
   "office.model": { ko: "모델", en: "Model", ja: "モデル" },
   "office.calls": { ko: "호출", en: "Calls", ja: "呼び出し" },
   "office.cost": { ko: "비용", en: "Cost", ja: "コスト" },

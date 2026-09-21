@@ -24,17 +24,36 @@ export function Panel({
 } & Omit<React.HTMLAttributes<HTMLElement>, "title">) {
   return (
     <section
-      className={`rounded-xl border border-line bg-panel ${className}`}
+      className={`glass glass-lit ${className}`}
       {...rest}
     >
       {(title || right) && (
         <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-          <h2 className="text-sm font-semibold">{title}</h2>
+          <h2 className="text-[13px] font-semibold tracking-tight">{title}</h2>
           {right}
         </header>
       )}
       <div className="p-4">{children}</div>
     </section>
+  );
+}
+
+/**
+ * 사무실이 아닌 화면의 바깥 틀 (DAY 22).
+ *
+ * 레이아웃이 창 높이에 고정되면서(`overflow-hidden`) 각 화면이 **자기
+ * 스크롤을 스스로 가져야** 한다. 화면마다 따로 적으면 하나를 빠뜨렸을 때
+ * 그 화면만 스크롤이 안 되고, 그건 내용이 없는 것처럼 보인다.
+ */
+export function Screen({
+  children, wide = false,
+}: { children: ReactNode; wide?: boolean }) {
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className={`mx-auto px-4 py-5 ${wide ? "max-w-7xl" : "max-w-5xl"}`}>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -55,9 +74,14 @@ export function Button({
   className?: string;
   title?: string;
 }) {
+  // 유리 위에 올라가는 버튼이라 테두리와 배경이 둘 다 반투명이다.
+  // 강조 버튼만 불투명한 그라데이션을 쓴다 — 누를 것이 하나라는 뜻이고,
+  // 한 화면에 그런 버튼이 둘이면 둘 다 안 눌린다.
   const tones: Record<string, string> = {
-    default: "border-line bg-panel2 hover:border-dim",
-    primary: "border-transparent bg-accent text-white hover:brightness-110",
+    default:
+      "border-line bg-panel2 hover:border-[color:var(--line-strong)] backdrop-blur",
+    primary:
+      "grad-accent border-transparent text-white shadow-[0_4px_16px_rgba(109,141,255,0.35)] hover:brightness-110",
     danger: "border-transparent bg-bad text-white hover:brightness-110",
     ghost: "border-transparent bg-transparent text-muted hover:text-fg",
   };
@@ -67,7 +91,8 @@ export function Button({
       title={title}
       onClick={onClick}
       disabled={disabled}
-      className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition
+      className={`rounded-xl border px-3.5 py-1.5 text-sm font-medium transition
+        active:scale-[0.98]
         disabled:cursor-not-allowed disabled:opacity-45 ${tones[tone]} ${className}`}
     >
       {children}
@@ -154,11 +179,24 @@ export function StatusDot({ status }: { status: string }) {
   );
 }
 
-export function NavLink({ href, children }: { href: string; children: ReactNode }) {
+/**
+ * 머리말의 탭.
+ *
+ * 지금 어디에 있는지를 표시한다. 없으면 탭이 셋뿐이어도 "내가 지금 어느
+ * 화면이지"를 매번 다시 읽어야 한다.
+ */
+export function NavLink({
+  href, children, active = false,
+}: { href: string; children: ReactNode; active?: boolean }) {
   return (
     <Link
       href={href}
-      className="rounded-lg px-3 py-1.5 text-sm text-muted transition hover:bg-panel2 hover:text-fg"
+      aria-current={active ? "page" : undefined}
+      className={`rounded-xl px-3.5 py-1.5 text-sm transition ${
+        active
+          ? "bg-panel2 text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]"
+          : "text-muted hover:bg-panel2 hover:text-fg"
+      }`}
     >
       {children}
     </Link>

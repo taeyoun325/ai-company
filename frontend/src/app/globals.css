@@ -3,45 +3,75 @@
 /*
   AI COMPANY 화면 토큰.
 
-  색을 값으로 고정해 두는 이유(§4 디자이너 규칙과 같다): '파란색'은
-  사람마다 다른 색이고, 화면 두 곳이 다른 파랑을 쓰면 같은 뜻이
-  다르게 보인다.
+  ## 색을 값으로 고정해 두는 이유 (§4 디자이너 규칙과 같다)
+
+  '파란색'은 사람마다 다른 색이고, 화면 두 곳이 다른 파랑을 쓰면 같은
+  뜻이 다르게 보인다.
 
   Mock 색(--mock)을 따로 둔 것이 이 파일에서 제일 중요한 줄이다.
   Mock 으로 만든 산출물이 실제 결과물과 같은 색으로 보이면, 아무도
   진짜와 가짜를 구분하지 못한다.
+
+  ## 유리(DAY 22)
+
+  패널을 반투명으로 깔고 뒤를 흐린다. 예뻐서가 아니라 **층이 생기기
+  때문**이다 — 이 제품은 한 화면에 사무실·입력·로그·프로젝트 목록이
+  동시에 있고, 전부 같은 평면에 있으면 어디를 봐야 할지가 사라진다.
+
+  다만 유리는 **글자를 읽기 어렵게 만드는 쪽**으로 기울기 쉽다.
+  그래서 규칙을 둔다:
+
+  - 글자가 앉는 면은 불투명도를 충분히 준다(--glass-solid).
+  - 배경의 빛 번짐은 글자 뒤가 아니라 **가장자리**에 둔다.
+  - 흐림을 못 쓰는 브라우저에서도 대비가 유지되도록, 유리 배경색 자체에
+    이미 색이 있다. `backdrop-filter` 는 더하는 것이지 없으면 안 되는
+    것이 아니다.
 */
 :root {
-  --bg: #0b0d12;
-  --panel: #12151d;
-  --panel-2: #171b25;
-  --line: #242a38;
-  --fg: #e8eaf0;
-  --muted: #949bad;
-  --dim: #6b7285;
+  --bg: #080a12;
+  --bg-2: #0c0f1c;
+  --panel: rgba(255, 255, 255, 0.045);
+  --panel-2: rgba(255, 255, 255, 0.075);
+  --panel-solid: #11141f;
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --fg: #eef0f7;
+  --muted: #a3abc2;
+  --dim: #737b93;
 
-  --accent: #4f7cff;
-  --ok: #31c48d;
-  --warn: #f0a13a;
-  --bad: #f2555a;
+  --accent: #6d8dff;
+  --accent-2: #a56bff;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #fb7185;
   --mock: #b06bff; /* Mock 전용. 다른 어디에도 쓰지 않는다 */
 
   --strategist: #7aa2ff;
-  --developer: #31c48d;
-  --analyst: #f0a13a;
-  --writer: #ff8fb1;
-  --designer: #c08bff;
+  --developer: #34d399;
+  --analyst: #fbbf24;
+  --writer: #f472b6;
+  --designer: #c084fc;
+
+  --glass-blur: 18px;
+  --radius: 16px;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.36);
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #f6f7fa;
-    --panel: #ffffff;
-    --panel-2: #f0f2f7;
-    --line: #dfe3ec;
-    --fg: #14171f;
-    --muted: #5b6275;
-    --dim: #868d9f;
+    --bg: #eef1f8;
+    --bg-2: #e6eaf6;
+    --panel: rgba(255, 255, 255, 0.72);
+    --panel-2: rgba(255, 255, 255, 0.92);
+    --panel-solid: #ffffff;
+    --line: rgba(16, 20, 40, 0.1);
+    --line-strong: rgba(16, 20, 40, 0.18);
+    --fg: #121527;
+    --muted: #4d5570;
+    --dim: #767e99;
+    --accent: #4f6bff;
+    --accent-2: #8b46f0;
+    --shadow: 0 8px 30px rgba(30, 40, 90, 0.12);
   }
 }
 
@@ -71,12 +101,132 @@ body {
 body {
   font-family: var(--font-geist-sans), system-ui, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+  /*
+    한글은 단어 중간에서 끊기면 안 된다. 브라우저 기본값은 영어 기준이라
+    "협업합니 / 다" 같은 줄바꿈을 만든다.
+  */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* 코드·경로·모델 ID 는 어절이 없다. 그대로 두면 칸을 넘친다. */
+code,
+.tabular-nums,
+[class*="font-mono"] {
+  word-break: normal;
+}
+
+/*
+  배경의 빛.
+
+  `fixed` 로 깔아두고 스크롤과 무관하게 둔다. 따라 움직이면 스크롤할
+  때마다 배경이 흔들려서 글을 읽기 어렵다.
+*/
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60rem 40rem at 12% -10%,
+      color-mix(in srgb, var(--accent) 26%, transparent), transparent 60%),
+    radial-gradient(48rem 36rem at 96% 8%,
+      color-mix(in srgb, var(--accent-2) 22%, transparent), transparent 62%),
+    radial-gradient(52rem 40rem at 50% 108%,
+      color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+    linear-gradient(180deg, var(--bg), var(--bg-2));
+  pointer-events: none;
+}
+
+/*
+  유리판.
+
+  `.glass` 하나로 통일한다. 패널마다 다른 투명도를 쓰면 한 화면에 유리가
+  세 종류로 보이고, 그건 층이 아니라 얼룩이다.
+*/
+.glass {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+}
+
+/* 위쪽 가장자리의 빛. 유리가 유리로 보이는 것은 대부분 이 한 줄 덕이다. */
+.glass-lit {
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-lit::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, #fff 55%, transparent),
+    transparent
+  );
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* 글자가 많이 앉는 면. 읽기가 먼저다. */
+.glass-solid {
+  background: color-mix(in srgb, var(--panel-solid) 82%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.hairline {
+  border-color: var(--line);
+}
+
+/* 강조 버튼의 그라데이션. 두 색은 배경의 빛과 같은 두 색이다. */
+.grad-accent {
+  background-image: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+
+/*
+  등장 애니메이션의 '시작 상태' (DAY 20).
+
+  스크립트가 요소를 숨겼다가 보여주는 방식으로 하면, 서버가 보낸 HTML 이
+  한 번 보였다가 사라진 뒤 다시 나타난다(깜빡임). 그래서 숨김은 첫 그림
+  전에 CSS 가 건다.
+
+  대신 **안 보이는 채로 남는 경우**가 생기면 안 된다:
+    - 움직임을 줄인 사용자에게는 애초에 걸지 않는다
+    - 스크립트가 꺼져 있으면 layout.tsx 의 <noscript> 가 되돌린다
+    - 스크립트가 죽으면 lib/motion.ts 의 안전망이 4초 뒤 전부 드러낸다
+*/
+@media (prefers-reduced-motion: no-preference) {
+  [data-reveal] {
+    opacity: 0;
+  }
+}
+
+/* 키보드로 다니는 사람에게 지금 어디인지 보여준다. */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 /* 스크롤바가 화면마다 다르게 보이면 레이아웃이 흔들린다 */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent;
+  scrollbar-color: var(--line-strong) transparent;
 }
 
 /* 일하는 중인 직원 자리의 맥박. 진행 표시가 0초에 끝나면
@@ -95,81 +245,16 @@ body {
   animation: working 1.6s ease-out infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .working {
-    animation: none;
-    outline: 2px solid var(--c);
-  }
-}
-
-/*
-  등장 애니메이션의 '시작 상태' (DAY 20).
-
-  스크립트가 요소를 숨겼다가 보여주는 방식으로 하면, 서버가 보낸 HTML 이
-  한 번 보였다가 사라진 뒤 다시 나타난다(깜빡임). 그래서 숨김은 첫 그림
-  전에 CSS 가 건다.
-
-  대신 **안 보이는 채로 남는 경우**가 생기면 안 된다. 그게 이 파일에서
-  제일 조심할 줄이다:
-
-    - 움직임을 줄인 사용자에게는 애초에 걸지 않는다(no-preference 안에 있다)
-    - 스크립트가 꺼져 있으면 layout.tsx 의 <noscript> 가 되돌린다
-    - 스크립트가 죽으면 lib/motion.ts 의 안전망이 4초 뒤 전부 드러낸다
-*/
-@media (prefers-reduced-motion: no-preference) {
-  [data-reveal] {
-    opacity: 0;
-  }
-}
-
-/* 키보드로 다니는 사람에게 지금 어디인지 보여준다. 이게 없으면 탭을
-   눌러도 초점이 어디 갔는지 알 수 없어 화면을 쓸 수가 없다. */
-:where(a, button, input, select, textarea):focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 6px;
-}
-
-/* 앵커로 뛸 때만 부드럽게. 움직임을 줄인 사람에게는 즉시 이동한다. */
-@media (prefers-reduced-motion: no-preference) {
-  html {
-    scroll-behavior: smooth;
-  }
-}
-
-/* 히어로 도형.
-
-   좁은 화면에서는 컴포넌트가 **세로 배치로 갈아 끼운다**(PipelineFigure).
-   가로 그림을 그대로 줄이면 글자가 6px 이 되고, 옆으로 밀게 두면 절반이
-   안 보인 채로 판단된다. 그래서 여기서는 최대 폭만 잡는다. */
-.pipe-wrap svg {
-  max-width: 720px;
-}
-
-/*
-  한글은 단어 중간에서 끊기면 안 된다 (DAY 20).
-
-  브라우저 기본값은 한글을 글자 단위로 끊어서 "협업합니 / 다" 같은
-  줄바꿈을 만든다. 영어에는 없는 문제라 기본값이 그렇게 되어 있을 뿐이다.
-  어절 단위로 끊는다.
-*/
-body {
-  word-break: keep-all;
-  overflow-wrap: anywhere;
-}
-
-/* 코드·경로·모델 ID 는 어절이 없다. 그대로 두면 칸을 넘친다. */
-code,
-.tabular-nums,
-[class*="font-mono"] {
-  word-break: normal;
-}
-
-/* 일하는 자리의 모니터 (DAY 21 · PixelOffice).
+/* 일하는 자리의 모니터 (PixelOffice).
    깜빡임이 너무 빠르면 신경이 쓰이고, 너무 느리면 멈춘 줄 안다. */
 @keyframes px-screen {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .px-screen {
@@ -177,7 +262,16 @@ code,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .working {
+    animation: none;
+    outline: 2px solid var(--c);
+  }
   .px-screen {
     animation: none;
   }
+}
+
+/* 히어로 도형. 좁은 화면에서는 컴포넌트가 세로 배치로 갈아 끼운다. */
+.pipe-wrap svg {
+  max-width: 720px;
 }

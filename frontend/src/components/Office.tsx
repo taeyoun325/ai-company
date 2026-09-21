@@ -61,6 +61,7 @@ export function Office({
   onPick,
   picked,
   onStaffChange,
+  cardsOnly = false,
 }: {
   employees: Employee[];
   phase?: string;
@@ -71,6 +72,9 @@ export function Office({
   picked?: string | null;
   /** 이름을 바꾸거나 채용·해고한 뒤 목록을 다시 불러오라는 신호. */
   onStaffChange?: () => void | Promise<void>;
+  /** 도트 사무실을 여기서 그리지 않는다 (화면이 따로 배치할 때).
+   *  같은 그림이 한 화면에 두 번 나오면 어느 쪽이 진짜인지 묻게 된다. */
+  cardsOnly?: boolean;
 }) {
   const working = (id: string) => {
     if (busy) return busy === id;
@@ -106,15 +110,19 @@ export function Office({
     <div className="space-y-3">
       {/* 그림이 먼저다. 카드 목록은 숫자를 주지만 "지금 회사가 돌고
           있는가"를 한 번에 말하지는 못한다. */}
-      <PixelOffice
-        employees={employees}
-        working={working}
-        onPick={onPick}
-        picked={picked}
-      />
+      {!cardsOnly && (
+        <PixelOffice
+          employees={employees}
+          working={working}
+          onPick={onPick}
+          picked={picked}
+        />
+      )}
       <div
         ref={root}
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        className={`grid grid-cols-1 gap-3 ${
+          cardsOnly ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3"
+        }`}
       >
         {employees.map((e) => (
           <Desk
@@ -188,8 +196,7 @@ function Desk({
   const { t } = useLang();
   const color = `var(--${e.id}, var(--accent))`;
   const usage = e.usage ?? {};
-  const Tag = onPick ? "button" : "div";
-  const seat = useRef<HTMLElement>(null);
+  const seat = useRef<HTMLDivElement>(null);
   const was = useRef(working);
 
   // 일감을 **받는 순간**에만 한 번 튄다. 맥박(.working)은 "지금 일하는
@@ -203,11 +210,24 @@ function Desk({
   }, [working]);
 
   return (
-    <Tag
+    // 카드 안에 이름 입력칸과 채용 버튼이 들어 있다. 카드 자체를
+    // <button> 으로 만들면 버튼 안에 버튼이 들어가고, 그건 유효하지 않은
+    // HTML 이라 브라우저가 마음대로 구조를 고친다(하이드레이션 오류).
+    <div
       {...(onPick
-        ? { onClick: () => onPick(e.id), type: "button" as const }
+        ? {
+            role: "button" as const,
+            tabIndex: 0,
+            onClick: () => onPick(e.id),
+            onKeyDown: (ev: React.KeyboardEvent) => {
+              if (ev.key === "Enter" || ev.key === " ") {
+                ev.preventDefault();
+                onPick(e.id);
+              }
+            },
+          }
         : {})}
-      ref={seat as React.Ref<HTMLButtonElement & HTMLDivElement>}
+      ref={seat as React.Ref<HTMLDivElement>}
       style={{ ["--c" as string]: color }}
       className={`desk rounded-xl border bg-panel p-3 text-left transition
         ${working ? "working" : ""}
@@ -265,7 +285,7 @@ function Desk({
       </p>
 
       <HireButton e={e} onStaffChange={onStaffChange} />
-    </Tag>
+    </div>
   );
 }
 
@@ -407,7 +427,10 @@ function HireButton({
   };
 
   return (
-    <div className="mt-2 border-t border-line pt-2">
+    <div
+      className="mt-2 border-t border-line pt-2"
+      onClick={(ev) => ev.stopPropagation()}
+    >
       <Button tone={fired ? "primary" : "ghost"} disabled={busy}
               onClick={() => void flip()}>
         {fired ? t("staff.hire") : t("staff.fire")}

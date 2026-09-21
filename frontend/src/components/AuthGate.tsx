@@ -51,10 +51,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // 처음 온 사람에게 이메일 입력칸만 보여주면, 무엇에 가입하는지 모른 채
   // 가입하거나 그냥 닫는다. 제품이 무엇인지 먼저 말한다.
   if (!user && required) {
+    // 레이아웃이 창 높이에 고정돼 있다(DAY 22). 랜딩은 긴 화면이라
+    // 자기 스크롤을 가져야 한다 — 없으면 아래 절반이 영영 안 보인다.
     return (
-      <Landing>
-        <LoginScreen />
-      </Landing>
+      <div className="h-full overflow-y-auto">
+        <Landing>
+          <LoginScreen />
+        </Landing>
+      </div>
     );
   }
   return <>{children}</>;

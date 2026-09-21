@@ -43,6 +43,7 @@
 
   "_요금제": "지시서 §16. price_usd 는 월 구독료, credits 는 매달 주는 크레딧. §17 은 원가가 판매가의 일정 비율 이하일 것을 요구한다 — 그 검사는 app/usage/credits.py 의 margin_report() 가 실제 숫자로 한다.",
   "_요금제_주의": "max_project_cost 는 개발자 호출 한 번의 최악 비용(Opus 5 기준 입력 80k + 출력 32k = $1.20)보다 커야 한다. 작게 잡으면 그 요금제는 첫 구현 단계에서 항상 멈춘다 — 시작조차 못 하는 요금제는 요금제가 아니다.",
+  "_요금제_개정_2": "DAY 22. 값을 다시 잡았다 — 스타터 $29(500) · 프로 $49(1300) · 비즈니스 $79(2700) · 자체 키 $29. 바깥 진입가는 $20~25 에 몰려 있다(docs/market.md). 우리 스타터는 그보다 위다. 그 자리에서 이기려면 더 싸다가 아니라 **다른 물건이다**를 말해야 한다 — 교차검증과 테스트 선작성이 그것이다. 원가 비율은 17.2% · 26.5% · 34.2% 로 전부 상한 35% 아래다. 비즈니스가 상한에 제일 가깝다.",
   "_요금제_개정": "DAY 19. 이전 값(프로 1200cr · 비즈니스 4500cr · 무료 150cr)은 원가 비율이 41~46% 였다. 그 숫자에는 API 원가만 들어 있고 결제 수수료(2.9%+$0.30)·서버·환불·지원·모델 단가 인상 여지가 빠져 있었다. 다 넣으면 50% 벽에 붙는다. 크레딧을 줄여 여유를 만들었다 — 나중에 늘리는 것은 선물이고 줄이는 것은 배신이다.",
 
   "_source": "요금제마다 어느 키로 호출할지를 여기서 정한다. 코드가 아니라 요금제가 정해야, 새 요금제를 넣는 일이 분기 추가가 되지 않는다. platform=운영자 키(크레딧 차감) · byok=고객 키(차감 없음) · mock=실제 호출 없음.",
@@ -51,10 +52,10 @@
   "plans": {
     "local":    { "label": "로컬(개발)", "price_usd": 0, "credits": 100000, "max_concurrent": 3, "max_project_cost": 5.0, "source": "platform", "hidden": true },
     "none":     { "label": "요금제 없음", "price_usd": 0, "credits": 0,  "max_concurrent": 0, "max_project_cost": 0,    "source": "none", "hidden": true },
-    "starter":  { "label": "스타터",   "price_usd": 9,  "credits": 250,  "max_concurrent": 1, "max_project_cost": 2.0,  "source": "platform" },
-    "pro":      { "label": "프로",     "price_usd": 29, "credits": 900,  "max_concurrent": 3, "max_project_cost": 3.0,  "source": "platform" },
-    "business": { "label": "비즈니스", "price_usd": 99, "credits": 3200, "max_concurrent": 5, "max_project_cost": 10.0, "source": "platform" },
-    "byok":     { "label": "자체 키",  "price_usd": 19, "credits": 0,    "max_concurrent": 3, "max_project_cost": 5.0,  "source": "byok",
+    "starter":  { "label": "스타터",   "price_usd": 29, "credits": 500,  "max_concurrent": 2, "max_project_cost": 3.0,  "source": "platform" },
+    "pro":      { "label": "프로",     "price_usd": 49, "credits": 1300, "max_concurrent": 3, "max_project_cost": 5.0,  "source": "platform" },
+    "business": { "label": "비즈니스", "price_usd": 79, "credits": 2700, "max_concurrent": 5, "max_project_cost": 10.0, "source": "platform" },
+    "byok":     { "label": "자체 키",  "price_usd": 29, "credits": 0,    "max_concurrent": 3, "max_project_cost": 5.0,  "source": "byok",
                   "blurb": "본인 API 키로 돌립니다. 모델 요금은 제공자가 직접 청구하고, 우리는 오케스트레이션만 받습니다.",
                   "_why": "모델 원가 리스크가 0 이라 싸게 줄 수 있다. max_project_cost 는 그래도 남긴다 — 고객의 돈도 폭주하면 안 된다." }
   },

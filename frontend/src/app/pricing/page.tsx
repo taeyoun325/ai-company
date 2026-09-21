@@ -25,7 +25,8 @@
  */
 import { useEffect, useRef, useState } from "react";
 
-import { Button, ErrorBox, MockBadge, Panel, Warning, money } from "@/components/ui";
+import { Button, ErrorBox, MockBadge, Panel, Screen, Warning, money }
+  from "@/components/ui";
 import { api } from "@/lib/api";
 import type { PlanRow } from "@/lib/types";
 import { T, revealFrom, stagger, withScope } from "@/lib/motion";
@@ -107,6 +108,7 @@ export default function PricingPage() {
   };
 
   return (
+    <Screen>
     <div ref={root} className="space-y-4">
       {(error || failure) && <ErrorBox>{failure ?? error}</ErrorBox>}
 
@@ -284,5 +286,6 @@ export default function PricingPage() {
         프로젝트를 완주해본 적이 없습니다 — 실측 후 요금제가 조정될 수 있습니다.
       </p>
     </div>
+    </Screen>
   );
 }

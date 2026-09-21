@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 
 import { AuthGate } from "@/components/AuthGate";
-import { Footer, LangPartialNote, LangSwitch, Nav } from "@/components/LangSwitch";
+import { LangPartialNote, LangSwitch, Nav } from "@/components/LangSwitch";
 import { UserMenu } from "@/components/UserMenu";
 import { Icon } from "@/components/icons";
 import { LangProvider } from "@/lib/i18n";
@@ -34,41 +34,43 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <style>{`[data-reveal]{opacity:1 !important}`}</style>
         </noscript>
       </head>
-      <body className="flex min-h-full flex-col">
+      {/*
+        화면이 창 높이에 딱 맞는다(`h-full` + `overflow-hidden`). 사무실은
+        한 눈에 보이는 작업대여야 하고, 작업대가 스크롤되면 로그를 보는
+        동안 사무실이 화면 밖으로 나간다. 안쪽 칸만 각자 스크롤한다.
+      */}
+      <body className="flex h-full flex-col overflow-hidden">
         <LangProvider>
         <AuthProvider>
           <LangPartialNote />
-          <header className="sticky top-0 z-20 border-b border-line bg-bg/85 backdrop-blur">
+          <header className="z-20 shrink-0 border-b border-line bg-[color:var(--panel)] backdrop-blur-xl">
             {/* 좁은 화면에서 메뉴 글자가 두 줄로 쪼개지던 것을 막는다.
                 넘치면 접지 말고 옆으로 밀리게 둔다 — 접으면 어떤 메뉴가
                 있는지 자체가 안 보인다. */}
             <nav
-              className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto
-                px-4 py-2.5 [-ms-overflow-style:none] [scrollbar-width:none]
+              className="flex w-full items-center gap-1 overflow-x-auto px-4 py-2.5
+                [-ms-overflow-style:none] [scrollbar-width:none]
                 [&>*]:shrink-0 [&_*]:whitespace-nowrap"
             >
-              <Link href="/" className="mr-3 flex items-center gap-2">
-                <Icon name="building" size={20} style={{ color: "var(--accent)" }} />
+              <Link href="/" className="mr-3 flex items-center gap-2.5">
+                <span
+                  className="grid size-8 place-items-center rounded-xl text-white
+                    shadow-[0_4px_14px_rgba(109,141,255,0.4)] grad-accent"
+                >
+                  <Icon name="building" size={18} />
+                </span>
                 <span className="text-sm font-bold tracking-tight">AI COMPANY</span>
               </Link>
               <Nav />
-              <UserMenu />
-              <span className="ml-1 hidden sm:block">
+              <span className="ml-auto flex items-center gap-1">
+                <UserMenu />
                 <LangSwitch compact />
               </span>
             </nav>
           </header>
-          <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-5">
+          <main className="min-h-0 flex-1 overflow-hidden">
             <AuthGate>{children}</AuthGate>
           </main>
-          <footer className="border-t border-line px-4 py-3 text-center text-[11px] text-dim">
-            <Footer />
-            {/* 좁은 화면에서는 헤더가 이미 꽉 차 있다. 언어는 아래에 둔다 —
-                안 보이는 것보다 낫다. */}
-            <span className="mt-2 flex justify-center sm:hidden">
-              <LangSwitch compact />
-            </span>
-          </footer>
         </AuthProvider>
         </LangProvider>
       </body>

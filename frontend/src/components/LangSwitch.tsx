@@ -14,6 +14,8 @@
  * 적는다. 말하지 않으면 사용자는 번역이 깨졌다고 생각한다 — 버그로
  * 읽히는 미완성은 미완성보다 나쁘다.
  */
+import { usePathname } from "next/navigation";
+
 import { LANGS, LANG_LABEL, useLang } from "@/lib/i18n";
 import { NavLink } from "./ui";
 
@@ -61,19 +63,26 @@ export function LangPartialNote() {
 /**
  * 헤더 메뉴. 레이아웃이 서버 컴포넌트라 번역을 쓰려면 여기로 나와야 한다.
  */
+/**
+ * 머리말의 탭 — 셋뿐이다 (DAY 22).
+ *
+ * 프로젝트 목록은 탭에서 뺐다. 목록은 **일하는 동안 옆에 있어야 하는
+ * 것**이지 따로 가서 보는 화면이 아니다 — 사무실 왼쪽 레일로 옮겼다.
+ * 탭이 넷이면 사용자는 넷 다 한 번씩 눌러보고 나서야 어디가 작업
+ * 화면인지 안다.
+ */
 export function Nav() {
   const { t } = useLang();
+  const path = usePathname();
+  const at = (href: string) =>
+    href === "/" ? path === "/" || path.startsWith("/projects") ||
+                   path.startsWith("/manual")
+                 : path.startsWith(href);
   return (
     <>
-      <NavLink href="/">{t("nav.office")}</NavLink>
-      <NavLink href="/projects">{t("nav.projects")}</NavLink>
-      <NavLink href="/pricing">{t("nav.pricing")}</NavLink>
-      <NavLink href="/settings">{t("nav.settings")}</NavLink>
+      <NavLink href="/" active={at("/")}>{t("nav.office")}</NavLink>
+      <NavLink href="/pricing" active={at("/pricing")}>{t("nav.pricing")}</NavLink>
+      <NavLink href="/settings" active={at("/settings")}>{t("nav.settings")}</NavLink>
     </>
   );
-}
-
-export function Footer() {
-  const { t } = useLang();
-  return <>{t("footer.note")}</>;
 }
