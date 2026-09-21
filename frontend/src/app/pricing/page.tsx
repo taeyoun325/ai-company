@@ -25,8 +25,10 @@
  */
 import { useEffect, useRef, useState } from "react";
 
-import { Button, ErrorBox, MockBadge, Panel, Screen, Warning, money }
-  from "@/components/ui";
+import {
+  Button, ErrorBox, MockBadge, Panel, Screen, Skeleton, SkeletonCards,
+  Warning, money,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { useLang, type Key } from "@/lib/i18n";
 import type { PlanRow } from "@/lib/types";
@@ -99,7 +101,7 @@ function SourceNote({ plan }: { plan: PlanRow }) {
 
 export default function PricingPage() {
   const { t } = useLang();
-  const { data, error, reload } = useLoader("pricing", async () => {
+  const { data, error, loading, reload } = useLoader("pricing", async () => {
     const [plans, credits] = await Promise.all([api.plans(), api.credits()]);
     return { plans, credits };
   });
@@ -142,6 +144,17 @@ export default function PricingPage() {
     <Screen>
     <div ref={root} className="space-y-4">
       {(error || failure) && <ErrorBox>{failure ?? error}</ErrorBox>}
+
+      {/* 요금제는 돈을 쓰는 화면이다. 빈 화면을 보여주면 "요금제가
+          없어졌나"로 읽힌다. */}
+      {loading && !data && (
+        <>
+          <Panel title={t("price.myCredits")}>
+            <Skeleton lines={3} />
+          </Panel>
+          <SkeletonCards n={4} />
+        </>
+      )}
 
       {wallet && !wallet.prices_verified && (
         <Warning>
@@ -252,6 +265,14 @@ export default function PricingPage() {
             {wallet.prices_verified_on &&
               t("price.verifiedOn", { date: wallet.prices_verified_on })}
           </p>
+        </Panel>
+      )}
+
+      {/* 요금제가 하나도 없으면 빈 화면이 아니라 이유를 보여준다 —
+          서버의 요금표가 잘못됐다는 신호이고, 사용자는 기다릴 이유가 없다. */}
+      {!loading && Object.keys(plans).length === 0 && (
+        <Panel title={t("plans.title")}>
+          <p className="text-sm text-muted">{t("price.noPlans")}</p>
         </Panel>
       )}
 

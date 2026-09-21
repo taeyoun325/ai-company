@@ -29,7 +29,7 @@ import { Office } from "@/components/Office";
 import { PixelOffice } from "@/components/PixelOffice";
 import { ProjectRail } from "@/components/ProjectRail";
 import { ScorePanel, TaskBoard } from "@/components/TaskBoard";
-import { Button, ErrorBox, Panel, Warning } from "@/components/ui";
+import { Button, ErrorBox, Panel, Skeleton, Warning } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import { T, animate, stagger, withScope } from "@/lib/motion";
@@ -55,8 +55,8 @@ export default function OfficePage() {
   const [slug, setSlug] = useState<string | null>(null);
   // 실행 slug 를 같이 보낸다. 안 보내면 직원별 사용량이 전부 0 으로 와서,
   // 한창 일하는 중인데 사무실이 "아무도 일하지 않음"으로 보인다.
-  const { data: state, error: loadError, reload } = useLoader(slug ?? "", () =>
-    api.state(slug ?? undefined),
+  const { data: state, error: loadError, loading, reload } = useLoader(
+    slug ?? "", () => api.state(slug ?? undefined),
   );
   const employees: Employee[] = state?.employees ?? [];
   const providers: ProviderStatus | null = state?.providers ?? null;
@@ -225,6 +225,13 @@ export default function OfficePage() {
                 </span>
               )}
             </div>
+            {loading && employees.length === 0 ? (
+              // 사무실이 비어 보이면 "직원이 아무도 없다"로 읽힌다.
+              // 방이 올 자리를 먼저 그려둔다.
+              <div className="glass glass-lit p-4">
+                <Skeleton lines={6} />
+              </div>
+            ) : (
             <PixelOffice
               employees={employees}
               working={isWorking}
@@ -233,6 +240,7 @@ export default function OfficePage() {
               phase={folded.phase}
               detail={folded.detail}
             />
+            )}
           </div>
 
           {/* 입력창 — 사무실 바로 밑. 누가 있는지 보고 나서 지시한다. */}

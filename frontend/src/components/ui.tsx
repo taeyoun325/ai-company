@@ -157,6 +157,59 @@ export function ErrorBox({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * 불러오는 중 자리 (DAY 22).
+ *
+ * ## 왜 필요한가
+ *
+ * 우리가 디자이너에게 시키는 규칙이 이것이다 — "상태를 빠뜨리지 마세요:
+ * 비어 있을 때 · 불러오는 중 · 실패했을 때. 이 셋을 안 그린 화면은
+ * 실제로 만들면 반드시 깨집니다"(roles.py). 정작 우리 화면 여럿이
+ * **불러오는 중**을 안 그리고 있었다.
+ *
+ * 안 그리면 어떻게 되나: 데이터가 오기 전까지 빈 화면이 보이고, 느린
+ * 연결에서는 그게 **"프로젝트가 하나도 없다"** 로 읽힌다. 사용자는
+ * 자기 것이 사라졌다고 생각한다.
+ *
+ * ## 왜 빙글빙글 도는 것이 아니라 뼈대인가
+ *
+ * 회전만 하는 표시는 "뭔가 오고 있다"만 말하고 **무엇이 올지**는 말하지
+ * 않는다. 뼈대는 올 것의 모양을 미리 보여주므로, 도착했을 때 눈이
+ * 다시 자리를 찾지 않아도 된다.
+ *
+ * 움직임을 줄인 사람에게는 반짝임을 끈다 — 회색 칸만 남는다.
+ */
+export function Skeleton({
+  lines = 3, className = "",
+}: { lines?: number; className?: string }) {
+  return (
+    <div className={`space-y-2 ${className}`} aria-hidden>
+      {Array.from({ length: lines }, (_, i) => (
+        <div
+          key={i}
+          className="skeleton h-3 rounded-md"
+          // 줄마다 길이를 다르게 둔다. 전부 같은 길이면 글이 아니라
+          // 표처럼 보이고, 도착한 내용과 모양이 어긋난다.
+          style={{ width: `${[92, 78, 85, 64, 71][i % 5]}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** 카드 여러 장이 올 자리. */
+export function SkeletonCards({ n = 3 }: { n?: number }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2" aria-hidden>
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} className="glass p-4">
+          <Skeleton lines={3} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Empty({ children }: { children: ReactNode }) {
   return (
     <p className="px-1 py-6 text-center text-sm text-dim">{children}</p>

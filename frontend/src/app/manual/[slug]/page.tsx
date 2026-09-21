@@ -18,7 +18,7 @@ import { ChatLog } from "@/components/ChatLog";
 import { FileViewer } from "@/components/FileViewer";
 import { Office } from "@/components/Office";
 import {
-  Button, ErrorBox, Panel, Screen, Warning,
+  Button, ErrorBox, Panel, Screen, Skeleton, Warning,
 } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
@@ -30,7 +30,7 @@ import { foldState, useStream } from "@/lib/useStream";
 export default function ManualPage({ params }: { params: Promise<{ slug: string }> }) {
   const { t } = useLang();
   const slug = useSlug(use(params));
-  const { data, error: loadError, reload } = useLoader(slug, () =>
+  const { data, error: loadError, loading, reload } = useLoader(slug, () =>
     api.manualState(slug),
   );
   const employees: Employee[] = data?.employees ?? [];
@@ -91,6 +91,12 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
   return (
     <Screen>
     <div className="space-y-4">
+      {/* 직원이 오기 전에 빈 화면을 보여주면 "직원이 없다"로 읽힌다. */}
+      {loading && !data && (
+        <Panel title={t("man.pick")}>
+          <Skeleton lines={4} />
+        </Panel>
+      )}
       {allMock && (
         <Warning>
           <strong>{t("man.mock")}</strong> {t("man.mockBody")}

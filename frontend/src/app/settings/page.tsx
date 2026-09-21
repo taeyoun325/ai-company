@@ -23,7 +23,7 @@
 import { useState } from "react";
 
 import { ByokPanel } from "@/components/ByokPanel";
-import { Button, ErrorBox, MockBadge, Panel, Screen, Warning }
+import { Button, ErrorBox, MockBadge, Panel, Screen, Skeleton, Warning }
   from "@/components/ui";
 import { useLang } from "@/lib/i18n";
 import { api } from "@/lib/api";
@@ -32,7 +32,7 @@ import { useLoader } from "@/lib/useLoader";
 
 export default function SettingsPage() {
   const { t } = useLang();
-  const { data, error: loadError, reload: load } = useLoader("settings", async () => {
+  const { data, error: loadError, loading, reload: load } = useLoader("settings", async () => {
     const [s, st, b] = await Promise.all([
       api.settings(),
       api.state(),
@@ -105,6 +105,12 @@ export default function SettingsPage() {
     <Screen>
     <div className="space-y-4">
       {(error || loadError) && <ErrorBox>{error ?? loadError}</ErrorBox>}
+
+      {loading && !data && (
+        <Panel title={t("set.operatorKeys")}>
+          <Skeleton lines={4} />
+        </Panel>
+      )}
 
       {providers?.all_mock && (
         <Warning>

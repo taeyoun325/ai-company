@@ -275,3 +275,29 @@ body::before {
 .pipe-wrap svg {
   max-width: 720px;
 }
+
+/* 불러오는 중 자리(Skeleton).
+   반짝임은 "멈춘 게 아니라 오고 있다"를 말한다. 움직임을 줄인 사람에게는
+   회색 칸만 남긴다 — 정보는 그대로고 움직임만 사라진다. */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--fg) 7%, transparent),
+    color-mix(in srgb, var(--fg) 13%, transparent),
+    color-mix(in srgb, var(--fg) 7%, transparent)
+  );
+  background-size: 200% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: color-mix(in srgb, var(--fg) 10%, transparent);
+  }
+}

@@ -27,7 +27,7 @@ import { api } from "@/lib/api";
 import { useLoader } from "@/lib/useLoader";
 import { useSticky } from "@/lib/sticky";
 import { Icon } from "./icons";
-import { Empty, MockBadge, StatusDot, when } from "./ui";
+import { Empty, MockBadge, Skeleton, StatusDot, when } from "./ui";
 
 const STORE_KEY = "ai-company.rail";
 
@@ -41,7 +41,7 @@ export function ProjectRail({
 }) {
   const { t } = useLang();
   const [open, setOpen] = useSticky(STORE_KEY, true);
-  const { data, reload } = useLoader("rail", () =>
+  const { data, error, loading, reload } = useLoader("rail", () =>
     api.projects({ limit: 40, sort: "recent" }),
   );
 
@@ -121,7 +121,21 @@ export function ProjectRail({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-        {rows.length === 0 && <Empty>{t("office.empty")}</Empty>}
+        {/* 세 가지 상태를 다 그린다. 불러오는 중을 안 그리면 느린 연결에서
+            빈 목록이 보이고, 그건 "내 프로젝트가 사라졌다"로 읽힌다. */}
+        {loading && rows.length === 0 && (
+          <div className="px-1 py-2">
+            <Skeleton lines={5} />
+          </div>
+        )}
+        {error && !loading && (
+          <p className="px-2 py-3 text-[11px]" style={{ color: "var(--bad)" }}>
+            {error}
+          </p>
+        )}
+        {!loading && !error && rows.length === 0 && (
+          <Empty>{t("office.empty")}</Empty>
+        )}
         <ul className="space-y-0.5">
           {rows.map((p) => {
             const on = p.slug === activeSlug;

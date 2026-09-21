@@ -344,6 +344,11 @@ const S = {
 
   // ── 요금제 화면 (DAY 22) ──────────────────────────────────────
   "price.myCredits": { ko: "내 크레딧", en: "My credits", ja: "マイクレジット" },
+  "price.noPlans": {
+    ko: "요금제를 불러오지 못했습니다. 서버의 요금표(pricing.json)를 확인하세요.",
+    en: "No plans came back. Check the server's price table (pricing.json).",
+    ja: "プランを読み込めませんでした。サーバーの料金表（pricing.json）を確認してください。",
+  },
   "price.planSuffix": { ko: "요금제", en: "plan", ja: "プラン" },
   "price.pickFirst": {
     ko: "요금제를 고르면 여기에 잔액이 표시됩니다.",
