@@ -14,6 +14,7 @@
  * say(말) · tool(행동) · verdict(판정) · error(문제). 전부 같은 모양이면
  * 판정과 잡담이 구분되지 않고, 로그가 길어질수록 아무도 안 읽는다.
  */
+import { Icon, iconOfAgent } from "./icons";
 import { useEffect, useRef, useState } from "react";
 
 import type { BusEvent, Roster } from "@/lib/types";
@@ -163,14 +164,14 @@ function Row({ e, roster }: { e: BusEvent; roster: Roster }) {
     );
   }
 
-  const who = roster[e.agent ?? ""] ?? { name: e.agent ?? "?", icon: "👤" };
+  const who = roster[e.agent ?? ""] ?? { name: e.agent ?? "?" };
   const color = KIND_COLOR[e.kind ?? "say"] ?? "var(--fg)";
   const accent = `var(--${e.agent}, var(--accent))`;
 
   return (
     <li className="flex gap-2.5">
-      <span className="mt-0.5 text-base leading-none" aria-hidden>
-        {who.icon}
+      <span className="mt-0.5 leading-none" style={{ color: accent }}>
+        <Icon name={iconOfAgent(e.agent ?? "")} size={16} />
       </span>
       <div className="min-w-0 flex-1">
         <span className="text-xs font-semibold" style={{ color: accent }}>

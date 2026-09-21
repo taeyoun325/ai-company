@@ -3,8 +3,10 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 
 import { AuthGate } from "@/components/AuthGate";
+import { Footer, LangPartialNote, LangSwitch, Nav } from "@/components/LangSwitch";
 import { UserMenu } from "@/components/UserMenu";
-import { NavLink } from "@/components/ui";
+import { Icon } from "@/components/icons";
+import { LangProvider } from "@/lib/i18n";
 import { AuthProvider } from "@/lib/useAuth";
 import "./globals.css";
 
@@ -33,7 +35,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </noscript>
       </head>
       <body className="flex min-h-full flex-col">
+        <LangProvider>
         <AuthProvider>
+          <LangPartialNote />
           <header className="sticky top-0 z-20 border-b border-line bg-bg/85 backdrop-blur">
             {/* 좁은 화면에서 메뉴 글자가 두 줄로 쪼개지던 것을 막는다.
                 넘치면 접지 말고 옆으로 밀리게 둔다 — 접으면 어떤 메뉴가
@@ -44,25 +48,29 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 [&>*]:shrink-0 [&_*]:whitespace-nowrap"
             >
               <Link href="/" className="mr-3 flex items-center gap-2">
-                <span className="text-lg" aria-hidden>
-                  🏢
-                </span>
+                <Icon name="building" size={20} style={{ color: "var(--accent)" }} />
                 <span className="text-sm font-bold tracking-tight">AI COMPANY</span>
               </Link>
-              <NavLink href="/">사무실</NavLink>
-              <NavLink href="/projects">프로젝트</NavLink>
-              <NavLink href="/pricing">요금제</NavLink>
-              <NavLink href="/settings">설정</NavLink>
+              <Nav />
               <UserMenu />
+              <span className="ml-1 hidden sm:block">
+                <LangSwitch compact />
+              </span>
             </nav>
           </header>
           <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-5">
             <AuthGate>{children}</AuthGate>
           </main>
           <footer className="border-t border-line px-4 py-3 text-center text-[11px] text-dim">
-            당신은 CEO 입니다. 직원에게 직접 지시하거나 AUTO 로 맡기세요.
+            <Footer />
+            {/* 좁은 화면에서는 헤더가 이미 꽉 차 있다. 언어는 아래에 둔다 —
+                안 보이는 것보다 낫다. */}
+            <span className="mt-2 flex justify-center sm:hidden">
+              <LangSwitch compact />
+            </span>
           </footer>
         </AuthProvider>
+        </LangProvider>
       </body>
     </html>
   );

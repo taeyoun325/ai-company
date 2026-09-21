@@ -36,20 +36,22 @@
  */
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
+import { glyph, type IconName } from "./icons";
+import { useLang } from "@/lib/i18n";
 import { T, createTimeline, svg, withScope } from "@/lib/motion";
 
 type Key = "req" | "strategist" | "analyst" | "developer" | "verifier" | "out";
 type Pt = { x: number; y: number };
 
-const NODES: {
-  key: Key; label: string; sub: string; color: string; icon: string;
-}[] = [
-  { key: "req", label: "요구사항", sub: "CEO 가 한 줄", color: "var(--accent)", icon: "✎" },
-  { key: "strategist", label: "전략가", sub: "인수기준으로", color: "var(--strategist)", icon: "🧭" },
-  { key: "analyst", label: "분석가", sub: "테스트를 먼저", color: "var(--analyst)", icon: "🔍" },
-  { key: "developer", label: "개발자", sub: "tests/ 를 못 본다", color: "var(--developer)", icon: "🛠" },
-  { key: "verifier", label: "교차검증", sub: "다른 회사 모델", color: "var(--analyst)", icon: "⚖" },
-  { key: "out", label: "산출물", sub: "파일로 남는다", color: "var(--ok)", icon: "📦" },
+// 라벨은 번역표에서 온다(`flow.*`). 그림 안의 글자만 한국어로 남으면
+// 언어를 바꾼 사람에게는 그 부분이 고장난 것처럼 보인다.
+const NODES: { key: Key; color: string; icon: IconName }[] = [
+  { key: "req", color: "var(--accent)", icon: "req" },
+  { key: "strategist", color: "var(--strategist)", icon: "strategist" },
+  { key: "analyst", color: "var(--analyst)", icon: "analyst" },
+  { key: "developer", color: "var(--developer)", icon: "developer" },
+  { key: "verifier", color: "var(--analyst)", icon: "verify" },
+  { key: "out", color: "var(--ok)", icon: "package" },
 ];
 
 /** 선 id. 타임라인이 이 이름으로 경로를 잡는다. */
@@ -139,6 +141,7 @@ function useNarrow(): boolean {
 }
 
 export function PipelineFigure({ className = "" }: { className?: string }) {
+  const { t } = useLang();
   const root = useRef<HTMLDivElement>(null);
   const narrow = useNarrow();
   const L = narrow ? COL : ROW;
@@ -230,7 +233,7 @@ export function PipelineFigure({ className = "" }: { className?: string }) {
         className="mx-auto w-full"
         style={{ maxHeight: narrow ? "none" : undefined }}
         role="img"
-        aria-label="요구사항이 전략가를 지나 분석가가 테스트를 먼저 쓰고, 개발자가 구현하고, 다른 회사 모델이 교차검증해 반려되면 되돌아가는 흐름"
+        aria-label={t("flow.alt")}
       >
         <defs>
           <radialGradient id="out-halo">
@@ -275,9 +278,18 @@ export function PipelineFigure({ className = "" }: { className?: string }) {
                       fill="var(--panel)" stroke={n.color} strokeWidth="1.6"
                       style={{ transformOrigin: origin }} />
               <circle cx={p.x} cy={p.y} r={L.r} fill={n.color} opacity="0.1" />
-              <text x={p.x} y={p.y + 6} textAnchor="middle" fontSize="19" aria-hidden>
-                {n.icon}
-              </text>
+              {/* 아이콘은 24×24 격자에 그려져 있다. 노드 한가운데로 옮긴다 —
+                  <svg> 를 중첩하면 좌표계가 둘로 갈려 맥박이 어긋난다. */}
+              <g
+                transform={`translate(${p.x - 12} ${p.y - 12})`}
+                fill="none"
+                stroke={n.color}
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {glyph(n.icon)}
+              </g>
             </g>
           );
         })}
@@ -290,11 +302,11 @@ export function PipelineFigure({ className = "" }: { className?: string }) {
             <g key={`l-${n.key}`} className="pipe-label">
               <text x={pos.x} y={pos.y} textAnchor={pos.anchor} fontSize="12.5"
                     fontWeight="600" fill="var(--fg)">
-                {n.label}
+                {t(`flow.${n.key}`)}
               </text>
               <text x={pos.x} y={pos.y + 15} textAnchor={pos.anchor}
                     fontSize="10.5" fill="var(--dim)">
-                {n.sub}
+                {t(`flow.${n.key}.sub`)}
               </text>
             </g>
           );
@@ -302,12 +314,14 @@ export function PipelineFigure({ className = "" }: { className?: string }) {
 
         {/* 판정 칩 — 연출이라 처음에는 숨어 있다. 스크립트가 없으면
             나타나지 않을 뿐, 설명이 사라지지는 않는다. */}
-        <Chip id="chip-test" at={L.chips.test} w={128} color="var(--analyst)"
-              text="테스트가 먼저 쓰인다" />
-        <Chip id="chip-reject" at={L.chips.verdict} w={80} color="var(--bad)"
-              text="반려 · 재작업" />
-        <Chip id="chip-pass" at={L.chips.verdict} w={52} color="var(--ok)"
-              text="통과" />
+        {/* 칸 너비는 글자 수로 정한다. 언어마다 길이가 달라서 고정 폭으로
+            두면 영어에서 글자가 테두리를 넘는다. */}
+        <Chip id="chip-test" at={L.chips.test} color="var(--analyst)"
+              text={t("flow.chip.test")} />
+        <Chip id="chip-reject" at={L.chips.verdict} color="var(--bad)"
+              text={t("flow.chip.reject")} />
+        <Chip id="chip-pass" at={L.chips.verdict} color="var(--ok)"
+              text={t("flow.chip.pass")} />
 
         {/* 일감 */}
         <circle className="pipe-token" cx="0" cy="0" r="6.5"
@@ -317,9 +331,12 @@ export function PipelineFigure({ className = "" }: { className?: string }) {
   );
 }
 
-function Chip({ id, at, w, color, text }: {
-  id: string; at: Pt; w: number; color: string; text: string;
+function Chip({ id, at, color, text }: {
+  id: string; at: Pt; color: string; text: string;
 }) {
+  // 대략적인 글자 폭. 한글·가나는 넓고 영문은 좁다.
+  const wide = /[가-힣ぁ-んァ-ン一-龯]/.test(text);
+  const w = Math.max(48, text.length * (wide ? 12 : 7) + 20);
   return (
     <g id={id} opacity="0" style={{ transformOrigin: `${at.x}px ${at.y}px` }}>
       <rect x={at.x - w / 2} y={at.y - 12} width={w} height="24" rx="12"
