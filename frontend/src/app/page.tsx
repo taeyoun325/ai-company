@@ -120,7 +120,7 @@ export default function OfficePage() {
         e instanceof ApiError && e.isBudget
           ? e.message
           : e instanceof ApiError && e.isBusy
-            ? `${e.message} (동시 실행 한도는 비용과 요청 한도를 함께 막습니다)`
+            ? `${e.message} ${t("run.concurrentNote")}`
             : e instanceof Error
               ? e.message
               : String(e),
@@ -186,20 +186,19 @@ export default function OfficePage() {
           {allMock && (
             <div data-enter>
               <Warning>
-                <strong>지금은 Mock 직원이 일합니다.</strong> 산출물은 실제 AI 의
-                작업 결과가 아니라 미리 짜인 대본입니다.{" "}
-                <a href="/settings" className="underline">
-                  설정에서 API 키를 등록
-                </a>
-                하면 실제 직원이 일합니다.
+                <strong>{t("run.mockWarn")}</strong>{" "}
+                <Linked
+                  text={t("run.mockWarnBody")}
+                  label={t("run.mockWarnLink")}
+                  href="/settings"
+                />
               </Warning>
             </div>
           )}
           {providers && !allMock && !providers.cross_check && (
             <div data-enter>
               <Warning>
-                <strong>교차검증이 성립하지 않습니다.</strong> 구현자와 검증자가
-                같은 회사의 모델이거나, 검증자 쪽 키가 없습니다.
+                <strong>{t("run.noCross")}</strong> {t("run.noCrossBody")}
               </Warning>
             </div>
           )}
@@ -276,13 +275,13 @@ export default function OfficePage() {
                 </Button>
                 {running && (
                   <Button tone="danger" onClick={cancel} className="ml-auto">
-                    정지
+                    {t("proj.stop")}
                   </Button>
                 )}
               </div>
               {routing && (
                 <p className="mt-2 text-xs text-muted">
-                  전략가의 판단:{" "}
+                  {t("run.routing")}:{" "}
                   <strong
                     style={{ color: `var(--${routing.employee}, var(--accent))` }}
                   >
@@ -377,11 +376,32 @@ export default function OfficePage() {
               className="w-full"
               onClick={() => router.push(`/projects/${slug}`)}
             >
-              프로젝트 상세 ({folded.files?.length ?? 0})
+              {t("run.detail")} ({folded.files?.length ?? 0})
             </Button>
           )}
         </div>
       </aside>
     </div>
+  );
+}
+
+/**
+ * 문장 안의 한 조각만 링크로 만든다.
+ *
+ * 번역문마다 링크가 놓이는 **자리가 다르다** — 한국어는 앞, 영어는
+ * 가운데다. 문장을 앞뒤로 쪼개 두면 언어마다 어순이 어긋난다.
+ */
+function Linked({ text, label, href }: {
+  text: string; label: string; href: string;
+}) {
+  const [before, after = ""] = text.split("{link}");
+  return (
+    <>
+      {before}
+      <a href={href} className="underline">
+        {label}
+      </a>
+      {after}
+    </>
   );
 }

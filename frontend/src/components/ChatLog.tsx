@@ -14,6 +14,7 @@
  * say(말) · tool(행동) · verdict(판정) · error(문제). 전부 같은 모양이면
  * 판정과 잡담이 구분되지 않고, 로그가 길어질수록 아무도 안 읽는다.
  */
+import { useLang } from "@/lib/i18n";
 import { Icon, iconOfAgent } from "./icons";
 import { useEffect, useRef, useState } from "react";
 
@@ -39,6 +40,7 @@ export function ChatLog({
   polling: boolean;
   className?: string;
 }) {
+  const { t } = useLang();
   const box = useRef<HTMLDivElement>(null);
   const [stuck, setStuck] = useState(true);
   // 마지막으로 사용자가 본 이벤트 id. **이벤트 핸들러에서만** 갱신한다 —
@@ -84,13 +86,13 @@ export function ChatLog({
           aria-hidden
         />
         <span className="text-muted">
-          {connected ? "연결됨" : "연결 끊김 — 재연결 중"}
+          {connected ? t("log.connected") : t("log.disconnected")}
         </span>
         {polling && (
           // 폴백으로 떨어진 사실을 감추면, 왜 로그가 느린지 아무도 모른다.
-          <span className="text-dim">· SSE 가 막혀 폴링으로 받는 중</span>
+          <span className="text-dim">{t("log.polling")}</span>
         )}
-        <span className="ml-auto text-dim">{rows.length}줄</span>
+        <span className="ml-auto text-dim">{t("log.lines", { n: rows.length })}</span>
       </div>
 
       <div
@@ -100,7 +102,7 @@ export function ChatLog({
       >
         {rows.length === 0 ? (
           <p className="py-8 text-center text-sm text-dim">
-            아직 기록이 없습니다.
+            {t("log.empty")}
           </p>
         ) : (
           <ol className="space-y-2">
@@ -118,7 +120,7 @@ export function ChatLog({
           className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border
             border-line bg-panel2 px-3 py-1 text-xs shadow-lg"
         >
-          새 소식 {unread}개 ↓
+          {t("log.unread", { n: unread })}
         </button>
       )}
     </div>
@@ -126,6 +128,7 @@ export function ChatLog({
 }
 
 function Row({ e, roster }: { e: BusEvent; roster: Roster }) {
+  const { t } = useLang();
   if (e.type === "phase") {
     return (
       <li className="flex items-center gap-2 py-1 text-[11px] text-dim">
@@ -152,12 +155,12 @@ function Row({ e, roster }: { e: BusEvent; roster: Roster }) {
             : "color-mix(in srgb, var(--bad) 8%, transparent)",
         }}
       >
-        <strong>{e.ok ? "완료" : "중단"}</strong>
-        {typeof e.score === "number" && ` · 완성도 ${e.score}%`}
+        <strong>{e.ok ? t("log.done") : t("log.stopped")}</strong>
+        {typeof e.score === "number" && t("log.scoreSuffix", { n: e.score })}
         <p className="mt-1 text-muted">{e.summary}</p>
         {e.unmet && e.unmet.length > 0 && (
           <p className="mt-1 text-xs" style={{ color: "var(--warn)" }}>
-            충족되지 않은 인수기준: {e.unmet.join(", ")}
+            {t("proj.unmet")}: {e.unmet.join(", ")}
           </p>
         )}
       </li>

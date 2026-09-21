@@ -15,12 +15,14 @@
  * 상한이 있어도 사용자는 자기가 얼마를 쓰고 있는지 알아야 한다. 상한은
  * 사고를 막는 장치이지, 사용자에게 알려주는 장치가 아니다.
  */
+import { useLang } from "@/lib/i18n";
 import type { BusEvent, TaskRow } from "@/lib/types";
 import { Empty, money } from "./ui";
 
 export function TaskBoard({ tasks }: { tasks?: TaskRow[] }) {
+  const { t } = useLang();
   if (!tasks || tasks.length === 0) {
-    return <Empty>아직 계획이 없습니다.</Empty>;
+    return <Empty>{t("task.empty")}</Empty>;
   }
   return (
     <ol className="space-y-1.5">
@@ -51,20 +53,21 @@ export function TaskBoard({ tasks }: { tasks?: TaskRow[] }) {
 }
 
 function Mark({ status }: { status: TaskRow["status"] }) {
+  const { t } = useLang();
   if (status === "done")
     return (
-      <span aria-label="완료" style={{ color: "var(--ok)" }}>
+      <span aria-label={t("task.done")} style={{ color: "var(--ok)" }}>
         ✓
       </span>
     );
   if (status === "doing")
     return (
-      <span aria-label="진행 중" className="working" style={{ ["--c" as string]: "var(--accent)", color: "var(--accent)" }}>
+      <span aria-label={t("task.running")} className="working" style={{ ["--c" as string]: "var(--accent)", color: "var(--accent)" }}>
         ●
       </span>
     );
   return (
-    <span aria-label="대기" className="text-dim">
+    <span aria-label={t("task.waiting")} className="text-dim">
       ○
     </span>
   );
@@ -81,6 +84,7 @@ export function ScorePanel({
   cost?: number;
   round?: number;
 }) {
+  const { t } = useLang();
   const final = detail?.final === true;
   return (
     <div className="space-y-3">
@@ -90,25 +94,25 @@ export function ScorePanel({
             {score === null ? "—" : `${score}%`}
           </p>
           <p className="text-[11px] text-dim">
-            {final ? "인수기준 충족률 (최종)" : "진행률 (중간 집계)"}
+            {final ? t("task.finalScore") : t("task.midScore")}
           </p>
         </div>
         <div className="ml-auto text-right">
           <p className="text-xl font-semibold tabular-nums">{money(cost)}</p>
           <p className="text-[11px] text-dim">
-            이번 프로젝트 비용{round ? ` · ${round}라운드` : ""}
+            {t("task.cost")}{round ? ` · ${t("task.rounds", { n: round })}` : ""}
           </p>
         </div>
       </div>
 
       {detail && (
         <dl className="grid grid-cols-2 gap-1.5 text-[11px]">
-          <Item k="태스크" v={String(detail.tasks ?? "—")} />
-          <Item k="테스트" v={String(detail.tests ?? "—")} />
-          <Item k="기준 커버리지" v={String(detail.ac_coverage ?? "—")} />
-          <Item k="인수기준" v={String(detail.criteria ?? "—")} />
-          <Item k="반려" v={String(detail.reworks ?? 0)} />
-          <Item k="재기획" v={String(detail.replans ?? 0)} />
+          <Item k={t("task.k.tasks")} v={String(detail.tasks ?? "—")} />
+          <Item k={t("task.k.tests")} v={String(detail.tests ?? "—")} />
+          <Item k={t("task.k.coverage")} v={String(detail.ac_coverage ?? "—")} />
+          <Item k={t("task.k.criteria")} v={String(detail.criteria ?? "—")} />
+          <Item k={t("task.k.reworks")} v={String(detail.reworks ?? 0)} />
+          <Item k={t("task.k.replans")} v={String(detail.replans ?? 0)} />
         </dl>
       )}
     </div>

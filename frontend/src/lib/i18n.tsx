@@ -257,6 +257,59 @@ const S = {
     ja: "視差効果を減らす設定（prefers-reduced-motion）が有効なら、この画面は動きません。",
   },
 
+  // ── 실행 중 화면 (DAY 22) ─────────────────────────────────────
+  "run.mockWarn": { ko: "지금은 Mock 직원이 일합니다.", en: "Mock employees are working right now.", ja: "今は Mock 社員が働いています。" },
+  "run.mockWarnBody": {
+    ko: "산출물은 실제 AI 의 작업 결과가 아니라 미리 짜인 대본입니다. {link} 하면 실제 직원이 일합니다.",
+    en: "The output is a prewritten script, not the work of a real model. {link} and real employees take over.",
+    ja: "成果物は実際の AI の作業結果ではなく、あらかじめ書かれた台本です。{link} すると実際の社員が働きます。",
+  },
+  "run.mockWarnLink": {
+    ko: "설정에서 API 키를 등록",
+    en: "Register API keys in settings",
+    ja: "設定で API キーを登録",
+  },
+  "run.noCross": { ko: "교차검증이 성립하지 않습니다.", en: "Cross-checking does not hold.", ja: "相互検証が成り立ちません。" },
+  "run.noCrossBody": {
+    ko: "구현자와 검증자가 같은 회사의 모델이거나, 검증자 쪽 키가 없습니다.",
+    en: "The implementer and the reviewer are from the same company, or the reviewer's key is missing.",
+    ja: "実装者と検証者が同じ会社のモデルか、検証者側のキーがありません。",
+  },
+  "run.concurrentNote": {
+    ko: "(동시 실행 한도는 비용과 요청 한도를 함께 막습니다)",
+    en: "(the concurrency limit guards both cost and rate limits)",
+    ja: "（同時実行の上限はコストとレート上限の両方を守ります）",
+  },
+  "run.routing": { ko: "전략가의 판단", en: "The strategist's call", ja: "ストラテジストの判断" },
+  "run.detail": { ko: "프로젝트 상세", en: "Project detail", ja: "プロジェクト詳細" },
+
+  // ── 작업 로그 (DAY 22) ────────────────────────────────────────
+  "log.connected": { ko: "연결됨", en: "connected", ja: "接続済み" },
+  "log.disconnected": { ko: "연결 끊김 — 재연결 중", en: "disconnected — reconnecting", ja: "切断 — 再接続中" },
+  "log.polling": { ko: "· SSE 가 막혀 폴링으로 받는 중", en: "· SSE blocked, falling back to polling", ja: "· SSE が塞がれポーリングで受信中" },
+  "log.lines": { ko: "{n}줄", en: "{n} lines", ja: "{n} 行" },
+  "log.empty": { ko: "아직 기록이 없습니다.", en: "Nothing here yet.", ja: "まだ記録がありません。" },
+  "log.unread": { ko: "새 소식 {n}개 ↓", en: "{n} new ↓", ja: "新着 {n} 件 ↓" },
+  "log.done": { ko: "완료", en: "Done", ja: "完了" },
+  "log.stopped": { ko: "중단", en: "Stopped", ja: "中断" },
+  "log.scoreSuffix": { ko: " · 완성도 {n}%", en: " · {n}% complete", ja: " · 完成度 {n}%" },
+
+  // ── 태스크와 점수 (DAY 22) ────────────────────────────────────
+  "task.empty": { ko: "아직 계획이 없습니다.", en: "No plan yet.", ja: "まだ計画がありません。" },
+  "task.done": { ko: "완료", en: "done", ja: "完了" },
+  "task.running": { ko: "진행 중", en: "in progress", ja: "進行中" },
+  "task.waiting": { ko: "대기", en: "waiting", ja: "待機" },
+  "task.finalScore": { ko: "인수기준 충족률 (최종)", en: "Acceptance criteria met (final)", ja: "受け入れ基準の達成率（最終）" },
+  "task.midScore": { ko: "진행률 (중간 집계)", en: "Progress (interim)", ja: "進捗（中間集計）" },
+  "task.cost": { ko: "이번 프로젝트 비용", en: "Cost of this project", ja: "このプロジェクトのコスト" },
+  "task.rounds": { ko: "{n}라운드", en: "{n} rounds", ja: "{n} ラウンド" },
+  "task.k.tasks": { ko: "태스크", en: "Tasks", ja: "タスク" },
+  "task.k.tests": { ko: "테스트", en: "Tests", ja: "テスト" },
+  "task.k.coverage": { ko: "기준 커버리지", en: "Criteria covered", ja: "基準カバレッジ" },
+  "task.k.criteria": { ko: "인수기준", en: "Criteria", ja: "受け入れ基準" },
+  "task.k.reworks": { ko: "반려", en: "Rejections", ja: "差し戻し" },
+  "task.k.replans": { ko: "재기획", en: "Replans", ja: "再計画" },
+
   // ── 프로젝트 상세 (DAY 22) ────────────────────────────────────
   "proj.loading": { ko: "불러오는 중…", en: "Loading…", ja: "読み込み中…" },
   "proj.mockWarn": {
