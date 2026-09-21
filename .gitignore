@@ -50,3 +50,6 @@ ai_company.db-shm
 ai_company_auth.db
 ai_company_auth.db-wal
 ai_company_auth.db-shm
+
+# 배포/백업용 압축본은 저장소에 두지 않는다 (용량만 차지하고 히스토리로 복원된다)
+*.zip

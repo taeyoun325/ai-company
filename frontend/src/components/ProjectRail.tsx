@@ -143,6 +143,12 @@ export function ProjectRail({
               <li key={p.slug}>
                 <Link
                   href={`/projects/${encodeURIComponent(p.slug)}`}
+                  // 이름을 안 주면 스크린리더가 안의 글을 전부 이어 붙여
+                  // "mock-projectMOCK09. 22. 오전 08:23 · 4" 로 읽는다.
+                  aria-label={`${p.name || p.slug} · ${p.status}${
+                    p.mock ? " · Mock" : ""
+                  }`}
+                  aria-current={on ? "page" : undefined}
                   className={`block rounded-xl px-2.5 py-2 transition ${
                     on ? "bg-panel2" : "hover:bg-panel2"
                   }`}
@@ -154,7 +160,8 @@ export function ProjectRail({
                     </span>
                     {p.mock && <MockBadge title={t("mock.badge")} />}
                   </span>
-                  <span className="mt-0.5 block truncate text-[11px] text-dim">
+                  <span className="mt-0.5 block truncate text-[11px] text-dim"
+                        aria-hidden>
                     {when(p.created_at)}
                     {typeof p.file_count === "number" && ` · ${p.file_count}`}
                   </span>

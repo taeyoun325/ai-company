@@ -399,13 +399,37 @@ export function PixelOffice({
                       stroke={picked === e.id ? "var(--accent)" : color}
                       strokeWidth="1" />
               )}
+              {/*
+                자리를 **키보드로도** 고를 수 있어야 한다. 처음에는 투명한
+                사각형에 onClick 만 걸어뒀는데, 접근성 트리로 확인해보니
+                클릭 가능한 자리 5개 중 초점이 가는 것은 0개였다 —
+                마우스가 없으면 직원을 고를 방법이 아예 없었다.
+
+                SVG 요소도 `tabindex` 로 초점을 받는다. 이름을 붙여
+                스크린리더가 "한지수, 전략가, 작업 중"까지 읽게 한다.
+              */}
               <rect
                 x={seat.x - 12} y={seat.y - 13} width="24" height="26"
                 fill="transparent"
+                role={onPick ? "button" : undefined}
+                tabIndex={onPick ? 0 : undefined}
+                aria-label={`${e.name} · ${e.role} · ${
+                  empty ? t("staff.empty")
+                        : isWorking ? t("office.working") : t("office.idle")
+                }`}
+                aria-pressed={onPick ? picked === e.id : undefined}
                 style={{ cursor: onPick ? "pointer" : "default" }}
                 onMouseEnter={() => setHover(e.id)}
                 onMouseLeave={() => setHover(null)}
+                onFocus={() => setHover(e.id)}
+                onBlur={() => setHover(null)}
                 onClick={() => onPick?.(e.id)}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    onPick?.(e.id);
+                  }
+                }}
               >
                 <title>{`${e.name} · ${e.role}`}</title>
               </rect>
@@ -419,6 +443,15 @@ export function PixelOffice({
         다섯 개가 붙은 그림이 된다. SVG 밖에 두는 이유는 글자 크기 —
         방 좌표계 안에서는 글자가 4px 이라 읽히지 않는다.
       */}
+      {/*
+        단계가 바뀌는 것은 그림으로만 알 수 있었다. 화면을 못 보는 사람에게
+        "지금 무슨 일이 일어나는지"를 말해준다. 로그 전체를 읽어주면
+        쏟아지므로 **단계 하나만** 읽는다.
+      */}
+      <p className="sr-only" aria-live="polite">
+        {phase ? `${phase}${detail ? ` · ${detail}` : ""}` : ""}
+      </p>
+
       <div className="flex min-h-[38px] items-center gap-2 border-t border-line
         px-3 py-2 text-[11px]">
         {open ? (
