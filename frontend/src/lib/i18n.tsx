@@ -277,9 +277,15 @@ const S = {
     ja: "上から見たドットのオフィス。各席に社員が座り、頭の位置にはその社員を動かす AI プロバイダの印があります。",
   },
   "office.title": { ko: "사무실", en: "Office", ja: "オフィス" },
+  "office.hint": {
+    ko: "자리를 가리키면 누가 무엇으로 일하는지 보입니다.",
+    en: "Point at a seat to see who works there and on what.",
+    ja: "席を指すと、誰が何で働いているかが見えます。",
+  },
   "office.log": { ko: "작업 로그", en: "Activity log", ja: "作業ログ" },
   "office.projects": { ko: "프로젝트", en: "Projects", ja: "プロジェクト" },
   "office.newProject": { ko: "새 프로젝트", en: "New project", ja: "新規プロジェクト" },
+  "office.collapse": { ko: "목록 접기", en: "Collapse list", ja: "一覧を折りたたむ" },
   "office.ask": {
     ko: "무엇을 만들까요?",
     en: "What should we build?",

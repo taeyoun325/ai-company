@@ -25,8 +25,11 @@ import { useEffect } from "react";
 import { useLang } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { useLoader } from "@/lib/useLoader";
+import { useSticky } from "@/lib/sticky";
 import { Icon } from "./icons";
 import { Empty, MockBadge, StatusDot, when } from "./ui";
+
+const STORE_KEY = "ai-company.rail";
 
 export function ProjectRail({
   activeSlug, onNew, refreshKey,
@@ -37,6 +40,7 @@ export function ProjectRail({
   refreshKey?: string | number;
 }) {
   const { t } = useLang();
+  const [open, setOpen] = useSticky(STORE_KEY, true);
   const { data, reload } = useLoader("rail", () =>
     api.projects({ limit: 40, sort: "recent" }),
   );
@@ -44,6 +48,43 @@ export function ProjectRail({
   useEffect(() => {
     void reload();
   }, [refreshKey, reload]);
+
+  // 접어둔 상태는 기억한다(lib/sticky.ts). 좁은 화면에서 매번 접는 것은
+  // 일이고, 기억이 실패해도 화면은 그대로 돈다.
+  const toggle = () => setOpen(!open);
+
+  if (!open) {
+    // 접었을 때도 **여는 길이 보여야 한다.** 완전히 숨기면 사용자는
+    // 프로젝트 목록이 사라졌다고 생각한다.
+    return (
+      <aside className="flex h-full w-11 shrink-0 flex-col items-center gap-2
+        border-r border-line bg-[color:var(--panel)] py-3 backdrop-blur-xl">
+        <button
+          type="button"
+          onClick={toggle}
+          title={t("office.projects")}
+          className="grid size-7 place-items-center rounded-lg text-muted
+            transition hover:bg-panel2 hover:text-fg"
+        >
+          <Icon name="panel" size={16} />
+        </button>
+        {onNew && (
+          <button
+            type="button"
+            onClick={onNew}
+            title={t("office.newProject")}
+            className="grid size-7 place-items-center rounded-lg text-muted
+              transition hover:bg-panel2 hover:text-fg"
+          >
+            <Icon name="plus" size={16} />
+          </button>
+        )}
+        <span className="mt-1 text-[10px] tabular-nums text-dim">
+          {data?.projects.length ?? 0}
+        </span>
+      </aside>
+    );
+  }
 
   const rows = [...(data?.projects ?? [])].sort((a, b) => {
     const run = (p: typeof a) => (p.status === "running" ? 0 : 1);
@@ -53,8 +94,17 @@ export function ProjectRail({
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-line
       bg-[color:var(--panel)] backdrop-blur-xl">
-      <div className="flex items-center justify-between px-3 py-3">
-        <span className="text-[13px] font-semibold tracking-tight">
+      <div className="flex items-center gap-1 px-3 py-3">
+        <button
+          type="button"
+          onClick={toggle}
+          title={t("office.collapse")}
+          className="grid size-7 place-items-center rounded-lg text-muted
+            transition hover:bg-panel2 hover:text-fg"
+        >
+          <Icon name="panel" size={16} />
+        </button>
+        <span className="flex-1 text-[13px] font-semibold tracking-tight">
           {t("office.projects")}
         </span>
         {onNew && (

@@ -6,92 +6,116 @@
  * ## 왜 위에서 보나
  *
  * 옆에서 본 그림은 책상 다섯 개를 한 줄로 세워야 하고, 그러면 **방이
- * 아니라 띠**가 된다. 위에서 보면 자리 배치·회의 테이블·빈 자리가 한
+ * 아니라 띠**가 된다. 위에서 보면 자리 배치·회의 탁자·빈 자리가 한
  * 화면에 들어오고, "회사가 이렇게 생겼다"가 한 번에 읽힌다.
+ *
+ * ## 왜 둥근 탁자에 모여 앉나
+ *
+ * 각자 벽을 보고 앉아 있으면 다섯 명이 **각자 일하는 그림**이다. 이
+ * 제품이 파는 것은 그 반대다 — 기획한 사람이 넘기고, 검증자가 되돌리고,
+ * 다시 고쳐 오는 **협업**이다. 한 탁자에 둘러앉히면 그 관계가 배치로
+ * 보인다. 개인 책상은 벽 쪽에 그대로 두었다. 회의만 하는 회사는 없다.
  *
  * ## 머리 자리에 제공자 마크가 있다
  *
  * 이 제품의 핵심 주장은 **구현자와 검증자가 다른 회사의 모델**이라는
- * 것이다(§8). 글로 적어두면 읽는 사람만 알지만, 자리마다 마크를 박아두면
- * **보면 안다** — 개발자 자리와 분석가 자리의 마크가 다르다는 사실이
- * 그림 자체로 증거가 된다.
+ * 것이다(§8). 글로 적어두면 읽는 사람만 알지만, 자리마다 마크가 박혀
+ * 있으면 **보면 안다** — 개발자와 분석가의 마크가 다르다는 사실이 그림
+ * 자체로 증거가 된다.
  *
  * 마크는 우리가 도트로 다시 그린 **단순화된 표식**이다. 회사 로고 원본을
  * 픽셀로 늘려 박는 것은 대개 그 회사의 상표 지침이 금지한다(변형 금지).
- * 그래서 모양만 빌리고, 어느 회사인지는 이름표에 글자로 적는다 — 그림이
- * 애매하면 글자가 답한다.
+ * 모양만 빌리고, 어느 회사인지는 이름표에 글자로 적는다.
  *
- * ## 머리 위의 인적사항
+ * ## 이름은 몸통에 있다
  *
- * 이름·직함·모델·지금 상태가 자리 위에 뜬다. 카드 목록으로 내려두면
- * "저 자리가 누구지"를 눈으로 왕복해야 한다. 다만 **다섯 개를 항상 다
- * 띄우면 방이 안 보이므로**, 기본은 이름 한 줄이고 나머지는 그 자리를
- * 가리키거나 골랐을 때 펼친다.
+ * 처음에는 머리 위에 말풍선처럼 띄웠는데, 다섯 개가 공중에 떠 있으니
+ * 방이 아니라 **이름표 다섯 개가 붙은 그림**으로 보였다. 이름은 몸통에
+ * 작게 얹는다. 직함·제공자·상태처럼 늘 필요하지는 않은 것만 가리켰을
+ * 때 펼친다.
+ *
+ * ## 방은 생성된 데이터다
+ *
+ * 가구는 `scripts/gen-office.mjs` 가 사각형으로 펼쳐 `office-room.ts` 에
+ * 박아둔다. 여기서 손으로 적으면 컴포넌트가 천 줄이 되고, 책상 하나를
+ * 옮기려면 좌표 스무 개를 고쳐야 한다.
  *
  * ## 살아 움직이는 것과 장식의 차이
  *
  * 움직이는 것은 셋뿐이고 셋 다 **사실을 말한다**:
  *
  * - 일하는 직원만 손이 오르내린다(타자). 대기 중인 자리는 가만히 있다.
- * - 일하는 자리의 모니터만 깜빡인다.
+ * - 일하는 자리의 노트북 화면만 깜빡인다.
  * - 빈 자리는 의자만 남는다. 내보낸 직원이 어디 갔는지 묻지 않아도 된다.
  *
  * 돌아다니는 고양이 같은 것은 넣지 않았다. 귀엽지만 아무 말도 하지
  * 않고, 말하지 않는 것으로 시선을 끌면 말하는 것이 묻힌다.
- *
- * ## 움직임을 끈 사람에게는
- *
- * 프레임이 멈춘다. 그림은 그대로 보이고, 일하는 자리는 테두리로 표시한다.
  */
 import { useEffect, useState } from "react";
 
 import { prefersReducedMotion } from "@/lib/motion";
 import { useLang } from "@/lib/i18n";
 import type { Employee } from "@/lib/types";
+import { ROOM, ROOM_RECTS } from "./office-room";
 
-const ROOM = { w: 208, h: 132 };
+/** 생성기가 쓰는 이름 → 실제 색. 색은 토큰에서만 나온다(§4). */
+const PAINT: Record<string, string> = {
+  floor: "color-mix(in srgb, var(--panel-solid) 92%, transparent)",
+  floorLine: "color-mix(in srgb, var(--line) 60%, transparent)",
+  floorDot: "color-mix(in srgb, var(--line) 45%, transparent)",
+  wall: "color-mix(in srgb, var(--fg) 16%, transparent)",
+  wallEdge: "color-mix(in srgb, var(--line-strong) 65%, transparent)",
+  glass: "color-mix(in srgb, var(--accent) 45%, transparent)",
+  board: "color-mix(in srgb, var(--panel-solid) 60%, #fff)",
+  boardInk: "color-mix(in srgb, var(--dim) 70%, transparent)",
+  // 가구는 바닥보다 **밝아야** 한다. 같은 밝기면 방이 평면으로 보이고,
+  // 어두우면 구멍처럼 읽힌다.
+  desk: "color-mix(in srgb, var(--fg) 12%, transparent)",
+  deskEdge: "color-mix(in srgb, var(--fg) 22%, transparent)",
+  chair: "color-mix(in srgb, var(--fg) 9%, transparent)",
+  chairSeat: "color-mix(in srgb, var(--fg) 14%, transparent)",
+  door: "color-mix(in srgb, var(--warn) 22%, transparent)",
+  doorFrame: "color-mix(in srgb, var(--warn) 45%, transparent)",
+  doorKnob: "color-mix(in srgb, var(--warn) 75%, transparent)",
+  clock: "color-mix(in srgb, var(--fg) 20%, transparent)",
+  clockHand: "var(--dim)",
+  // 천장 조명이 닿는 자리. 아주 옅게 — 여기가 세면 방이 얼룩덜룩해진다.
+  lightPool: "color-mix(in srgb, var(--fg) 3.5%, transparent)",
+  monitor: "color-mix(in srgb, var(--fg) 30%, transparent)",
+  monitorStand: "var(--line)",
+  keyboard: "color-mix(in srgb, var(--line) 80%, transparent)",
+  mouse: "var(--line)",
+  paper: "color-mix(in srgb, #fff 55%, transparent)",
+  shelf: "color-mix(in srgb, var(--fg) 13%, transparent)",
+  book1: "color-mix(in srgb, var(--strategist) 70%, transparent)",
+  book2: "color-mix(in srgb, var(--writer) 65%, transparent)",
+  book3: "color-mix(in srgb, var(--analyst) 65%, transparent)",
+  counter: "color-mix(in srgb, var(--fg) 12%, transparent)",
+  machine: "color-mix(in srgb, var(--fg) 28%, transparent)",
+  machineDrip: "color-mix(in srgb, var(--warn) 60%, transparent)",
+  cup: "color-mix(in srgb, #fff 45%, transparent)",
+  leaf: "color-mix(in srgb, var(--ok) 55%, transparent)",
+  pot: "color-mix(in srgb, var(--warn) 45%, transparent)",
+  rack: "color-mix(in srgb, var(--fg) 13%, transparent)",
+  rackSlot: "color-mix(in srgb, var(--fg) 26%, transparent)",
+  rackLed: "var(--ok)",
+  rug: "color-mix(in srgb, var(--accent) 10%, transparent)",
+  rugInner: "color-mix(in srgb, var(--accent) 7%, transparent)",
+};
 
 /**
  * 제공자 표식 (7×7). `X` 가 찍히는 칸이다.
  * 원본 로고가 아니라 그 회사를 가리키는 **도형**을 도트로 다시 그렸다.
  */
 const MARK: Record<string, string[]> = {
-  claude: [
-    "...X...",
-    ".X.X.X.",
-    "..XXX..",
-    "XXXXXXX",
-    "..XXX..",
-    ".X.X.X.",
-    "...X...",
-  ],
-  gemini: [
-    "...X...",
-    "..XXX..",
-    ".XXXXX.",
-    "XXXXXXX",
-    ".XXXXX.",
-    "..XXX..",
-    "...X...",
-  ],
-  openai: [
-    "..XXX..",
-    ".X...X.",
-    "X.....X",
-    "X.....X",
-    "X.....X",
-    ".X...X.",
-    "..XXX..",
-  ],
-  unknown: [
-    "..XXX..",
-    ".X...X.",
-    "....X..",
-    "...X...",
-    "...X...",
-    ".......",
-    "...X...",
-  ],
+  claude: ["...X...", ".X.X.X.", "..XXX..", "XXXXXXX",
+           "..XXX..", ".X.X.X.", "...X..."],
+  gemini: ["...X...", "..XXX..", ".XXXXX.", "XXXXXXX",
+           ".XXXXX.", "..XXX..", "...X..."],
+  openai: ["..XXX..", ".X...X.", "X.....X", "X.....X",
+           "X.....X", ".X...X.", "..XXX.."],
+  unknown: ["..XXX..", ".X...X.", "....X..", "...X...",
+            "...X...", ".......", "...X..."],
 };
 
 const PROVIDER_LABEL: Record<string, string> = {
@@ -100,17 +124,24 @@ const PROVIDER_LABEL: Record<string, string> = {
   openai: "GPT",
 };
 
-/** 자리 좌표. 위 줄 셋 · 아래 줄 둘 — 실제 사무실이 그렇게 생겼다. */
+/** 회의 탁자와 그 둘레의 자리. 다섯 명이 고르게 앉는다. */
+const TABLE = { cx: 122, cy: 77, rx: 38, ry: 27 };
 const SEATS = [
-  { x: 16, y: 30 },
-  { x: 58, y: 30 },
-  { x: 100, y: 30 },
-  { x: 37, y: 82 },
-  { x: 79, y: 82 },
+  { x: 122, y: 45 },
+  { x: 163, y: 66 },
+  { x: 146, y: 105 },
+  { x: 98, y: 105 },
+  { x: 81, y: 66 },
 ];
-const DESK = { w: 32, h: 11 };
 
-/** 7×7 표식을 원하는 자리에 찍는다. */
+/** 노트북은 자리와 탁자 중심 사이에 놓인다. */
+function laptopAt(seat: { x: number; y: number }) {
+  return {
+    x: seat.x + (TABLE.cx - seat.x) * 0.42 - 6,
+    y: seat.y + (TABLE.cy - seat.y) * 0.42 - 3,
+  };
+}
+
 function Mark({ provider, x, y, color }: {
   provider: string; x: number; y: number; color: string;
 }) {
@@ -131,103 +162,69 @@ function Mark({ provider, x, y, color }: {
 /**
  * 위에서 본 직원 한 명.
  *
- * 머리(표식) · 어깨 · 두 손. 손만 프레임마다 움직인다 — 위에서 보면
- * 사람이 하는 일 중 눈에 보이는 것은 그것뿐이다.
+ * 머리(제공자 표식) · 몸통(이름) · 두 손. 손만 프레임마다 움직인다 —
+ * 위에서 보면 사람이 하는 일 중 눈에 보이는 것은 그것뿐이다.
  */
-function Worker({ x, y, color, provider, typing, frame }: {
-  x: number; y: number; color: string; provider: string;
-  typing: boolean; frame: number;
+function Worker({ seat, color, provider, name, typing, frame, empty }: {
+  seat: { x: number; y: number };
+  color: string; provider: string; name: string;
+  typing: boolean; frame: number; empty: boolean;
 }) {
+  const x = seat.x - 9;
+  const y = seat.y - 9;
+  if (empty) {
+    // 빈 자리는 의자만. 흐릿한 사람을 그려두면 "불러오는 중"으로 읽힌다.
+    return (
+      <g opacity="0.75">
+        <rect x={x + 1} y={y + 2} width="16" height="15" rx="4"
+              fill="none" stroke="var(--line-strong)" strokeWidth="1"
+              strokeDasharray="2 2" />
+      </g>
+    );
+  }
   const lift = typing ? (frame === 0 ? [1, 0] : [0, 1]) : [0, 0];
   return (
     <g>
-      {/* 어깨 */}
-      <rect x={x} y={y + 9} width="15" height="7" rx="2.5" fill={color} />
-      <rect x={x + 1.5} y={y + 13.5} width="12" height="2" rx="1"
-            fill="rgba(0,0,0,0.18)" />
+      {/* 의자 등받이 */}
+      <rect x={x - 1} y={y + 3} width="20" height="15" rx="5"
+            fill="color-mix(in srgb, var(--line) 85%, transparent)" />
+      {/* 몸통 — 이름이 여기 앉는다 */}
+      <rect x={x + 1} y={y + 7} width="16" height="9" rx="3" fill={color} />
+      <text
+        x={x + 9} y={y + 13.4} textAnchor="middle" fontSize="4.2"
+        fontWeight="700" fill="#0b0d16" style={{ letterSpacing: "-0.1px" }}
+      >
+        {name.length > 4 ? `${name.slice(0, 4)}…` : name}
+      </text>
       {/* 머리 — 표식이 앉는 자리 */}
-      <rect x={x + 2.5} y={y - 1} width="10" height="11" rx="3"
+      <rect x={x + 4} y={y - 2} width="11" height="11" rx="3.5"
             fill="var(--panel-solid)" stroke={color} strokeWidth="0.9" />
-      <Mark provider={provider} x={x + 4} y={y + 1} color={color} />
-      {/* 손 — 자판 쪽으로 뻗어 있다 */}
-      <rect x={x - 1.5} y={y + 5 - lift[0]} width="3.5" height="3.5" rx="1.5"
+      <Mark provider={provider} x={x + 6} y={y} color={color} />
+      {/* 손 */}
+      <rect x={x - 1} y={y + 8 - lift[0]} width="3.4" height="3.4" rx="1.7"
             fill="#e9c69f" />
-      <rect x={x + 13} y={y + 5 - lift[1]} width="3.5" height="3.5" rx="1.5"
+      <rect x={x + 15.6} y={y + 8 - lift[1]} width="3.4" height="3.4" rx="1.7"
             fill="#e9c69f" />
     </g>
   );
 }
 
-/** 책상 · 모니터 · 의자. 사람이 없어도 자리는 남는다. */
-function Seat({ x, y, working, empty }: {
-  x: number; y: number; working: boolean; empty: boolean;
+/** 탁자 위의 노트북. 일하는 자리만 화면이 켜져 있다. */
+function Laptop({ seat, working, empty }: {
+  seat: { x: number; y: number }; working: boolean; empty: boolean;
 }) {
+  const p = laptopAt(seat);
   return (
-    <g>
-      <rect x={x} y={y} width={DESK.w} height={DESK.h} rx="2"
-            fill="var(--panel-2)" stroke="var(--line)" strokeWidth="0.8" />
-      {/* 위에서 보면 모니터는 받침과 화면의 윗면만 보인다 */}
-      <rect x={x + 10} y={y + 1.5} width="12" height="4" rx="1"
-            fill="var(--line-strong)" />
+    <g opacity={empty ? 0.35 : 1}>
+      <rect x={p.x} y={p.y} width="12" height="7" rx="1.2"
+            fill="color-mix(in srgb, var(--fg) 34%, transparent)" />
       <rect
         className={working ? "px-screen" : ""}
-        x={x + 11} y={y + 2.4} width="10" height="2.2" rx="0.6"
+        x={p.x + 1} y={p.y + 1} width="10" height="4" rx="0.8"
         fill={working ? "var(--accent)" : "var(--dim)"}
-        opacity={empty ? 0.3 : 0.9}
       />
-      {/* 자판 */}
-      <rect x={x + 9} y={y + 7} width="14" height="3" rx="1"
-            fill="var(--line)" />
-      {/* 의자 — 사람 뒤 */}
-      <rect x={x + 10} y={y + 29} width="12" height="5" rx="2.5"
-            fill="var(--line)" />
-    </g>
-  );
-}
-
-/** 방 — 바닥·벽·회의 탁자·화분. 사람이 일하는 곳처럼 보여야 한다. */
-function Room() {
-  return (
-    <g>
-      <rect x="0" y="0" width={ROOM.w} height={ROOM.h}
-            fill="color-mix(in srgb, var(--panel-solid) 90%, transparent)" />
-      {/* 바닥 격자 — 위에서 본 방은 바닥이 보인다 */}
-      {Array.from({ length: Math.ceil(ROOM.w / 16) }, (_, i) => (
-        <rect key={`v${i}`} x={i * 16} y="0" width="0.5" height={ROOM.h}
-              fill="var(--line)" opacity="0.5" />
-      ))}
-      {Array.from({ length: Math.ceil(ROOM.h / 16) }, (_, i) => (
-        <rect key={`h${i}`} x="0" y={i * 16} width={ROOM.w} height="0.5"
-              fill="var(--line)" opacity="0.5" />
-      ))}
-      {/* 벽 */}
-      <rect x="0" y="0" width={ROOM.w} height="6" fill="var(--line-strong)" />
-      <rect x="0" y="0" width="5" height={ROOM.h} fill="var(--line-strong)" />
-      <rect x={ROOM.w - 5} y="0" width="5" height={ROOM.h}
-            fill="var(--line-strong)" />
-      <rect x="0" y={ROOM.h - 5} width={ROOM.w} height="5"
-            fill="var(--line-strong)" />
-      {/* 회의 탁자와 의자 넷 */}
-      <ellipse cx="166" cy="46" rx="20" ry="14" fill="var(--panel-2)"
-               stroke="var(--line)" strokeWidth="0.8" />
-      <rect x="160" y="26" width="12" height="5" rx="2.5" fill="var(--line)" />
-      <rect x="160" y="61" width="12" height="5" rx="2.5" fill="var(--line)" />
-      <rect x="139" y="43" width="5" height="10" rx="2.5" fill="var(--line)" />
-      <rect x="188" y="43" width="5" height="10" rx="2.5" fill="var(--line)" />
-      {/* 화분 둘 */}
-      <circle cx="164" cy="98" r="7"
-              fill="color-mix(in srgb, var(--ok) 55%, transparent)" />
-      <rect x="161" y="99" width="6" height="7" rx="1" fill="var(--line-strong)" />
-      <circle cx="186" cy="112" r="5"
-              fill="color-mix(in srgb, var(--ok) 45%, transparent)" />
-      <rect x="184" y="113" width="4" height="5" rx="1" fill="var(--line-strong)" />
-      {/* 커피 자리 */}
-      <rect x="12" y="112" width="26" height="9" rx="2" fill="var(--panel-2)"
-            stroke="var(--line)" strokeWidth="0.8" />
-      <circle cx="18" cy="116.5" r="2.2"
-              fill="color-mix(in srgb, var(--warn) 70%, transparent)" />
-      <circle cx="25" cy="116.5" r="2.2"
-              fill="color-mix(in srgb, var(--warn) 45%, transparent)" />
+      <rect x={p.x + 1} y={p.y + 5.6} width="10" height="1" rx="0.5"
+            fill="color-mix(in srgb, var(--fg) 20%, transparent)" />
     </g>
   );
 }
@@ -256,6 +253,8 @@ export function PixelOffice({
     return () => window.clearInterval(id);
   }, [still, anyWorking]);
 
+  const open = employees.find((e) => e.id === (picked ?? hover));
+
   return (
     <div className={`glass glass-lit overflow-hidden ${className}`}>
       <svg
@@ -264,75 +263,47 @@ export function PixelOffice({
         role="img"
         aria-label={t("office.alt")}
       >
-        <Room />
+        {/* 방 — 생성된 데이터 (scripts/gen-office.mjs) */}
+        {ROOM_RECTS.map((q, i) => (
+          <rect key={i} x={q.x} y={q.y} width={q.w} height={q.h} rx={q.rx}
+                fill={PAINT[q.fill] ?? "var(--line)"} />
+        ))}
+
+        {/* 회의 탁자 */}
+        <ellipse cx={TABLE.cx} cy={TABLE.cy} rx={TABLE.rx} ry={TABLE.ry}
+                 fill="color-mix(in srgb, var(--fg) 14%, transparent)"
+                 stroke="color-mix(in srgb, var(--fg) 26%, transparent)"
+                 strokeWidth="1" />
+        <ellipse cx={TABLE.cx} cy={TABLE.cy} rx={TABLE.rx - 4}
+                 ry={TABLE.ry - 3} fill="none" stroke="var(--line)"
+                 strokeWidth="0.5" opacity="0.7" />
+
         {employees.slice(0, SEATS.length).map((e, i) => {
           const seat = SEATS[i];
           const empty = e.active === false;
           const isWorking = !empty && working(e.id);
           const color = `var(--${e.id}, var(--accent))`;
-          const open = picked === e.id || hover === e.id;
           return (
             <g key={e.id}>
-              <Seat x={seat.x} y={seat.y} working={isWorking} empty={empty} />
-              {!empty && (
-                <Worker
-                  x={seat.x + 8.5}
-                  y={seat.y + 15}
-                  color={color}
-                  provider={e.provider}
-                  typing={isWorking && !still}
-                  frame={frame}
-                />
-              )}
-
-              {/* 인적사항 — 머리 위. 기본은 이름 한 줄, 가리키면 펼친다.
-                  다섯을 항상 다 띄우면 방이 안 보인다. */}
-              <g transform={`translate(${seat.x + DESK.w / 2} ${seat.y - 4})`}>
-                <rect
-                  x={-25} y={open ? -25 : -11} width="50"
-                  height={open ? 25 : 11} rx="3"
-                  fill="var(--panel-solid)"
-                  stroke={isWorking ? color : "var(--line)"}
-                  strokeWidth="0.8"
-                  opacity={empty ? 0.5 : 0.94}
-                />
-                <text x="0" y={open ? -16 : -3} textAnchor="middle"
-                      fontSize="5.4" fontWeight="600"
-                      fill={empty ? "var(--dim)" : "var(--fg)"}>
-                  {e.name}
-                </text>
-                {open && (
-                  <>
-                    <text x="0" y={-9.5} textAnchor="middle" fontSize="4.4"
-                          fill="var(--muted)">
-                      {e.role} · {PROVIDER_LABEL[e.provider] ?? e.provider}
-                    </text>
-                    <text x="0" y={-3.5} textAnchor="middle" fontSize="4.2"
-                          fill={isWorking ? color : "var(--dim)"}>
-                      {empty
-                        ? t("staff.empty")
-                        : isWorking
-                          ? t("office.working")
-                          : t("office.idle")}
-                      {e.mock ? " · MOCK" : ""}
-                    </text>
-                  </>
-                )}
-              </g>
-
+              <Laptop seat={seat} working={isWorking} empty={empty} />
+              <Worker
+                seat={seat}
+                color={color}
+                provider={e.provider}
+                name={e.name}
+                typing={isWorking && !still}
+                frame={frame}
+                empty={empty}
+              />
               {/* 고른 자리 · 일하는 자리 표시 */}
               {(picked === e.id || (isWorking && still)) && (
-                <rect x={seat.x - 2} y={seat.y - 2} width={DESK.w + 4}
-                      height="38" rx="3" fill="none"
+                <rect x={seat.x - 12} y={seat.y - 13} width="24" height="26"
+                      rx="6" fill="none"
                       stroke={picked === e.id ? "var(--accent)" : color}
-                      strokeWidth="0.9" />
+                      strokeWidth="1" />
               )}
-
-              {/* 자리를 통째로 누를 수 있게 한다. SVG 안에 투명한 사각형을
-                  두는 편이, 화면 위에 HTML 을 겹쳐 좌표를 맞추는 것보다
-                  어긋날 일이 없다. */}
               <rect
-                x={seat.x - 3} y={seat.y - 26} width={DESK.w + 6} height="64"
+                x={seat.x - 12} y={seat.y - 13} width="24" height="26"
                 fill="transparent"
                 style={{ cursor: onPick ? "pointer" : "default" }}
                 onMouseEnter={() => setHover(e.id)}
@@ -345,6 +316,38 @@ export function PixelOffice({
           );
         })}
       </svg>
+
+      {/*
+        인적사항은 가리켰을 때만. 다섯 개를 늘 띄우면 방이 아니라 이름표
+        다섯 개가 붙은 그림이 된다. SVG 밖에 두는 이유는 글자 크기 —
+        방 좌표계 안에서는 글자가 4px 이라 읽히지 않는다.
+      */}
+      <div className="flex min-h-[38px] items-center gap-2 border-t border-line
+        px-3 py-2 text-[11px]">
+        {open ? (
+          <>
+            <span className="size-2 rounded-full"
+                  style={{ background: `var(--${open.id}, var(--accent))` }} />
+            <strong className="text-fg">{open.name}</strong>
+            <span className="text-muted">{open.role}</span>
+            <span className="text-dim">
+              {PROVIDER_LABEL[open.provider] ?? open.provider} · {open.model}
+            </span>
+            <span className="ml-auto"
+                  style={{ color: working(open.id)
+                    ? `var(--${open.id}, var(--accent))` : "var(--dim)" }}>
+              {open.active === false
+                ? t("staff.empty")
+                : working(open.id)
+                  ? t("office.working")
+                  : t("office.idle")}
+              {open.mock ? " · MOCK" : ""}
+            </span>
+          </>
+        ) : (
+          <span className="text-dim">{t("office.hint")}</span>
+        )}
+      </div>
     </div>
   );
 }

@@ -33,7 +33,7 @@ import type { ReactNode } from "react";
 export type IconName =
   | "strategist" | "developer" | "analyst" | "writer" | "designer"
   | "building" | "req" | "verify" | "package" | "person" | "system"
-  | "plus" | "play" | "stop";
+  | "plus" | "play" | "stop" | "panel";
 
 /** 24×24 격자 위의 path 들. 바깥에서 stroke 속성을 걸어준다. */
 const GLYPHS: Record<IconName, ReactNode> = {
@@ -128,6 +128,13 @@ const GLYPHS: Record<IconName, ReactNode> = {
     </>
   ),
   play: <path d="M8 5.5 18.5 12 8 18.5Z" />,
+  // 왼쪽 칸이 있는 창 — 레일을 여닫는 버튼
+  panel: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <line x1="9.5" y1="4.5" x2="9.5" y2="19.5" />
+    </>
+  ),
   stop: <rect x="6.5" y="6.5" width="11" height="11" rx="2" />,
   // 톱니 — 시스템이 하는 말. 사람이 한 말과 섞이면 안 된다.
   system: (
