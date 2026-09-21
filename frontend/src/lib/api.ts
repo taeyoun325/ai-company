@@ -15,6 +15,7 @@
 import type {
   ByokStatus,
   CreditStatus,
+  FileVersion,
   Employee,
   MeResponse,
   PlanRow,
@@ -289,7 +290,8 @@ export const api = {
     call<{
       path: string;
       content: string;
-      versions: { version: number; note: string; lines: number }[];
+      /** 판본마다 **누가·몇 라운드에·왜** 고쳤는지 (DAY 22). */
+      versions: FileVersion[];
     }>(`/api/projects/${seg(slug)}/file?path=${encodeURIComponent(path)}`),
   projectDiff: (slug: string, path: string, a: number, b = 0) =>
     call<{ diff: { kind: string; text: string }[] }>(

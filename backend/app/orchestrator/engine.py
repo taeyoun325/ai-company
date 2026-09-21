@@ -309,17 +309,22 @@ def _board(plan: Plan, done: set[str], current: str | None) -> list[dict]:
     return rows
 
 
-def _apply(result: WorkResult, employee_id: str) -> list[str]:
+def _apply(result: WorkResult, employee_id: str, *,
+           round: int = 0, reason: str = "") -> list[str]:
     """직원이 낸 파일을 실제로 쓴다.
 
     권한 위반은 실행을 죽이지 않는다 — 그 파일만 거부하고 사실을 남긴다.
     한 파일의 경로가 틀렸다고 나머지 산출물까지 버릴 이유가 없고,
     거부 사실이 로그에 남아야 검증자와 CEO 가 판단할 수 있다.
+
+    `round` 와 `reason` 은 파일 이력에 함께 남는다 — 나중에 이 파일을
+    짚고 "몇 라운드에서 어떤 지적을 받고 고쳤나"를 따라갈 수 있어야 한다.
     """
     written: list[str] = []
     for f in result.files:
         try:
-            info = pfs.write(f.path, f.content, employee_id)
+            info = pfs.write(f.path, f.content, employee_id,
+                             round=round, reason=reason)
         except pfs.Denied as e:
             bus.say(employee_id, f"`{f.path}` 거부됨 — {e}", kind="error")
             continue
@@ -432,7 +437,7 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
         for tf in suite.files:
             path = tf.path if tf.path.startswith("tests/") else f"tests/{tf.path}"
             try:
-                pfs.write(path, tf.content, roles.VERIFIER)
+                pfs.write(path, tf.content, roles.VERIFIER, round=rounds)
             except pfs.Denied as e:
                 bus.say(roles.VERIFIER, f"테스트 파일 거부됨 — `{path}` ({e})", kind="error")
                 continue
@@ -470,7 +475,9 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
                     who, prompts.implement(task, criteria, pfs.snapshot(who), feedback),
                     WorkResult)
                 employee.say(roles.get(who), work.message_to_team)
-                _apply(work, who)
+                # 반려를 받고 다시 쓰는 것이면 그 사유를 이력에 남긴다.
+                _apply(work, who, round=rounds,
+                       reason=(feedback.message_to_team if feedback else ""))
                 bus.state(files=store.files_of(slug))
 
                 bus.phase("TEST", task.title)

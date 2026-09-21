@@ -186,13 +186,26 @@ def _hist_dir(slug: str, path: str) -> Path:
     return dir_of(slug) / HISTORY / flat
 
 
-def snapshot_version(slug: str, path: str, content: str, note: str = "") -> int:
+def snapshot_version(slug: str, path: str, content: str, note: str = "",
+                     meta: dict | None = None) -> int:
+    """덮어쓰기 직전 내용을 남긴다. **누가·몇 라운드에·왜** 를 함께 적는다.
+
+    그 전에는 자유 문장 하나(`박도현 덮어쓰기 직전`)뿐이었다. 그러면
+    "이 파일이 왜 세 번 고쳐졌나"를 사람이 문장에서 읽어내야 하고,
+    기계는 아무것도 못 한다 — 정렬도 필터도 안 된다.
+
+    구매 기준에 **감사 가능성**이 올라와 있다(docs/market.md). 파일 하나를
+    짚고 그때까지의 경위를 따라갈 수 없으면, 그건 "AI 가 만들어줬다"이지
+    "무엇이 어떻게 만들어졌다"가 아니다.
+    """
     d = _hist_dir(slug, path)
     d.mkdir(parents=True, exist_ok=True)
     n = len(list(d.glob("v*.txt"))) + 1
-    (d / f"v{n:03d}.txt").write_text(content, encoding="utf-8")
+    safeio.write_text(d / f"v{n:03d}.txt", content)
     if note:
-        (d / f"v{n:03d}.note").write_text(note, encoding="utf-8")
+        safeio.write_text(d / f"v{n:03d}.note", note)
+    if meta:
+        safeio.write_json(d / f"v{n:03d}.json", {**meta, "at": time.time()})
     return n
 
 
@@ -203,14 +216,26 @@ def versions(slug: str, path: str) -> list[dict]:
     if d.exists():
         for f in sorted(d.glob("v*.txt")):
             note = f.with_suffix(".note")
-            out.append({
+            meta_file = f.with_suffix(".json")
+            row = {
                 "version": int(f.stem[1:]),
                 "note": note.read_text(encoding="utf-8") if note.exists() else "",
                 "lines": len(f.read_text(encoding="utf-8", errors="replace").splitlines()),
-            })
+                # 옛 판본에는 이것들이 없다. 없으면 빈 값이다 — 없는 것을
+                # 지어내면 이력이 거짓말이 된다.
+                "author": "", "round": 0, "reason": "", "at": 0.0,
+            }
+            if meta_file.exists():
+                try:
+                    row.update(json.loads(meta_file.read_text(encoding="utf-8")))
+                except json.JSONDecodeError:
+                    pass
+            out.append(row)
     try:
         cur = read_file(slug, path)
-        out.append({"version": 0, "note": "현재", "lines": len(cur.splitlines())})
+        out.append({"version": 0, "note": "", "lines": len(cur.splitlines()),
+                    "author": "", "round": 0, "reason": "", "at": 0.0,
+                    "current": True})
     except ValueError:
         pass
     return out

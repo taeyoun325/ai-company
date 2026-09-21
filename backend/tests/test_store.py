@@ -279,3 +279,54 @@ def test_two_projects_in_the_same_second_do_not_collide(tmp_path, monkeypatch):
     b = store.new_project("계산기를 만들어주세요")
     assert a != b
     assert store.exists(a) and store.exists(b)
+
+
+# ── 파일이 여기까지 온 경위 (DAY 22 · docs/market.md 2순위) ────────
+def test_a_revision_records_who_and_why(tmp_path, monkeypatch):
+    """자유 문장 하나로는 '이 파일이 왜 세 번 고쳐졌나'를 사람이 읽어내야
+    하고, 기계는 아무것도 못 한다 — 정렬도 필터도 안 된다."""
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    slug = store.new_project("경위가 남아야 한다")
+
+    store.snapshot_version(slug, "src/calc.py", "첫 판",
+                           meta={"author": "developer", "round": 3,
+                                 "reason": "div 가 0 을 안 막는다"})
+    rows = store.versions(slug, "src/calc.py")
+    first = rows[0]
+    assert first["author"] == "developer"
+    assert first["round"] == 3
+    assert "0" in first["reason"]
+    assert first["at"] > 0
+
+
+def test_old_revisions_have_empty_fields_not_invented_ones(tmp_path, monkeypatch):
+    """옛 판본에는 이 정보가 없다. 없는 것을 그럴듯하게 채우면 이력이
+    거짓말이 된다."""
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    slug = store.new_project("옛 판본")
+    store.snapshot_version(slug, "src/old.py", "예전 내용", note="그때 방식")
+
+    row = store.versions(slug, "src/old.py")[0]
+    assert row["author"] == ""
+    assert row["round"] == 0
+    assert row["note"] == "그때 방식"
+
+
+def test_writing_through_the_tools_keeps_the_trail(tmp_path, monkeypatch):
+    """헬퍼만 맞고 직원이 쓰는 경로가 옛 방식이면 아무 의미가 없다."""
+    from app.tools import project_fs as pfs
+
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    slug = store.new_project("도구를 지나가는 길")
+    pfs.use(slug)
+    try:
+        pfs.write("src/calc.py", "def add(a, b): return a + b", "developer")
+        pfs.write("src/calc.py", "def add(a, b): return a - b", "developer",
+                  round=2, reason="덧셈이 뺄셈으로 되어 있다")
+    finally:
+        pfs.release()
+
+    rows = store.versions(slug, "src/calc.py")
+    assert rows[0]["author"] == "developer"
+    assert rows[0]["round"] == 2
+    assert "뺄셈" in rows[0]["reason"]

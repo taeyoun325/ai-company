@@ -25,6 +25,7 @@ import threading
 from pathlib import Path
 
 from app.agents import roles
+from app import safeio
 from app.database import store
 
 # 어느 구역에도 만들 수 없는 파일들. pytest 가 자동으로 읽어들이거나
@@ -113,14 +114,22 @@ def read(path: str, employee_id: str = "SYSTEM") -> str:
     return p.read_text(encoding="utf-8", errors="replace")
 
 
-def write(path: str, content: str, employee_id: str = "SYSTEM") -> dict:
+def write(path: str, content: str, employee_id: str = "SYSTEM",
+          *, round: int = 0, reason: str = "") -> dict:
+    """파일을 쓴다. 덮어쓰는 경우 **직전 내용과 경위**를 함께 남긴다.
+
+    `round` 와 `reason` 을 받는 이유: 나중에 이 파일을 짚고 "몇 번째
+    라운드에서, 어떤 지적을 받고 고쳤나"를 따라갈 수 있어야 한다.
+    """
     p = _resolve(path, employee_id, write=True)
     p.parent.mkdir(parents=True, exist_ok=True)
     before = p.read_text(encoding="utf-8", errors="replace") if p.exists() else None
     if before is not None and before != content:
-        store.snapshot_version(slug(), path, before,
-                               note=f"{employee_id} 덮어쓰기 직전")
-    p.write_text(content, encoding="utf-8")
+        store.snapshot_version(
+            slug(), path, before,
+            note=f"{employee_id} 덮어쓰기 직전",
+            meta={"author": employee_id, "round": round, "reason": reason})
+    safeio.write_text(p, content)
     return {"path": path, "created": before is None,
             "old_lines": len(before.splitlines()) if before else 0,
             "new_lines": len(content.splitlines())}

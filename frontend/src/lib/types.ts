@@ -111,6 +111,18 @@ export interface TaskRow {
   status: "todo" | "doing" | "done";
 }
 
+/** 파일 한 판본. 옛 판본에는 경위가 없어서 빈 값으로 온다 (DAY 22). */
+export interface FileVersion {
+  version: number;
+  note: string;
+  lines: number;
+  author?: string;
+  round?: number;
+  reason?: string;
+  at?: number;
+  current?: boolean;
+}
+
 export interface Project {
   slug: string;
   name: string;

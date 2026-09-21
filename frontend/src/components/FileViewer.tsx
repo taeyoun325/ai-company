@@ -9,12 +9,70 @@
  * 무엇이 바뀌었는지 CEO 가 직접 볼 수 없으면, "고쳤습니다"라는 말을
  * 믿는 수밖에 없다. 그건 검증이 아니다.
  */
+import type { FileVersion } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { useState } from "react";
 
 import { api } from "@/lib/api";
 import { useLoader } from "@/lib/useLoader";
 import { Empty } from "./ui";
+
+/**
+ * 이 파일이 여기까지 온 경위.
+ *
+ * 구매 기준에 **감사 가능성**이 올라와 있다(docs/market.md). 파일 하나를
+ * 짚고 "누가, 몇 라운드에, 어떤 지적을 받고 고쳤나"를 따라갈 수 없으면
+ * 그건 "AI 가 만들어줬다"이지 "무엇이 어떻게 만들어졌다"가 아니다.
+ *
+ * 옛 판본에는 이 정보가 없다. 그때는 **빈 자리로 둔다** — 없는 것을
+ * 그럴듯하게 채우면 이력이 거짓말이 된다.
+ */
+function Trail({ versions }: { versions: FileVersion[] }) {
+  const { t } = useLang();
+  // 최신이 위. 이력을 볼 때 알고 싶은 것은 "마지막에 무슨 일이 있었나"다.
+  const rows = [...versions].reverse();
+  if (rows.length <= 1) {
+    return <p className="text-[11px] text-dim">{t("file.noHistory")}</p>;
+  }
+  return (
+    <ol className="space-y-1.5">
+      {rows.map((v) => (
+        <li key={v.version} className="flex gap-2 text-[11px]">
+          <span
+            className="mt-1 size-1.5 shrink-0 rounded-full"
+            style={{
+              background: v.current
+                ? "var(--ok)"
+                : `var(--${v.author}, var(--line-strong))`,
+            }}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="text-muted">
+              {v.current
+                ? t("file.current")
+                : `v${v.version}`}
+              {v.author && (
+                <>
+                  {" · "}
+                  <span style={{ color: `var(--${v.author}, var(--muted))` }}>
+                    {t("file.byAuthor", { who: v.author })}
+                  </span>
+                </>
+              )}
+              {v.round ? ` · ${t("file.atRound", { n: v.round })}` : ""}
+              {` · ${v.lines}`}
+            </span>
+            {v.reason && (
+              <span className="mt-0.5 block text-dim">
+                {t("file.becauseOf")}: {v.reason}
+              </span>
+            )}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
   const { t } = useLang();
@@ -109,6 +167,18 @@ export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
               </button>
             )}
           </div>
+        )}
+
+        {versions.length > 1 && (
+          <details className="mb-2 rounded-xl border border-line
+            bg-[color:var(--panel-2)] px-3 py-2">
+            <summary className="cursor-pointer text-[11px] text-muted">
+              {t("file.history")}
+            </summary>
+            <div className="mt-2">
+              <Trail versions={versions} />
+            </div>
+          </details>
         )}
 
         <pre className="max-h-[28rem] overflow-auto rounded-lg bg-panel2 p-3 font-mono text-xs leading-relaxed">

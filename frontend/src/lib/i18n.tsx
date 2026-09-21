@@ -328,6 +328,16 @@ const S = {
   // ── 산출물 보기 (DAY 22) ──────────────────────────────────────
   "file.none": { ko: "산출물이 없습니다.", en: "No deliverables yet.", ja: "成果物がありません。" },
   "file.compare": { ko: "회차 비교:", en: "Compare rounds:", ja: "ラウンド比較:" },
+  "file.history": { ko: "이 파일의 경위", en: "How this file got here", ja: "このファイルの経緯" },
+  "file.byAuthor": { ko: "{who} 가 고침", en: "changed by {who}", ja: "{who} が修正" },
+  "file.atRound": { ko: "{n}라운드", en: "round {n}", ja: "{n} ラウンド" },
+  "file.becauseOf": { ko: "반려 사유", en: "rejected for", ja: "差し戻し理由" },
+  "file.current": { ko: "현재", en: "current", ja: "現在" },
+  "file.noHistory": {
+    ko: "한 번 쓰고 고치지 않았습니다.",
+    en: "Written once, never revised.",
+    ja: "一度書かれ、修正されていません。",
+  },
   "file.toCurrent": { ko: "v{n} → 현재", en: "v{n} → current", ja: "v{n} → 現在" },
   "file.raw": { ko: "원문 보기", en: "View raw", ja: "原文を見る" },
   "file.noDiff": { ko: "차이가 없습니다.", en: "No differences.", ja: "差分はありません。" },

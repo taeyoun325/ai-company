@@ -290,7 +290,8 @@ def instruct(slug: str, employee_id: str, message: str,
         written: list[str] = []
         for f in work.files:
             try:
-                info = pfs.write(f.path, f.content, employee_id)
+                info = pfs.write(f.path, f.content, employee_id,
+                                 reason=message[:120])
             except pfs.Denied as ex:
                 # "CEO 가 시켰다"는 권한의 근거가 아니다. 거부하고 사실을 남긴다.
                 bus.say(employee_id, f"`{f.path}` 거부됨 — {ex}", kind="error")
