@@ -48,7 +48,7 @@ from __future__ import annotations
 import json
 import threading
 
-from app import bus, config, lang, tenant, usage
+from app import bus, config, lang, safeio, tenant, usage
 from app.agents import employee, roles
 from app.agents.schemas import Verdict, WorkResult
 from app.database import store
@@ -101,12 +101,11 @@ def _load_history(slug: str) -> dict[str, list[Message]]:
 
 def _save_history(slug: str, table: dict[str, list[Message]]) -> None:
     try:
-        _history_path(slug).write_text(
-            json.dumps(
-                {who: [{"role": m.role, "content": m.content} for m in msgs]
-                 for who, msgs in table.items() if msgs},
-                ensure_ascii=False, indent=1),
-            encoding="utf-8")
+        safeio.write_json(
+            _history_path(slug),
+            {who: [{"role": m.role, "content": m.content} for m in msgs]
+             for who, msgs in table.items() if msgs},
+            indent=1)
     except OSError:
         # 저장 실패가 지시를 막지는 않는다. 이번 대화는 메모리에 남는다.
         pass

@@ -37,7 +37,7 @@ from __future__ import annotations
 import json
 import threading
 
-from app import config
+from app import config, safeio
 from app.agents import roles
 
 # 내보낼 수 없는 자리. 이유는 위 문서에 있다.
@@ -66,8 +66,7 @@ def _load() -> dict[str, dict]:
 
 def _save() -> None:
     try:
-        store_path().write_text(
-            json.dumps(_load(), ensure_ascii=False, indent=2), encoding="utf-8")
+        safeio.write_json(store_path(), _load())
     except OSError:
         # 저장 실패가 실행을 막지는 않는다. 이름이 기본값으로 돌아갈 뿐이다.
         pass

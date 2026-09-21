@@ -23,7 +23,7 @@ import os
 import stat
 from pathlib import Path
 
-from app import config
+from app import config, safeio
 
 # 브로커가 관리하는 키 목록. (이름, 환경변수, 사람이 읽는 이름)
 KEYS = {
@@ -164,9 +164,7 @@ def clear(name: str) -> None:
 def persist() -> Path:
     """디스크에 저장한다. .gitignore 대상이고 소유자만 읽게 권한을 좁힌다."""
     init()
-    STORE_PATH.write_text(
-        json.dumps({k: v for k, v in _store.items()}, ensure_ascii=False, indent=2),
-        encoding="utf-8")
+    safeio.write_json(STORE_PATH, {k: v for k, v in _store.items()})
     try:
         os.chmod(STORE_PATH, stat.S_IRUSR | stat.S_IWUSR)   # 0600
     except OSError:

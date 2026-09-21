@@ -31,7 +31,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from app import config
+from app import config, safeio
 
 _lock = threading.RLock()
 
@@ -383,9 +383,10 @@ def margin_report() -> dict:
 # ── 영속화 ──────────────────────────────────────────────────────────
 def _save() -> None:
     try:
-        WALLET_FILE.write_text(
-            json.dumps({k: v.to_dict() for k, v in _wallets.items()},
-                       ensure_ascii=False, indent=2), encoding="utf-8")
+        # 원자적으로 쓴다 (app/safeio.py). 통째 쓰기는 도중에 죽으면 파일을
+        # 잘라놓고, 그러면 **모두의 잔액이 0 이 된다.**
+        safeio.write_json(WALLET_FILE,
+                          {k: v.to_dict() for k, v in _wallets.items()})
     except OSError:
         # 저장 실패가 실행을 막지는 않는다. 다만 메모리의 잔액은 살아 있다.
         pass

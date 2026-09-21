@@ -21,7 +21,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from app import config
+from app import config, safeio
 
 META = ".meta.json"
 HISTORY = ".history"
@@ -103,7 +103,9 @@ def save_meta(slug: str, patch: dict) -> dict:
     d.mkdir(parents=True, exist_ok=True)
     m = meta(slug)
     m.update(patch)
-    (d / META).write_text(json.dumps(m, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 원자적으로 쓴다 (app/safeio.py). 여기서 잘리면 프로젝트 하나가
+    # 통째로 "없는 프로젝트"가 된다 — 산출물은 멀쩡한데 메타만 깨져서.
+    safeio.write_json(d / META, m)
     _reindex(m)
     return m
 

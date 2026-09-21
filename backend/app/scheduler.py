@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime
 
 from app import bus
-from app import config
+from app import config, safeio
 
 STORE = config.ROOT / "schedules.json"
 CHECK_INTERVAL = 20          # 초
@@ -56,7 +56,7 @@ def _load() -> None:
 def _save() -> None:
     with _lock:
         data = {"schedules": list(_items.values())}
-    STORE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    safeio.write_json(STORE, data)
 
 
 def add(requirement: str, at: str, days: list[int] | None = None,

@@ -40,7 +40,7 @@ import stat
 import threading
 from pathlib import Path
 
-from app import config
+from app import config, safeio
 
 # BYOK 로 받을 수 있는 키. secrets_broker.KEYS 와 같은 이름을 쓴다 —
 # 이름이 어긋나면 "고객이 넣은 키가 어느 제공자인가"가 두 군데에서
@@ -132,8 +132,7 @@ def _load() -> dict[str, dict[str, str]]:
 
 def _save() -> None:
     path = store_path()
-    path.write_text(json.dumps(_load(), ensure_ascii=False, indent=2),
-                    encoding="utf-8")
+    safeio.write_json(path, _load())
     try:
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)            # 0600
     except OSError:
