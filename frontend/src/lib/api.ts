@@ -13,10 +13,12 @@
  * 중, 404 는 없음. 화면이 다르게 반응해야 하므로 상태를 그대로 들고 간다.
  */
 import type {
+  ByokStatus,
   CreditStatus,
   Employee,
   MeResponse,
   PlanRow,
+  TopupRow,
   Project,
   ProviderStatus,
   Roster,
@@ -102,6 +104,8 @@ const seg = (s: string) => encodeURIComponent(s);
 const post = <T>(path: string, body?: unknown) =>
   call<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined });
 
+const del = <T>(path: string) => call<T>(path, { method: "DELETE" });
+
 export const api = {
   // ── 인증 (DAY 15) ───────────────────────────────────────────────
   me: () => call<MeResponse>("/api/auth/me"),
@@ -153,6 +157,22 @@ export const api = {
       `/api/settings/verify/${seg(provider)}`,
     ),
   forgetKeys: () => post<{ ok: boolean }>("/api/settings/forget"),
+
+  // ── 내 API 키 (BYOK · DAY 19) ───────────────────────────────────
+  // 운영자 키(`/api/settings`)와 라우트를 나눈다. 한 라우트에서 둘을 같이
+  // 다루면 언젠가 한쪽 코드가 다른 쪽 저장소를 건드리고, 그때 사고는
+  // "내 키가 남에게 갔다"가 된다.
+  byok: () => call<ByokStatus>("/api/byok"),
+  setByok: (keys: Record<string, string>) =>
+    post<ByokStatus & { ok: boolean }>("/api/byok", keys),
+  clearByok: (provider?: string) =>
+    del<ByokStatus & { ok: boolean }>(
+      provider ? `/api/byok?provider=${seg(provider)}` : "/api/byok",
+    ),
+  verifyByok: (provider: string) =>
+    post<{ ok: boolean; detail: string }>(
+      `/api/byok/verify/${seg(provider)}`,
+    ),
 
   // ── AUTO (§10) ──────────────────────────────────────────────────
   startRun: (requirement: string) =>
@@ -241,7 +261,11 @@ export const api = {
   // ── 크레딧 · 요금제 (§15 §16) ───────────────────────────────────
   credits: () => call<CreditStatus>("/api/credits"),
   plans: () =>
-    call<{ plans: Record<string, PlanRow>; credit_usd: number }>("/api/plans"),
+    call<{
+      plans: Record<string, PlanRow>;
+      topups: Record<string, TopupRow>;
+      credit_usd: number;
+    }>("/api/plans"),
   changePlan: (plan: string) => post<CreditStatus>("/api/credits/plan", { plan }),
   topUp: (amount: number) =>
     post<CreditStatus>("/api/credits/topup", { credits: amount }),

@@ -89,6 +89,26 @@ def allow_code_execution() -> str | None:
     return None
 
 
+def allow_operator_settings() -> str | None:
+    """**운영자의** API 키·기본 모델을 화면에서 바꿀 수 있는가 (DAY 19).
+
+    로컬 도구였을 때 이 화면은 "내 키를 내가 넣는" 자리였다. SaaS 에서는
+    같은 화면이 **로그인한 아무 테넌트나 운영자 키를 덮어쓰는** 자리가
+    된다. 한 사람이 키를 지우면 전원이 멈추고, 자기 키로 바꾸면 다른
+    테넌트의 실행이 그 키로 나간다.
+
+    그래서 서버 배포에서는 운영자 키를 화면으로 만지지 못하게 한다 —
+    환경변수로만 들어온다. 고객 자신의 키는 이 경로가 아니라 BYOK
+    (`/api/byok` · `app/byok.py`)로 간다. 저장소부터 다르다.
+    """
+    if is_saas():
+        return ("서버 배포(DEPLOY_MODE=saas)에서는 운영자 키와 기본 모델을 "
+                "화면에서 바꿀 수 없습니다. 운영자 키는 환경변수로만 들어옵니다. "
+                "본인 API 키를 쓰시려면 '자체 키' 요금제로 바꾸고 설정 화면의 "
+                "내 API 키에 등록하세요.")
+    return None
+
+
 def status() -> dict:
     """화면이 지금 어떤 자세인지 보여줄 수 있어야 한다.
 
@@ -96,6 +116,7 @@ def status() -> dict:
     """
     local_block = allow_local_tools()
     exec_block = allow_code_execution()
+    op_block = allow_operator_settings()
     return {
         "mode": mode(),
         "sandboxed": sandboxed(),
@@ -103,4 +124,6 @@ def status() -> dict:
         "local_tools_reason": local_block,
         "code_execution": exec_block is None,
         "code_execution_reason": exec_block,
+        "operator_settings": op_block is None,
+        "operator_settings_reason": op_block,
     }

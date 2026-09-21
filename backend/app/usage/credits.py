@@ -56,6 +56,7 @@ class Wallet:
     granted: float = 0.0        # 요금제로 받은 누적 크레딧
     spent: float = 0.0          # 실제로 쓴 크레딧
     topped_up: float = 0.0      # 추가 구매분
+    byok_usd: float = 0.0       # 고객이 **자기 키로** 쓴 금액 (우리 청구 아님)
     renewed_at: float = field(default_factory=time.time)
 
     @property
@@ -65,7 +66,7 @@ class Wallet:
     def to_dict(self) -> dict:
         return {"owner": self.owner, "plan": self.plan, "granted": self.granted,
                 "spent": self.spent, "topped_up": self.topped_up,
-                "renewed_at": self.renewed_at}
+                "byok_usd": self.byok_usd, "renewed_at": self.renewed_at}
 
 
 _wallets: dict[str, Wallet] = {}
@@ -73,7 +74,54 @@ _wallets: dict[str, Wallet] = {}
 
 # ── 요금제 (§16) ────────────────────────────────────────────────────
 def plans() -> dict:
+    """**팔 수 있는** 요금제만. 숨긴 것(로컬 기본)은 빼고 내보낸다 —
+    고를 수 없는 것을 요금제 화면에 놓으면 그건 요금제가 아니라 혼란이다.
+
+    `_` 로 시작하는 항목도 뺀다. 그건 우리끼리 적어둔 근거이고(예: "결제
+    없이 실제 키를 태우면 우리 돈이 나간다"), 고객이 읽을 문장이 아니다.
+    고객에게 보일 한 줄은 `blurb` 에 따로 있다.
+    """
+    return {n: {k: v for k, v in p.items() if not k.startswith("_")}
+            for n, p in config.PLANS.items() if not p.get("hidden")}
+
+
+def all_plans() -> dict:
     return dict(config.PLANS)
+
+
+def default_plan() -> str:
+    """새 지갑의 기본 요금제.
+
+    SaaS 에서는 `free`(Mock 전용) — 결제하지 않은 사람이 운영자 키를
+    태우면 안 된다. 로컬에서는 `local` — 거기서 돌리는 사람은 고객이
+    아니라 자기 키를 꽂은 운영자 자신이고, 그 사람을 Mock 에 가두면
+    요금제가 제품을 막는다.
+    """
+    from app import deploy
+    if deploy.is_saas():
+        return "free"
+    return "local" if "local" in config.PLANS else "free"
+
+
+def topups() -> dict:
+    """충전 묶음 (DAY 19). 크레딧당 단가는 구독보다 **항상 비싸다** —
+    싸지면 구독할 이유가 사라지고 무거운 사용자만 충전으로 남는다."""
+    return dict(config.TOPUPS)
+
+
+def source_of(plan_name: str) -> str:
+    """이 요금제가 **누구의 키로** 도는가. 값은 app/tenant.py 가 해석한다.
+
+    여기서 기본값을 `platform` 으로 두는 이유: 기존 요금제 정의에는 이
+    항목이 없었고, 없으면 지금까지의 동작(운영자 키)이 맞다. 다만 **모르는
+    값**은 `tenant.source_of()` 가 mock 으로 떨어뜨린다 — 오타 하나가
+    우리 키를 태우는 쪽으로 기울면 안 된다."""
+    return str(plan(plan_name).get("source", "platform"))
+
+
+def charges_credits(plan_name: str) -> bool:
+    """크레딧을 깎는 요금제인가. 우리 키로 나간 비용만 깎는다."""
+    return source_of(plan_name) == "platform"
 
 
 def plan(name: str) -> dict:
@@ -90,7 +138,7 @@ def wallet(owner: str = "local") -> Wallet:
             _load()
             w = _wallets.get(owner)
         if w is None:
-            w = Wallet(owner=owner)
+            w = Wallet(owner=owner, plan=default_plan())
             w.granted = float(plan(w.plan).get("credits", 0))
             _wallets[owner] = w
             _save()
@@ -106,6 +154,10 @@ def set_plan(owner: str, name: str) -> Wallet:
     """
     if name not in config.PLANS:
         raise ValueError(f"없는 요금제: {name}")
+    if config.PLANS[name].get("hidden"):
+        # 숨긴 요금제로 **바꾸는** 길을 열어두면, 로컬 기본값(크레딧 10만)이
+        # SaaS 에서 한 번의 요청으로 얻어진다.
+        raise ValueError(f"고를 수 없는 요금제: {name}")
     with _lock:
         w = wallet(owner)
         w.plan = name
@@ -143,6 +195,12 @@ def reserve(owner: str, usd: float) -> None:
     실제로 깎지는 않는다. 깎아두고 나중에 돌려주면, 실행이 죽었을 때
     돌려줄 사람이 없다. 대신 `charge()` 가 실제 사용량으로 깎는다.
     """
+    w = wallet(owner)
+    # 우리 키로 나가는 비용이 아니면 깎을 것도 막을 것도 없다 (DAY 19).
+    # 무료(Mock)는 원가가 0 이고, BYOK 는 고객이 자기 키로 직접 낸다.
+    # 여기서 거르지 않으면, 크레딧 0 인 두 요금제가 **시작조차 못 한다.**
+    if not charges_credits(w.plan):
+        return
     need = usd_to_credits(usd)
     have = balance(owner)
     if need > have:
@@ -157,6 +215,13 @@ def charge(owner: str, usd: float) -> float:
     """
     with _lock:
         w = wallet(owner)
+        if not charges_credits(w.plan):
+            # 고객 키로 나간 돈은 **기록만** 한다. 청구는 제공자가 고객에게
+            # 직접 한다. 기록까지 버리면 고객은 자기가 얼마를 썼는지
+            # 우리 화면에서 볼 수 없고, 그러면 비용 상한도 설명할 수 없다.
+            w.byok_usd = round(w.byok_usd + usd, 6)
+            _save()
+            return w.balance
         w.spent += usd_to_credits(usd)
         _save()
         return w.balance
@@ -181,6 +246,11 @@ def status(owner: str = "local") -> dict:
         "granted": round(w.granted, 2),
         "spent": round(w.spent, 2),
         "topped_up": round(w.topped_up, 2),
+        # BYOK 요금제의 고객은 잔액이 아니라 **자기 카드에서 나간 금액**을
+        # 봐야 한다. 크레딧만 보여주면 0 으로 고정된 숫자만 남는다.
+        "byok_usd": round(w.byok_usd, 4),
+        "source": source_of(w.plan),
+        "charges_credits": charges_credits(w.plan),
         "credit_usd": config.CREDIT_USD,
         "balance_usd": round(credits_to_usd(w.balance), 4),
         "max_concurrent": p.get("max_concurrent", 1),
@@ -192,7 +262,13 @@ def status(owner: str = "local") -> dict:
 
 
 # ── 원가 관리 (§17) ────────────────────────────────────────────────
-MAX_COST_RATIO = 0.50        # 원가는 판매가의 50% 이하여야 한다
+# 원가는 판매가의 몇 % 이하여야 하는가 (§17).
+#
+# DAY 19 에 0.50 → 0.35 로 조였다. 0.50 을 지키던 숫자(프로 41.4% ·
+# 비즈니스 45.5%)에는 **API 원가만** 들어 있었다. 여기에 결제 수수료
+# (2.9% + $0.30) · 서버 · 환불 · 지원 · 모델 단가 인상 여지를 더하면
+# 실질은 49% 근처로 벽에 붙는다. 벽에 붙은 값은 여유가 아니라 우연이다.
+MAX_COST_RATIO = 0.35
 
 
 def margin_report() -> dict:
@@ -207,26 +283,67 @@ def margin_report() -> dict:
     """
     rows = []
     for name, p in config.PLANS.items():
+        if p.get("hidden"):
+            continue            # 팔지 않는 것은 마진을 따지지 않는다
         price = float(p.get("price_usd", 0))
-        worst_cost = credits_to_usd(float(p.get("credits", 0)))
+        src = str(p.get("source", "platform"))
+        # 우리 키로 나가지 않는 요금제의 **모델 원가는 0 이다.** BYOK 는
+        # 고객이 직접 내고, Mock 은 아무 데도 가지 않는다. 크레딧을
+        # 달러로 환산해 원가라고 부르면 있지도 않은 비용이 생긴다.
+        worst_cost = (credits_to_usd(float(p.get("credits", 0)))
+                      if src == "platform" else 0.0)
         ratio = (worst_cost / price) if price > 0 else None
+        note = ""
+        if price == 0:
+            note = "무료 요금제 — 비율이 아니라 **한 달 최대 손실**로 본다"
+        elif src == "byok":
+            note = ("고객 키 — 모델 원가는 0 이다. 다만 **인프라·지원 원가는 "
+                    "0 이 아니다**. 이 비율은 그것까지 말해주지 않는다")
         rows.append({
             "plan": name,
             "label": p.get("label", name),
             "price_usd": price,
             "credits": p.get("credits", 0),
+            "source": src,
             "worst_cost_usd": round(worst_cost, 2),
             "cost_ratio": round(ratio, 3) if ratio is not None else None,
             # 무료 요금제는 판매가가 0 이라 비율이 정의되지 않는다.
             # '통과'로 적으면 거짓말이 되므로 따로 표시한다.
             "ok": (ratio is not None and ratio <= MAX_COST_RATIO),
-            "note": ("무료 요금제 — 비율이 아니라 **한 달 최대 손실**로 본다"
-                     if price == 0 else ""),
+            "note": note,
         })
     paid = [r for r in rows if r["price_usd"] > 0]
+
+    # 충전 묶음도 같은 자로 잰다. 여기가 새면 요금제를 아무리 맞춰도
+    # 무거운 사용자가 전부 충전으로 빠지면서 마진이 통째로 무너진다.
+    sub_rate = min((float(p.get("price_usd", 0)) / float(p.get("credits", 1))
+                    for p in config.PLANS.values()
+                    if float(p.get("price_usd", 0)) > 0
+                    and float(p.get("credits", 0)) > 0), default=0.0)
+    topups = []
+    for name, t in config.TOPUPS.items():
+        price = float(t.get("price_usd", 0))
+        credits = float(t.get("credits", 0))
+        cost = credits_to_usd(credits)
+        rate = (price / credits) if credits else 0.0
+        topups.append({
+            "topup": name, "label": t.get("label", name),
+            "price_usd": price, "credits": credits,
+            "worst_cost_usd": round(cost, 2),
+            "cost_ratio": round(cost / price, 3) if price else None,
+            "usd_per_credit": round(rate, 5),
+            "ok": bool(price and cost / price <= MAX_COST_RATIO),
+            # 구독보다 싼 충전은 요금제를 스스로 무너뜨린다.
+            "dearer_than_subscription": rate > sub_rate,
+        })
+
     return {
         "max_cost_ratio": MAX_COST_RATIO,
         "plans": rows,
+        "topups": topups,
+        "cheapest_subscription_usd_per_credit": round(sub_rate, 5),
+        "all_topups_ok": all(t["ok"] and t["dearer_than_subscription"]
+                             for t in topups) if topups else False,
         "all_paid_plans_ok": all(r["ok"] for r in paid) if paid else False,
         "free_plan_max_loss_usd": next(
             (r["worst_cost_usd"] for r in rows if r["price_usd"] == 0), 0.0),
@@ -259,6 +376,7 @@ def _load() -> None:
             granted=float(row.get("granted", 0)),
             spent=float(row.get("spent", 0)),
             topped_up=float(row.get("topped_up", 0)),
+            byok_usd=float(row.get("byok_usd", 0)),
             renewed_at=float(row.get("renewed_at", time.time())))
 
 

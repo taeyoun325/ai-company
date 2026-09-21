@@ -7,7 +7,11 @@
    장사가 산수가 아니라 소원이 된다.
 2. **잔액이 실제로 줄고 실제로 막는다.** 0 이 된 다음에 막는 것은 막는
    게 아니다.
-3. **§17 이 계산으로 성립한다.** "원가는 판매가의 50% 이하"를 숫자로 본다.
+3. **§17 이 계산으로 성립한다.** "원가는 판매가의 정해진 비율 이하"를
+   숫자로 본다 (DAY 19 에 0.50 → 0.35).
+4. **누구의 키로 도는지가 돈과 맞물려 있다** (DAY 19). 우리 키로 나간
+   비용만 크레딧을 깎는다. BYOK 는 고객이 직접 내고, 무료는 Mock 이라
+   아무 데도 가지 않는다. 이 셋이 어긋나면 청구서로만 드러난다.
 """
 import sys
 from pathlib import Path
@@ -82,8 +86,25 @@ def test_usage_records_credits_alongside_cost():
 # ── 지갑 (§15) ─────────────────────────────────────────────────────
 def test_new_wallet_gets_its_plan_credits():
     w = credits.wallet("someone")
-    assert w.plan == "free"
-    assert w.balance == credits.plan("free")["credits"]
+    assert w.plan == credits.default_plan()
+    assert w.balance == credits.plan(w.plan)["credits"]
+
+
+def test_default_plan_depends_on_where_this_runs(monkeypatch):
+    """로컬에서 돌리는 사람은 고객이 아니라 자기 키를 꽂은 운영자다.
+    그 사람을 무료 요금제(Mock 전용)에 가두면 요금제가 제품을 막는다."""
+    monkeypatch.setenv("DEPLOY_MODE", "saas")
+    assert credits.default_plan() == "free"
+    monkeypatch.setenv("DEPLOY_MODE", "local")
+    assert credits.default_plan() == "local"
+
+
+def test_local_plan_cannot_be_chosen(monkeypatch):
+    """숨긴 요금제로 바꾸는 길이 열려 있으면, 로컬 기본값(크레딧 10만)이
+    SaaS 에서 요청 한 번으로 얻어진다."""
+    assert "local" not in credits.plans(), "팔지 않는 것이 요금제 목록에 있다"
+    with pytest.raises(ValueError):
+        credits.set_plan("someone", "local")
 
 
 def test_charge_reduces_balance():
@@ -94,7 +115,7 @@ def test_charge_reduces_balance():
 
 def test_charge_can_go_negative():
     """0 에서 멈추면 얼마나 초과했는지 기록이 사라진다."""
-    credits.charge("local", 1000.0)
+    credits.charge("local", 10_000.0)
     assert credits.balance() < 0
 
 
@@ -129,7 +150,8 @@ def test_plan_change_adds_credits_without_wiping_spend():
     w = credits.wallet("local")
     assert w.spent == pytest.approx(spent_before), "쓴 기록이 지워졌다"
     assert w.granted == pytest.approx(
-        credits.plan("free")["credits"] + credits.plan("pro")["credits"])
+        credits.plan(credits.default_plan())["credits"]
+        + credits.plan("pro")["credits"])
 
 
 def test_unknown_plan_is_rejected():
@@ -158,7 +180,7 @@ def test_every_plan_can_afford_one_developer_call():
 
 
 def test_paid_plans_meet_the_cost_ratio():
-    """§17 — 원가는 판매가의 50% 이하. 구호가 아니라 계산이다."""
+    """§17 — 원가는 판매가의 정해진 비율 이하. 구호가 아니라 계산이다."""
     r = credits.margin_report()
     assert r["all_paid_plans_ok"], [
         (p["plan"], p["cost_ratio"]) for p in r["plans"] if not p["ok"]]
@@ -179,9 +201,76 @@ def test_margin_report_carries_the_verification_flag():
     assert "prices_verified" in credits.margin_report()
 
 
-def test_free_plan_max_loss_is_stated():
+def test_free_plan_costs_us_nothing_because_it_never_calls_a_model():
+    """DAY 18 까지 무료 요금제는 월 150 크레딧($1.50)을 **우리 키로** 줬다.
+    이메일 인증이 없는 상태에서 그건 스크립트 한 줄에 열린 지갑이다.
+    DAY 19 에 Mock 전용으로 바꿨고, 그러면 최대 손실은 정확히 0 이다."""
     r = credits.margin_report()
-    assert r["free_plan_max_loss_usd"] > 0, "무료 요금제의 최대 손실이 0 일 수 없다"
+    free = next(p for p in r["plans"] if p["plan"] == "free")
+    assert free["source"] == "mock", "무료 요금제가 실제 모델을 부른다"
+    assert free["credits"] == 0
+    assert r["free_plan_max_loss_usd"] == 0
+
+
+# ── 누구의 키로 도는가 (§16 · DAY 19) ──────────────────────────────
+def test_byok_plan_does_not_spend_credits():
+    """고객이 자기 키로 낸 돈을 우리가 또 크레딧으로 받으면 이중 청구다."""
+    credits.set_plan("byok-user", "byok")
+    before = credits.balance("byok-user")
+    credits.charge("byok-user", 3.0)
+    assert credits.balance("byok-user") == before
+    assert credits.status("byok-user")["byok_usd"] == pytest.approx(3.0)
+
+
+def test_byok_plan_starts_even_with_zero_credits():
+    """크레딧 0 인 요금제가 잔액 검사에 걸려 **시작조차 못 하면**
+    그건 요금제가 아니다."""
+    credits.set_plan("byok-user", "byok")
+    credits.reserve("byok-user", 5.0)            # 예외가 나면 실패
+
+
+def test_free_plan_starts_even_with_zero_credits():
+    credits.set_plan("free-user", "free")
+    credits.reserve("free-user", 5.0)            # Mock 은 원가가 0 이다
+
+
+def test_paid_plan_still_spends_credits():
+    """면제가 새어나가 유료 요금제까지 공짜가 되면 아무도 모른다."""
+    credits.set_plan("pro-user", "pro")
+    before = credits.balance("pro-user")
+    credits.charge("pro-user", 0.10)
+    assert credits.balance("pro-user") == pytest.approx(before - 10.0)
+    assert credits.status("pro-user")["byok_usd"] == 0
+
+
+def test_unknown_source_is_not_treated_as_ours():
+    """요금제 파일의 오타 하나가 **우리 키를 태우는 쪽**으로 기울면 안 된다."""
+    from app import tenant
+    monkey = dict(config.PLANS["pro"])
+    monkey["source"] = "platfrom"                 # 오타
+    config.PLANS["typo-plan"] = monkey
+    try:
+        assert tenant.source_of("typo-plan") == "mock"
+    finally:
+        config.PLANS.pop("typo-plan")
+
+
+# ── 충전 (§16 · DAY 19) ────────────────────────────────────────────
+def test_topups_are_dearer_per_credit_than_any_subscription():
+    """충전이 구독보다 싸지면 구독할 이유가 사라지고, 가장 무거운
+    사용자만 충전으로 남는다."""
+    r = credits.margin_report()
+    assert r["topups"], "충전 묶음이 하나도 없다"
+    for t in r["topups"]:
+        assert t["dearer_than_subscription"], (
+            f"{t['topup']} 충전이 구독보다 싸다 "
+            f"(${t['usd_per_credit']}/크레딧)")
+
+
+def test_topups_meet_the_cost_ratio():
+    r = credits.margin_report()
+    assert r["all_topups_ok"], [(t["topup"], t["cost_ratio"])
+                                for t in r["topups"] if not t["ok"]]
 
 
 def test_credit_is_worth_what_the_file_says():

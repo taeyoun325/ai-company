@@ -13,22 +13,35 @@
  * 키를 넣었다는 것과 그 키가 실제로 동작한다는 것은 다르다. 확인
  * 버튼은 실제로 모델 목록을 조회한다 — 키를 맨 마지막에 넣는 방침
  * 아래에서 이 버튼이 첫 실물 호출이 된다.
+ *
+ * ## 운영자 키와 내 키는 다른 패널이다 (DAY 19)
+ *
+ * 위쪽은 **이 서버를 운영하는 사람**의 키이고, 서버 배포(saas)에서는
+ * 잠긴다 — 그 화면이 열려 있으면 로그인한 아무나 운영자 키를 덮어쓴다.
+ * 아래 `ByokPanel` 은 **내 키**이고 저장소부터 다르다.
  */
 import { useState } from "react";
 
+import { ByokPanel } from "@/components/ByokPanel";
 import { Button, ErrorBox, MockBadge, Panel, Warning } from "@/components/ui";
 import { api } from "@/lib/api";
-import type { Employee, ProviderStatus, Settings } from "@/lib/types";
+import type { ByokStatus, Employee, ProviderStatus, Settings } from "@/lib/types";
 import { useLoader } from "@/lib/useLoader";
 
 export default function SettingsPage() {
   const { data, error: loadError, reload: load } = useLoader("settings", async () => {
-    const [s, st] = await Promise.all([api.settings(), api.state()]);
-    return { settings: s, providers: st.providers, employees: st.employees };
+    const [s, st, b] = await Promise.all([
+      api.settings(),
+      api.state(),
+      api.byok(),
+    ]);
+    return { settings: s, providers: st.providers, employees: st.employees, byok: b };
   });
   const settings: Settings | null = data?.settings ?? null;
   const providers: ProviderStatus | null = data?.providers ?? null;
   const employees: Employee[] = data?.employees ?? [];
+  const byok: ByokStatus | null = data?.byok ?? null;
+  const operatorLocked = settings ? !settings.operator_settings : false;
 
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [remember, setRemember] = useState(false);
@@ -101,10 +114,13 @@ export default function SettingsPage() {
         </Warning>
       )}
 
-      <Panel title="API 키">
+      <ByokPanel status={byok} reload={load} />
+
+      <Panel title="운영자 API 키">
         <p className="mb-3 text-xs text-dim">
-          키는 저장하지 않으면 서버 메모리에만 남고, 환경변수로 넣은 키는
-          기동 즉시 환경에서 지워집니다. 화면에는 마스킹된 형태만 돌아옵니다.
+          {operatorLocked
+            ? "서버 배포에서는 운영자 키를 화면에서 바꿀 수 없습니다 — 환경변수로만 들어옵니다. 본인 키를 쓰시려면 위의 '내 API 키'에 등록하세요."
+            : "키는 저장하지 않으면 서버 메모리에만 남고, 환경변수로 넣은 키는 기동 즉시 환경에서 지워집니다. 화면에는 마스킹된 형태만 돌아옵니다."}
         </p>
         <div className="space-y-3">
           {settings &&
@@ -119,11 +135,19 @@ export default function SettingsPage() {
                   autoComplete="off"
                   value={draft[name] ?? ""}
                   onChange={(e) => setDraft((d) => ({ ...d, [name]: e.target.value }))}
-                  placeholder={k.masked ?? "등록되지 않음"}
+                  disabled={operatorLocked}
+                  placeholder={
+                    operatorLocked
+                      ? (k.set ? "등록됨 (환경변수)" : "등록되지 않음")
+                      : (k.masked ?? "등록되지 않음")
+                  }
                   className="min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 py-1.5
                     font-mono text-sm outline-none focus:border-accent"
                 />
-                <Button onClick={() => void check(name)} disabled={!k.set || busy}>
+                <Button
+                  onClick={() => void check(name)}
+                  disabled={!k.set || busy || operatorLocked}
+                >
                   확인
                 </Button>
                 {checks[name] && (
@@ -138,7 +162,7 @@ export default function SettingsPage() {
             ))}
         </div>
         <div className="mt-3 flex items-center gap-3">
-          <Button tone="primary" onClick={save} disabled={busy}>
+          <Button tone="primary" onClick={save} disabled={busy || operatorLocked}>
             저장
           </Button>
           <label className="flex items-center gap-1.5 text-xs text-muted">

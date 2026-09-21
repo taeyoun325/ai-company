@@ -41,11 +41,29 @@
     "mock":            0.0
   },
 
-  "_요금제": "지시서 §16. price_usd 는 월 구독료, credits 는 매달 주는 크레딧. §17 은 원가가 판매가의 50% 이하일 것을 요구한다 — 그 검사는 app/usage/credits.py 의 margin_report() 가 실제 숫자로 한다.",
-  "_요금제_주의": "max_project_cost 는 개발자 호출 한 번의 최악 비용(Opus 5 기준 입력 80k + 출력 32k = $1.20)보다 커야 한다. 작게 잡으면 그 요금제는 첫 구현 단계에서 항상 멈춘다 — 시작조차 못 하는 요금제는 요금제가 아니다. 실제 단가를 넣고 나서야 드러난 문제라, 숫자로 다시 맞췄다.",
+  "_요금제": "지시서 §16. price_usd 는 월 구독료, credits 는 매달 주는 크레딧. §17 은 원가가 판매가의 일정 비율 이하일 것을 요구한다 — 그 검사는 app/usage/credits.py 의 margin_report() 가 실제 숫자로 한다.",
+  "_요금제_주의": "max_project_cost 는 개발자 호출 한 번의 최악 비용(Opus 5 기준 입력 80k + 출력 32k = $1.20)보다 커야 한다. 작게 잡으면 그 요금제는 첫 구현 단계에서 항상 멈춘다 — 시작조차 못 하는 요금제는 요금제가 아니다.",
+  "_요금제_개정": "DAY 19. 이전 값(프로 1200cr · 비즈니스 4500cr · 무료 150cr)은 원가 비율이 41~46% 였다. 그 숫자에는 API 원가만 들어 있고 결제 수수료(2.9%+$0.30)·서버·환불·지원·모델 단가 인상 여지가 빠져 있었다. 다 넣으면 50% 벽에 붙는다. 크레딧을 줄여 여유를 만들었다 — 나중에 늘리는 것은 선물이고 줄이는 것은 배신이다.",
+
+  "_source": "요금제마다 어느 키로 호출할지를 여기서 정한다. 코드가 아니라 요금제가 정해야, 새 요금제를 넣는 일이 분기 추가가 되지 않는다. platform=운영자 키(크레딧 차감) · byok=고객 키(차감 없음) · mock=실제 호출 없음.",
+  "_로컬": "로컬(DEPLOY_MODE=local)에서 이 프로그램을 돌리는 사람은 고객이 아니라 **운영자 자신**이다. 자기 키로 자기 컴퓨터에서 돌리는데 무료 요금제가 Mock 을 강제하면, 요금제가 제품을 막는 꼴이 된다. 그래서 로컬의 기본 요금제는 이것이고, hidden 이라 요금제 화면에서 고를 수 없으며 마진 검사(§17)에서도 빠진다 — 팔지 않는 것을 팔리는 것과 같은 자로 재면 숫자가 거짓말을 한다.",
   "plans": {
-    "free":     { "label": "무료",   "price_usd": 0,  "credits": 150,  "max_concurrent": 1, "max_project_cost": 1.5 },
-    "pro":      { "label": "프로",   "price_usd": 29, "credits": 1200, "max_concurrent": 3, "max_project_cost": 3.0 },
-    "business": { "label": "비즈니스", "price_usd": 99, "credits": 4500, "max_concurrent": 5, "max_project_cost": 10.0 }
+    "local":    { "label": "로컬(개발)", "price_usd": 0, "credits": 100000, "max_concurrent": 3, "max_project_cost": 5.0, "source": "platform", "hidden": true },
+    "free":     { "label": "무료",     "price_usd": 0,  "credits": 0,    "max_concurrent": 1, "max_project_cost": 1.5,  "source": "mock",
+                  "blurb": "화면과 흐름을 전부 볼 수 있습니다. 산출물은 대본이 만든 것입니다.",
+                  "_why": "Mock 전용. 결제 없이 실제 키를 태우면 스크립트 한 줄로 우리 돈이 나간다(이메일 인증이 아직 없다). blurb 는 고객에게 보이는 문장이고 _why 는 우리끼리의 근거다 — 섞으면 내부 사정이 요금제 화면에 걸린다." },
+    "starter":  { "label": "스타터",   "price_usd": 9,  "credits": 250,  "max_concurrent": 1, "max_project_cost": 2.0,  "source": "platform" },
+    "pro":      { "label": "프로",     "price_usd": 29, "credits": 900,  "max_concurrent": 3, "max_project_cost": 3.0,  "source": "platform" },
+    "business": { "label": "비즈니스", "price_usd": 99, "credits": 3200, "max_concurrent": 5, "max_project_cost": 10.0, "source": "platform" },
+    "byok":     { "label": "자체 키",  "price_usd": 19, "credits": 0,    "max_concurrent": 3, "max_project_cost": 5.0,  "source": "byok",
+                  "blurb": "본인 API 키로 돌립니다. 모델 요금은 제공자가 직접 청구하고, 우리는 오케스트레이션만 받습니다.",
+                  "_why": "모델 원가 리스크가 0 이라 싸게 줄 수 있다. max_project_cost 는 그래도 남긴다 — 고객의 돈도 폭주하면 안 된다." }
+  },
+
+  "_충전": "충전 크레딧당 단가는 **구독보다 항상 비싸야 한다**. 싸지면 구독할 이유가 사라지고, 가장 무거운 사용자만 충전으로 남는다. 이 불변식은 test_credits.py 가 검사한다.",
+  "topups": {
+    "small":  { "label": "150 크레딧",   "credits": 150,  "price_usd": 6 },
+    "medium": { "label": "400 크레딧",   "credits": 400,  "price_usd": 15 },
+    "large":  { "label": "1,000 크레딧", "credits": 1000, "price_usd": 35 }
   }
 }

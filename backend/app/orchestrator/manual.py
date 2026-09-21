@@ -22,18 +22,29 @@ AUTO(§10)는 오케스트레이터가 계획부터 검수까지 끝까지 돌�
 
 MANUAL 이라고 상한이 없으면, 버튼을 스무 번 누르는 것으로 상한을 우회할
 수 있다. 호출 *전에* 최악 비용을 더해서 검사한다.
+
+## 크레딧도 AUTO 와 같이 깎는다 (DAY 19 에 고침)
+
+DAY 18 까지 MANUAL 은 **크레딧을 한 개도 깎지 않았다.** 상한은 걸려
+있었지만 그건 프로젝트 하나의 상한이고, 프로젝트는 얼마든지 새로 열 수
+있다. 요금제를 붙이는 순간 이건 구멍이 아니라 무료 이용권이 된다 —
+AUTO 는 결제하고 MANUAL 은 공짜인 제품이 되기 때문이다.
+
+지시 한 번을 AUTO 의 한 라운드와 같게 취급한다: 시작 전에 잔액을 보고,
+끝나면 **그 지시로 실제로 늘어난 만큼** 깎는다.
 """
 from __future__ import annotations
 
 import threading
 
-from app import bus, config, usage
+from app import bus, config, tenant, usage
 from app.agents import employee, roles
 from app.agents.schemas import Verdict, WorkResult
 from app.database import store
 from app.orchestrator import prompts, runner
 from app.providers.base import Message
 from app.tools import project_fs as pfs
+from app.usage import credits
 
 MAX_HISTORY = 12          # 직원 한 명당 유지할 메시지 수(user+assistant 합계)
 
@@ -87,9 +98,12 @@ class _Session:
     AUTO 와 같은 방식으로 묶어야 이벤트·비용·파일이 이 프로젝트 것으로 잡힌다.
     """
 
-    def __init__(self, slug: str, employee_id: str):
+    def __init__(self, slug: str, employee_id: str, owner: str = "local"):
         self.slug = slug
         self.employee_id = employee_id
+        self.owner = owner
+        self._tenant = None
+        self._before = 0.0
 
     def __enter__(self):
         with _lock:
@@ -97,24 +111,56 @@ class _Session:
                 raise Busy(f"{roles.get(_busy[self.slug]).name}이(가) 아직 "
                            f"작업 중입니다. 끝난 뒤에 지시하세요.")
             _busy[self.slug] = self.employee_id
+        try:
+            # 어느 키로 부를지 먼저 정한다 (DAY 19). BYOK 인데 키가 없으면
+            # 여기서 멈춘다 — 운영자 키로 대신 부르지 않는다.
+            tenant.require_runnable(self.owner)
+            credits.reserve(self.owner, employee.worst_case_cost(self.employee_id))
+        except BaseException:
+            with _lock:
+                _busy.pop(self.slug, None)
+            raise
+        self._tenant = tenant.bind(self.owner)
+        self._tenant.__enter__()
         bus.bind(self.slug)
         usage.attach(self.slug)
         pfs.use(self.slug)
+        self._before = usage.total_cost(self.slug)
         return self
 
     def __exit__(self, *exc):
-        with _lock:
-            _busy.pop(self.slug, None)
-        pfs.release()
+        # **이 지시로 늘어난 만큼만** 깎는다. 프로젝트 누적으로 깎으면
+        # 지시를 한 번 더 할 때마다 앞의 지시를 다시 청구하게 된다.
+        spent = max(0.0, usage.total_cost(self.slug) - self._before)
+        try:
+            if spent:
+                left = credits.charge(self.owner, spent)
+                bus.state(credits=left,
+                          credits_used=credits.usd_to_credits(spent))
+        finally:
+            if self._tenant is not None:
+                self._tenant.__exit__(*exc)
+                self._tenant = None
+            with _lock:
+                _busy.pop(self.slug, None)
+            pfs.release()
         return False
 
 
-def _guard(employee_id: str, slug: str) -> None:
-    """호출 전 예산 검사. MANUAL 이라고 상한을 비켜가지 않는다."""
+def _guard(employee_id: str, slug: str, owner: str = "local") -> None:
+    """호출 전 예산 검사. MANUAL 이라고 상한을 비켜가지 않는다.
+
+    요금제 상한과 전역 하드 상한 중 **작은 쪽**을 쓴다 — AUTO 의
+    `_spend_guard` 와 같은 규칙이다. 두 경로가 다른 상한을 쓰면, 싼
+    요금제로 MANUAL 만 돌리는 것이 상한 우회가 된다.
+    """
+    limit = min(config.MAX_PROJECT_COST,
+                float(credits.plan(credits.wallet(owner).plan)
+                      .get("max_project_cost", config.MAX_PROJECT_COST)))
     projected = usage.total_cost(slug) + employee.worst_case_cost(employee_id)
-    if projected > config.MAX_PROJECT_COST:
+    if projected > limit:
         raise RuntimeError(
-            f"비용 상한(${config.MAX_PROJECT_COST}) — 이 호출의 최악 비용까지 "
+            f"비용 상한(${limit}) — 이 호출의 최악 비용까지 "
             f"더하면 ${projected:.2f}가 되어 지시를 받지 않습니다.")
 
 
@@ -127,7 +173,8 @@ def _persist(slug: str) -> None:
     bus.state(files=store.files_of(slug))
 
 
-def instruct(slug: str, employee_id: str, message: str) -> dict:
+def instruct(slug: str, employee_id: str, message: str,
+             owner: str = "local") -> dict:
     """직원 한 명에게 지시한다 (§11).
 
     쓸 수 있는 직원이면 파일을 만들게 하고(구조화 응답), 쓸 수 없는 직원
@@ -142,8 +189,8 @@ def instruct(slug: str, employee_id: str, message: str) -> dict:
     if not message:
         raise ValueError("지시 내용이 비어 있습니다")
 
-    with _Session(slug, employee_id):
-        _guard(employee_id, slug)
+    with _Session(slug, employee_id, owner):
+        _guard(employee_id, slug, owner)
         bus.say("USER", f"@{e.name}({e.role}) {message}")
         bus.phase("MANUAL", f"{e.name} · 직접 지시")
         hist = history(slug, employee_id)
@@ -188,7 +235,7 @@ def instruct(slug: str, employee_id: str, message: str) -> dict:
                 "files": written}
 
 
-def verify(slug: str) -> dict:
+def verify(slug: str, owner: str = "local") -> dict:
     """CEO 가 누를 때만 도는 검증 (§11).
 
     AUTO 처럼 매 태스크마다 자동으로 돌지 않는다. 대신 **같은 검증자**가
@@ -199,8 +246,8 @@ def verify(slug: str) -> dict:
     if not store.exists(slug):
         raise KeyError(f"없는 프로젝트: {slug}")
 
-    with _Session(slug, roles.VERIFIER):
-        _guard(roles.VERIFIER, slug)
+    with _Session(slug, roles.VERIFIER, owner):
+        _guard(roles.VERIFIER, slug, owner)
         bus.phase("REVIEW", "CEO 요청으로 검증")
         report = runner.run(pfs.root())
         bus.say("SYSTEM", runner.summary_line(report), kind="tool")

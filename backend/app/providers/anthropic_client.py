@@ -1,4 +1,5 @@
 """Anthropic 호출 공통부: 구조화 출력 + 프롬프트 캐싱 + 사용량 집계 + 재시도."""
+import hashlib
 import time
 from typing import TypeVar
 
@@ -9,21 +10,33 @@ from app import secrets_broker
 from app import usage
 
 T = TypeVar("T")
-_client: anthropic.Anthropic | None = None
+_clients: dict[str, anthropic.Anthropic] = {}
+
+
+def _fp(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
 def client() -> anthropic.Anthropic:
     """키는 환경이 아니라 브로커에서 온다. 환경에는 이미 남아 있지 않다."""
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(api_key=secrets_broker.require("anthropic"))
-    return _client
+    key = secrets_broker.require("anthropic")
+    fp = _fp(key)
+    if fp not in _clients:
+        _clients[fp] = anthropic.Anthropic(api_key=key)
+    return _clients[fp]
 
 
 def reset_client() -> None:
     """설정 화면에서 키가 바뀌면 다음 호출에 새 클라이언트를 만든다."""
-    global _client
-    _client = None
+    _clients.clear()
+
+# 클라이언트는 **키마다** 하나씩 둔다 (DAY 19 · BYOK).
+#
+# 예전에는 전역에 하나였다. 그 상태에서 고객이 자기 키를 쓰기 시작하면,
+# 먼저 온 요청이 만든 클라이언트를 **다음 테넌트가 그대로 물려쓴다** —
+# 고객 A 의 키로 고객 B 의 호출이 나간다. 캐시 키를 실제 API 키로 두면
+# 그 사고가 구조적으로 불가능해진다. 키 자체는 캐시 키로 쓰지 않고
+# 해시를 쓴다 — 예외 메시지나 덤프에 딕셔너리 키가 찍혀도 키가 아니다.
 
 
 def _bill(agent: str, model: str, u) -> None:

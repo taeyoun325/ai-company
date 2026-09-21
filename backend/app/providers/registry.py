@@ -66,6 +66,25 @@ _FALLBACKS: dict[str, tuple[str, ...]] = {
 
 
 def mode() -> str:
+    """지금 이 호출이 실제/Mock 중 무엇으로 가는가.
+
+    테넌트 자세(DAY 19 · app/tenant.py)가 환경변수보다 **먼저** 온다:
+
+    - `mock` 자세(무료 요금제) → 환경이 뭐라 하든 Mock. 결제하지 않은
+      사용자가 운영자 키를 태우는 경로를 여기서 끊는다.
+    - `byok` 자세 → `real`. 고객 키가 없으면 **실패해야** 한다. Mock 으로
+      떨어지면 고객은 대본으로 지어낸 글을 자기 AI 의 결과로 받는다.
+    """
+    try:
+        from app import tenant
+        p = tenant.current()
+    except Exception:                                          # noqa: BLE001
+        p = None
+    if p is not None:
+        if p.source == "mock":
+            return "mock"
+        if p.source == "byok":
+            return "real"
     m = os.getenv("PROVIDER_MODE", "auto").strip().lower()
     return m if m in MODES else "auto"
 

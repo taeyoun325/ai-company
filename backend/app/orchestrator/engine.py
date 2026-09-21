@@ -35,7 +35,7 @@ import hashlib
 import os
 import threading
 
-from app import bus, config, usage
+from app import bus, config, tenant, usage
 from app.agents import employee, roles
 from app.agents.schemas import (Criterion, FinalReport, Plan, Routing, Task,
                                 TestSuite, Verdict, WorkResult)
@@ -116,6 +116,11 @@ def start(requirement: str, attachment_ids: list[str] | None = None,
             raise RuntimeError(
                 f"동시 실행 한도({seats})에 도달했습니다. "
                 f"진행 중인 작업이 끝난 뒤에 시작하세요.")
+
+    # 어느 키로 부를지 먼저 정한다 (DAY 19 · app/tenant.py). BYOK 요금제인데
+    # 고객 키가 없으면 **여기서** 멈춘다 — 중간에 터지면 절반쯤 만들어진
+    # 프로젝트와 "왜 멈췄는지 모르겠는" 화면이 남는다.
+    tenant.require_runnable(owner)
 
     # 잔액을 **시작 전에** 본다 (§15). 0 이 된 다음에 막으면 이미 쓴 것이다.
     # 다만 프로젝트 상한 전액이 아니라 **한 번 부를 돈**만 요구한다.
@@ -265,6 +270,18 @@ def route(requirement: str) -> Routing:
 # ── 본체 ────────────────────────────────────────────────────────────
 def _run(requirement: str, slug: str, attachment_ids: list[str],
          owner: str = "local") -> None:
+    """실행 스레드의 입구. 테넌트 자세를 **이 스레드에서 다시 세운다.**
+
+    컨텍스트 변수는 새 스레드로 따라오지 않는다. 여기서 세우지 않으면
+    실행 전체가 운영자 키로 돌아간다 — 무료 사용자가 우리 키를 태우고,
+    BYOK 고객의 요금을 우리가 낸다. 둘 다 조용히 일어난다.
+    """
+    with tenant.bind(owner):
+        _run_bound(requirement, slug, attachment_ids, owner)
+
+
+def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
+               owner: str = "local") -> None:
     # 이 스레드의 컨텍스트를 묶는다. 이후 bus/usage/pfs 호출은 전부 이 실행 소유다.
     bus.bind(slug)
     usage.bind(slug)

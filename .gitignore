@@ -21,6 +21,10 @@ venv/
 *.key
 secrets.json
 .secrets.json
+# 고객이 등록한 키 (암호문) 와 그 암호화 키. 암호문이라도 커밋하지 않는다 —
+# KEK 가 같은 서버에 있으면 둘이 함께 유출되면 끝이다.
+.byok.json
+.byok_kek
 
 # 편집기·OS
 .vscode/

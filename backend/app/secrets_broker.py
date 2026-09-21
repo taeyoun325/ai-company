@@ -75,9 +75,30 @@ def init() -> None:
     _loaded = True
 
 
+def _tenant_keys() -> dict[str, str] | None:
+    """지금 요청/실행이 **고객 키로** 도는 중인가 (DAY 19 · app/tenant.py).
+
+    돌려주는 값이 `None` 이면 운영자 키를 쓴다(기존 동작). 딕셔너리면
+    **그것이 전부다** — 거기 없는 키는 없는 키로 친다. 운영자 키로
+    넘어가지 않는 것이 이 함수의 존재 이유다: 넘어가면 할인 요금제를
+    판 자리에서 우리가 모델 값을 낸다.
+    """
+    try:
+        from app import tenant
+        p = tenant.current()
+    except Exception:                                          # noqa: BLE001
+        return None
+    if p is None or p.source == "platform":
+        return None
+    return dict(p.keys)          # mock 자세면 빈 딕셔너리 — 키가 없다
+
+
 def get(name: str) -> str | None:
     """키를 꺼낸다. 여기가 유일한 통로다."""
     init()
+    tenant_keys = _tenant_keys()
+    if tenant_keys is not None:
+        return tenant_keys.get(name)
     return _store.get(name)
 
 
@@ -162,7 +183,10 @@ def forget_stored() -> None:
 def scrub(text: str) -> str:
     """로그·오류 메시지에서 키가 보이면 가린다. 마지막 안전망."""
     out = text
-    for key in _store.values():
+    # 고객 키도 가린다. 남의 키가 우리 로그에 남으면, 사고는 우리 것이
+    # 아닌데 책임은 우리 것이 된다.
+    keys = list(_store.values()) + list((_tenant_keys() or {}).values())
+    for key in keys:
         if key and len(key) > 8:
             out = out.replace(key, "[REDACTED]")
     return out

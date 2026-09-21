@@ -7,6 +7,10 @@
 
 그리고 예산. MANUAL 은 버튼을 여러 번 누르는 모드이므로, 누를 때마다
 누적이 0 으로 돌아가면 상한이 영영 걸리지 않는다.
+
+DAY 19 에 하나 더 붙었다: **MANUAL 도 크레딧을 깎는다.** 그 전까지
+MANUAL 은 한 개도 깎지 않았고, 요금제를 붙이는 순간 그건 구멍이 아니라
+"AUTO 는 결제, MANUAL 은 공짜"라는 제품이 된다.
 """
 import sys
 from pathlib import Path
@@ -20,6 +24,7 @@ from app.agents import employee, roles                          # noqa: E402
 from app.database import store                                   # noqa: E402
 from app.orchestrator import manual                              # noqa: E402
 from app.providers import registry                               # noqa: E402
+from app.usage import credits                                    # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -189,3 +194,74 @@ def test_busy_project_rejects_a_second_instruction(slug, monkeypatch):
     finally:
         release.set()
         t.join(20)
+
+
+# ── 크레딧 (§15 · DAY 19) ──────────────────────────────────────────
+@pytest.fixture
+def wallet(tmp_path, monkeypatch):
+    monkeypatch.setattr(credits, "WALLET_FILE", tmp_path / "credits.json")
+    credits.reset()
+    yield credits
+    credits.reset()
+
+
+def test_manual_charges_credits_for_what_it_spent(slug, wallet):
+    """DAY 18 까지 MANUAL 은 한 개도 깎지 않았다. 프로젝트는 얼마든지
+    새로 열 수 있으므로, 상한만으로는 아무것도 막지 못한다."""
+    wallet.set_plan("ceo", "pro")
+    before = wallet.balance("ceo")
+    with manual._Session(slug, "developer", "ceo"):
+        usage.record("developer", "claude-opus-5", 1_000_000, 0)   # $5.00
+    assert wallet.balance("ceo") == pytest.approx(before - 500.0)
+
+
+def test_manual_charges_only_the_new_spend(slug, wallet):
+    """프로젝트 누적으로 깎으면 지시를 한 번 더 할 때마다 앞의 지시를
+    다시 청구하게 된다."""
+    wallet.set_plan("ceo", "business")
+    with manual._Session(slug, "developer", "ceo"):
+        usage.record("developer", "claude-opus-5", 1_000_000, 0)   # $5.00
+    mid = wallet.balance("ceo")
+    with manual._Session(slug, "developer", "ceo"):
+        usage.record("developer", "claude-opus-5", 200_000, 0)     # $1.00
+    assert wallet.balance("ceo") == pytest.approx(mid - 100.0)
+
+
+def test_manual_on_byok_plan_does_not_spend_credits(slug, wallet, tmp_path,
+                                                    monkeypatch):
+    """고객이 자기 키로 낸 돈을 크레딧으로 또 받으면 이중 청구다."""
+    from app import byok
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("BYOK_SECRET", "test-kek")
+    byok.reset()
+    byok.set_key("ceo", "anthropic", "sk-ant-mine-0123456789")
+    byok.set_key("ceo", "gemini", "AIza-mine-0123456789")
+    wallet.set_plan("ceo", "byok")
+    before = wallet.balance("ceo")
+    with manual._Session(slug, "developer", "ceo"):
+        usage.record("developer", "claude-opus-5", 1_000_000, 0)   # $5.00
+    assert wallet.balance("ceo") == before
+    assert wallet.status("ceo")["byok_usd"] == pytest.approx(5.0)
+    byok.reset()
+
+
+def test_manual_is_refused_when_byok_keys_are_missing(slug, wallet, tmp_path,
+                                                      monkeypatch):
+    from app import byok, tenant
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("BYOK_SECRET", "test-kek")
+    byok.reset()
+    wallet.set_plan("ceo", "byok")
+    with pytest.raises(tenant.KeysMissing):
+        with manual._Session(slug, "developer", "ceo"):
+            pass
+    assert manual.busy_employee(slug) is None, "거부된 뒤에도 직원이 잡혀 있다"
+    byok.reset()
+
+
+def test_manual_is_refused_when_credits_run_out(slug, wallet):
+    wallet.set_plan("ceo", "starter")
+    wallet.charge("ceo", wallet.credits_to_usd(wallet.balance("ceo")))
+    with pytest.raises(credits.InsufficientCredits):
+        with manual._Session(slug, "developer", "ceo"):
+            pass

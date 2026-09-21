@@ -155,6 +155,23 @@ def checks(strict: bool = False) -> list[dict]:
         out.append(_row("계정", OK,
                         "로컬 모드 — 로그인 없이 'local' 사용자로 동작합니다."))
 
+    # ── 고객 키 보관 (BYOK · DAY 19) ───────────────────────────────
+    # 파는 제품에서 남의 키를 맡아두는 일이다. 운영자가 이 한 줄을
+    # 빠뜨렸다는 사실이 고객에게만 보이고 운영자에게 안 보이면 안 된다.
+    if deploy.is_saas():
+        from app import byok
+        if byok.kek_from_env():
+            out.append(_row("고객 키 보관", OK,
+                            "BYOK_SECRET 이 환경에 있습니다."))
+        else:
+            out.append(_row(
+                "고객 키 보관", WARN,
+                "BYOK_SECRET 이 없습니다. 고객이 등록한 API 키의 암호화 키가 "
+                "같은 서버의 파일에 있게 되고, 디스크를 가져간 사람은 고객 "
+                "키도 가져갑니다.",
+                "BYOK_SECRET 을 환경변수로 설정하세요. 나중에 바꾸면 이미 "
+                "저장된 고객 키는 복호화되지 않습니다."))
+
     # ── 배포 자세 (DAY 13) ─────────────────────────────────────────
     d = deploy.status()
     if d["mode"] == "local" and strict:

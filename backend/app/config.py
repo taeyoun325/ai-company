@@ -128,7 +128,7 @@ def _load_pricing():
     try:
         data = json.loads(PRICING_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return dict(_FALLBACK), {}, {}, False, "", {}
+        return dict(_FALLBACK), {}, {}, False, "", {}, {}
     models = data.get("models", {})
     prices, cache = {}, {}
     dflt = data.get("cache_defaults", {})
@@ -142,11 +142,12 @@ def _load_pricing():
         cache[name] = (float(c[0]), float(c[1])) if c else dflt_pair
     verified = all(row.get("verified") for row in models.values()) if models else False
     return ((prices or dict(_FALLBACK)), cache, data.get("credits", {}), verified,
-            data.get("verified_on", ""), data.get("plans", {}))
+            data.get("verified_on", ""), data.get("plans", {}),
+            data.get("topups", {}))
 
 
 (PRICES, CACHE_RATES, CREDITS, PRICES_VERIFIED,
- PRICES_VERIFIED_ON, PLANS) = _load_pricing()
+ PRICES_VERIFIED_ON, PLANS, TOPUPS) = _load_pricing()
 
 CREDIT_USD = 0.01           # 1 크레딧이 몇 달러어치 원가인가 (§15)
 
@@ -165,9 +166,9 @@ CREDIT_USD = _load_credit_usd()
 def reload_pricing() -> None:
     """단가 파일을 다시 읽는다. 재배포 없이 단가를 고칠 수 있어야 한다."""
     global PRICES, CACHE_RATES, CREDITS, PRICES_VERIFIED, PRICES_VERIFIED_ON
-    global PLANS, CREDIT_USD
+    global PLANS, TOPUPS, CREDIT_USD
     (PRICES, CACHE_RATES, CREDITS, PRICES_VERIFIED,
-     PRICES_VERIFIED_ON, PLANS) = _load_pricing()
+     PRICES_VERIFIED_ON, PLANS, TOPUPS) = _load_pricing()
     CREDIT_USD = _load_credit_usd()
 
 

@@ -154,6 +154,23 @@ export interface Settings {
   stored: boolean;
   missing: string[];
   ready: boolean;
+  /** 운영자 키를 화면에서 바꿀 수 있는가. SaaS 배포에서는 false —
+   *  운영자 키는 환경변수로만 들어온다 (DAY 19). */
+  operator_settings: boolean;
+}
+
+/** 고객 자신의 키 (BYOK, DAY 19). 운영자 키와 **저장소부터 다르다.** */
+export interface ByokStatus {
+  keys: Record<string, { set: boolean; masked: string | null }>;
+  ready: boolean;
+  missing: string[];
+  /** 운영자가 KEK 를 환경변수로 넣었는가. false 면 서버 디스크를 가져간
+   *  사람이 고객 키도 가져간다 — 화면이 그 사실을 말해야 한다. */
+  kek_from_env: boolean;
+  plan: string;
+  source: "platform" | "byok" | "mock";
+  charge_credits: boolean;
+  byok_ready: boolean | null;
 }
 
 export interface CreditStatus {
@@ -168,6 +185,12 @@ export interface CreditStatus {
   balance_usd: number;
   max_concurrent: number;
   max_project_cost: number;
+  /** 고객이 **자기 키로** 쓴 금액. 우리가 청구하는 돈이 아니다 (DAY 19). */
+  byok_usd: number;
+  /** 이 요금제가 누구의 키로 도는가. */
+  source: "platform" | "byok" | "mock";
+  /** 크레딧을 깎는 요금제인가. 우리 키로 나간 비용만 깎는다. */
+  charges_credits: boolean;
   /** 단가가 공식 문서와 대조됐는가. 아니면 이 숫자들은 추측이다 (§14). */
   prices_verified: boolean;
   prices_verified_on: string;
@@ -179,6 +202,15 @@ export interface PlanRow {
   credits: number;
   max_concurrent: number;
   max_project_cost: number;
+  source?: "platform" | "byok" | "mock";
+  /** 고객에게 보이는 한 줄. 우리끼리의 근거(`_why`)는 화면에 오지 않는다. */
+  blurb?: string;
+}
+
+export interface TopupRow {
+  label: string;
+  credits: number;
+  price_usd: number;
 }
 
 export interface User {

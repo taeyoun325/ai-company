@@ -66,6 +66,35 @@ def test_saas_blocks_local_tools(saas):
     assert deploy.allow_local_tools() is not None
 
 
+def test_saas_blocks_operator_key_changes(saas, client):
+    """DAY 18 까지 이 라우트에는 가드가 없었다. SaaS 에서 그것은
+    **로그인한 아무 테넌트나 운영자 키를 덮어쓰거나 지울 수 있다**는
+    뜻이다. 한 사람이 키를 지우면 전원이 멈춘다."""
+    assert deploy.allow_operator_settings() is not None
+    for method, path, body in [
+            ("post", "/api/settings/keys", {"anthropic": "sk-남의키"}),
+            ("post", "/api/settings/forget", None),
+            ("post", "/api/settings/verify/anthropic", None),
+            ("post", "/api/settings/qa-model", {"qa_model": "gemini-2.5-pro"}),
+            ("post", "/api/settings/model",
+             {"provider": "claude", "model": "claude-opus-5"})]:
+        r = getattr(client, method)(path, json=body) if body else             getattr(client, method)(path)
+        assert r.status_code == 403, f"{path} 가 열려 있다"
+
+
+def test_saas_does_not_show_operator_key_masks(saas, client):
+    """앞 6자리는 어떤 계정의 키인지 좁히는 단서다. 고객이 볼 이유가 없다."""
+    body = client.get("/api/settings").json()
+    assert all(k["masked"] is None for k in body["keys"].values())
+    assert body["operator_settings"] is False
+
+
+def test_local_still_lets_the_operator_set_keys(client):
+    """로컬에서까지 막으면, 자기 컴퓨터에서 자기 키를 넣을 방법이 없어진다."""
+    assert deploy.allow_operator_settings() is None
+    assert client.get("/api/settings").json()["operator_settings"] is True
+
+
 def test_saas_blocks_code_execution_unless_sandboxed(saas):
     assert deploy.allow_code_execution() is not None
 

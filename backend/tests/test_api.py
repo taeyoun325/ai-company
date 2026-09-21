@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient                       # noqa: E402
 
 from app import main                                            # noqa: E402
 from app.providers import registry                              # noqa: E402
+from app.usage import credits                                   # noqa: E402
 
 
 @pytest.fixture
@@ -187,15 +188,18 @@ def test_credits_endpoint_reports_verification(client):
 
 def test_plans_endpoint(client):
     body = client.get("/api/plans").json()
-    assert set(body["plans"]) >= {"free", "pro", "business"}
+    assert set(body["plans"]) >= {"free", "starter", "pro", "business", "byok"}
+    assert "local" not in body["plans"], "팔지 않는 요금제가 목록에 있다"
+    assert body["topups"], "충전 묶음이 내려가지 않는다"
     assert body["credit_usd"] > 0
 
 
 def test_margin_endpoint_checks_section_17(client):
     """§17 은 구호가 아니라 계산이다."""
     body = client.get("/api/margin").json()
-    assert body["max_cost_ratio"] == 0.5
+    assert body["max_cost_ratio"] == credits.MAX_COST_RATIO
     assert body["all_paid_plans_ok"] is True
+    assert body["all_topups_ok"] is True
 
 
 def test_unknown_plan_is_rejected_over_http(client):

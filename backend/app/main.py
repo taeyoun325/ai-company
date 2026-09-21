@@ -20,6 +20,7 @@ from app.agents import core as agent_core
 from app import approvals
 from app import attachments
 from app import bus
+from app import byok
 from app import config
 from app import deploy
 from app.api import auth as auth_api
@@ -38,6 +39,7 @@ from app.database import index as project_index
 from app.database import store
 from app import orchestrator
 from app.orchestrator import manual
+from app import tenant
 from app import timeline
 from app import usage
 from app.usage import credits
@@ -74,6 +76,14 @@ class KeysReq(BaseModel):
     gemini: str | None = None
     openai: str | None = None
     remember: bool = False
+
+
+class ByokReq(BaseModel):
+    """고객 자신의 키. 운영자 키(`KeysReq`)와 **모델부터 다르다** —
+    같은 모델을 재사용하면 언젠가 같은 저장소로 흘러간다."""
+    anthropic: str | None = None
+    gemini: str | None = None
+    openai: str | None = None
 
 
 class ModelReq(BaseModel):
@@ -206,9 +216,27 @@ def _require_local_tools() -> None:
 
 
 # ── 설정: API 키와 모델 ─────────────────────────────────────────────
+def _operator_only() -> None:
+    """운영자 키·기본 모델을 만지는 경로의 공통 관문 (DAY 19 · app/deploy.py).
+
+    DAY 18 까지 이 라우트들은 아무 가드도 없었다. 로컬 도구에서는 맞는
+    설계였지만, SaaS 에서는 **로그인한 아무 테넌트나 운영자 키를
+    덮어쓰거나 지울 수 있다**는 뜻이었다. 요금제를 붙이는 순간 이건
+    구멍 정도가 아니라 서비스 정지 버튼이다.
+    """
+    if (reason := deploy.allow_operator_settings()) is not None:
+        raise HTTPException(403, reason)
+
+
 @app.get("/api/settings")
 def get_settings():
-    return {"keys": secrets_broker.status(), "models": config.MODEL_OF,
+    # SaaS 에서는 운영자 키의 마스크조차 내보내지 않는다. 고객이 볼 이유가
+    # 없고, 앞 6자리는 어떤 계정의 키인지 좁히는 단서가 된다.
+    keys = ({n: {"label": lbl, "set": secrets_broker.has(n), "masked": None}
+             for n, (_e, lbl) in secrets_broker.KEYS.items()}
+            if deploy.is_saas() else secrets_broker.status())
+    return {"keys": keys, "models": config.MODEL_OF,
+            "operator_settings": deploy.allow_operator_settings() is None,
             "catalog": {n: {"default": config.default_model(n),
                             "models": config.models_of(n)}
                         for n in registry.names()},
@@ -219,6 +247,7 @@ def get_settings():
 
 @app.post("/api/settings/keys")
 def set_keys(req: KeysReq):
+    _operator_only()
     changed = []
     for name in secrets_broker.KEYS:
         val = getattr(req, name)
@@ -253,12 +282,14 @@ def set_keys(req: KeysReq):
 
 @app.post("/api/settings/forget")
 def forget_keys():
+    _operator_only()
     secrets_broker.forget_stored()
     return {"ok": True, "stored": False}
 
 
 @app.post("/api/settings/verify/{provider}")
 def verify_key(provider: str):
+    _operator_only()
     try:
         if provider == "anthropic":
             from app.providers import anthropic_client as llm
@@ -289,6 +320,7 @@ def verify_key(provider: str):
 
 @app.post("/api/settings/qa-model")
 def set_qa_model(req: ModelReq):
+    _operator_only()
     config.QA_MODEL = req.qa_model
     config.MODEL_OF["QA"] = req.qa_model
     config.PRICES.setdefault(req.qa_model, config.PRICES.get("gemini-2.5-pro", (0.0, 0.0)))
@@ -305,6 +337,7 @@ def set_provider_model(req: ProviderModelReq):
     단가가 없으면 비용이 0 으로 잡히고, 0 은 공짜가 아니라 모른다는 뜻이며,
     예산 상한(§18)이 그 모델에는 걸리지 않게 된다.
     """
+    _operator_only()
     if req.provider not in registry.names():
         raise HTTPException(400, f"알 수 없는 제공자: {req.provider}")
     if req.model not in config.PRICES:
@@ -340,17 +373,25 @@ def start_run(req: RunReq, request: Request):
     requirement = req.requirement.strip()
     if not requirement:
         raise HTTPException(400, "요구사항이 비어 있습니다")
+    owner = auth.owner_of(request)
     try:
-        slug = orchestrator.start(requirement, req.attachments,
-                                  owner=auth.owner_of(request))
+        slug = orchestrator.start(requirement, req.attachments, owner=owner)
+    except tenant.KeysMissing as e:
+        # 402(결제 필요)로 보내지 않는다. 돈 문제가 아니라 **설정** 문제이고,
+        # 사용자가 할 일이 다르다 — 충전이 아니라 키 등록이다.
+        raise HTTPException(409, str(e))
     except credits.InsufficientCredits as e:
         # 429(한도 초과)와 구분한다. 사용자의 대응이 다르다 —
         # 하나는 기다리면 되고, 하나는 충전해야 한다.
         raise HTTPException(402, str(e))
     except RuntimeError as e:
         raise HTTPException(429, str(e))
-    return {"slug": slug, "running": True,
-            "mock": registry.status()["all_mock"]}
+    # **이 테넌트의 자세로** 판단한다. 밖에서 부르면 운영자 기준으로
+    # 답하게 되고, 무료(Mock) 사용자에게 "실제 모델이 일합니다"라고
+    # 말하거나 그 반대가 된다.
+    with tenant.bind(owner):
+        is_mock = registry.status()["all_mock"]
+    return {"slug": slug, "running": True, "mock": is_mock}
 
 
 @app.get("/api/runs")
@@ -426,7 +467,8 @@ def get_credits(request: Request):
 
 @app.get("/api/plans")
 def get_plans():
-    return {"plans": credits.plans(), "credit_usd": config.CREDIT_USD}
+    return {"plans": credits.plans(), "topups": credits.topups(),
+            "credit_usd": config.CREDIT_USD}
 
 
 @app.post("/api/credits/plan")
@@ -449,6 +491,71 @@ def topup(req: TopUpReq, request: Request):
     except ValueError as e:
         raise HTTPException(400, str(e))
     return credits.status(owner)
+
+
+# ── 고객 자신의 키 (BYOK · DAY 19) ──────────────────────────────────
+@app.get("/api/byok")
+def get_byok(request: Request):
+    """내 키 현황. **원문은 어떤 경로로도 나가지 않는다** — 마스크만.
+
+    운영자 키(`/api/settings`)와 라우트를 나눈 이유: 한 라우트에서 둘을
+    같이 다루면 언젠가 한쪽 코드가 다른 쪽 저장소를 건드린다. 그때 사고는
+    "내 키가 남에게 갔다"가 된다.
+    """
+    owner = auth.owner_of(request)
+    return {**byok.status(owner), **tenant.describe(owner)}
+
+
+@app.post("/api/byok")
+def set_byok(req: ByokReq, request: Request):
+    owner = auth.owner_of(request)
+    for provider in byok.PROVIDERS:
+        val = getattr(req, provider)
+        if val is None:
+            continue                    # 안 보낸 것과 빈 값은 다르다
+        byok.set_key(owner, provider, val)
+    return {"ok": True, **byok.status(owner), **tenant.describe(owner)}
+
+
+@app.delete("/api/byok")
+def clear_byok(request: Request, provider: str | None = None):
+    owner = auth.owner_of(request)
+    if provider is not None and provider not in byok.PROVIDERS:
+        raise HTTPException(400, f"알 수 없는 제공자: {provider}")
+    byok.clear(owner, provider)
+    return {"ok": True, **byok.status(owner), **tenant.describe(owner)}
+
+
+@app.post("/api/byok/verify/{provider}")
+def verify_byok(provider: str, request: Request):
+    """내 키로 실제 조회를 한 번 해본다. 등록 직후에 알아야 할 것은
+    "저장됐다"가 아니라 **"이 키로 모델이 불리는가"** 다.
+
+    조회는 모델 호출이 아니라 목록 API 라 요금이 (거의) 들지 않는다.
+    """
+    owner = auth.owner_of(request)
+    if provider not in byok.PROVIDERS:
+        raise HTTPException(400, f"알 수 없는 제공자: {provider}")
+    if not byok.has(owner, provider):
+        raise HTTPException(400, "등록된 키가 없습니다")
+    # 자세를 강제로 byok 로 세운다 — 요금제를 바꾸기 *전에* 키부터
+    # 확인하고 싶은 것이 정상적인 순서다.
+    posture = tenant.Posture(owner=owner, plan="byok", source="byok",
+                             keys=byok.keys_of(owner))
+    try:
+        with tenant.bind(owner, posture):
+            if provider == "anthropic":
+                from app.providers import anthropic_client as llm
+                n = len(list(llm.client().models.list()))
+            elif provider == "gemini":
+                n = len(gemini.list_models())
+            else:
+                from app.providers import openai_client
+                n = len(openai_client.list_models())
+        return {"ok": True, "detail": f"모델 {n}개 조회됨"}
+    except Exception as e:                                     # noqa: BLE001
+        return {"ok": False,
+                "detail": secrets_broker.scrub(f"{type(e).__name__}: {e}")}
 
 
 @app.get("/api/margin")
@@ -487,7 +594,10 @@ def manual_instruct(slug: str, req: InstructReq, request: Request):
     if orchestrator.is_running(slug):
         raise HTTPException(409, "AUTO 실행이 진행 중입니다")
     try:
-        return manual.instruct(slug, req.employee, req.message)
+        return manual.instruct(slug, req.employee, req.message,
+                               owner=auth.owner_of(request))
+    except tenant.KeysMissing as e:
+        raise HTTPException(409, str(e))
     except KeyError as e:
         raise HTTPException(404, str(e))
     except manual.Busy as e:
@@ -509,7 +619,9 @@ def manual_verify(slug: str, request: Request):
     if orchestrator.is_running(slug):
         raise HTTPException(409, "AUTO 실행이 진행 중입니다")
     try:
-        return manual.verify(slug)
+        return manual.verify(slug, owner=auth.owner_of(request))
+    except tenant.KeysMissing as e:
+        raise HTTPException(409, str(e))
     except KeyError as e:
         raise HTTPException(404, str(e))
     except manual.Busy as e:
