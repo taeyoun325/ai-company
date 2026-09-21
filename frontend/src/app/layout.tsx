@@ -3,7 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 
 import { AuthGate } from "@/components/AuthGate";
-import { LangPartialNote, LangSwitch, Nav } from "@/components/LangSwitch";
+import { LangPartialNote, LangSwitch, Nav, VerifyNote }
+  from "@/components/LangSwitch";
 import { UserMenu } from "@/components/UserMenu";
 import { Icon } from "@/components/icons";
 import { LangProvider } from "@/lib/i18n";
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <LangProvider>
         <AuthProvider>
           <LangPartialNote />
+          <VerifyNote />
           <header className="z-20 shrink-0 border-b border-line bg-[color:var(--panel)] backdrop-blur-xl">
             {/* 좁은 화면에서 메뉴 글자가 두 줄로 쪼개지던 것을 막는다.
                 넘치면 접지 말고 옆으로 밀리게 둔다 — 접으면 어떤 메뉴가

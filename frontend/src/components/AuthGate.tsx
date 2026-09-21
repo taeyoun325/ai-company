@@ -170,6 +170,16 @@ function LoginScreen() {
         </form>
       </Panel>
 
+      {/* 잊은 사람은 로그인 화면에서 잊었다는 것을 안다. 그 자리에
+          길이 없으면 지원에 문의하거나 그냥 떠난다. */}
+      {mode === "login" && (
+        <p className="mt-3 text-center text-xs">
+          <a href="/reset" className="text-muted underline hover:text-fg">
+            {t("reset.forgot")}
+          </a>
+        </p>
+      )}
+
       <p className="mt-3 text-center text-[11px] text-dim">
         {t("auth.noGoogle")}
       </p>

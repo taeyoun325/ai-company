@@ -57,7 +57,11 @@ CREATE TABLE IF NOT EXISTS users (
     email        TEXT NOT NULL UNIQUE,
     display_name TEXT NOT NULL DEFAULT '',
     created_at   REAL NOT NULL,
-    disabled     INTEGER NOT NULL DEFAULT 0
+    disabled     INTEGER NOT NULL DEFAULT 0,
+    -- 이메일이 확인됐는가 (DAY 22). 확인 전이라고 막지는 않는다 —
+    -- 막으면 메일이 안 나가는 서버에서 아무도 못 쓴다. 대신 화면이
+    -- 확인되지 않았다고 말한다.
+    email_verified_at REAL
 );
 
 -- 한 사람이 여러 방법으로 로그인할 수 있다. 구글을 붙일 때 이 표에
@@ -80,6 +84,24 @@ CREATE TABLE IF NOT EXISTS sessions (
     expires_at REAL NOT NULL,
     user_agent TEXT NOT NULL DEFAULT ''
 );
+-- 한 번 쓰고 버리는 토큰 (DAY 22): 비밀번호 재설정 · 이메일 확인.
+--
+-- 세션과 같은 규칙으로 다룬다 — **해시만 저장한다.** 평문은 메일로 한 번
+-- 나가고 다시는 얻을 수 없다. DB 가 새도 남의 계정을 가져가지 못한다.
+--
+-- `used_at` 을 두고 지우지 않는 이유: 이미 쓴 토큰을 다시 쓰려는 시도와
+-- 애초에 없는 토큰을 구분할 수 있어야 한다. 둘은 다른 사건이다.
+CREATE TABLE IF NOT EXISTS auth_tokens (
+    token_hash TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL,          -- 'reset' | 'verify'
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    used_at    REAL
+);
+CREATE INDEX IF NOT EXISTS ix_tokens_user ON auth_tokens (user_id, kind);
+CREATE INDEX IF NOT EXISTS ix_tokens_expiry ON auth_tokens (expires_at);
+
 CREATE INDEX IF NOT EXISTS ix_sessions_user ON sessions (user_id);
 CREATE INDEX IF NOT EXISTS ix_sessions_expiry ON sessions (expires_at);
 CREATE INDEX IF NOT EXISTS ix_identities_user ON identities (user_id);
@@ -104,9 +126,23 @@ def conn() -> sqlite3.Connection:
     c.execute("PRAGMA foreign_keys=ON")     # ON DELETE CASCADE 가 실제로 돌게
     with c:
         c.executescript(SCHEMA)
+        _migrate(c)
     _local.conn = c
     _local.path = str(path())
     return c
+
+
+def _migrate(c: sqlite3.Connection) -> None:
+    """이미 있는 DB 에 새 컬럼을 더한다.
+
+    `CREATE TABLE IF NOT EXISTS` 는 **이미 있는 표를 고치지 않는다.**
+    스키마만 고치고 끝내면, 어제 만든 DB 로 뜬 서버는 새 컬럼이 없어서
+    조회마다 터진다. 마이그레이션 도구를 들이기에는 이른 단계라
+    여기서 한 줄로 막는다.
+    """
+    have = {r["name"] for r in c.execute("PRAGMA table_info(users)")}
+    if "email_verified_at" not in have:
+        c.execute("ALTER TABLE users ADD COLUMN email_verified_at REAL")
 
 
 def close() -> None:
@@ -125,19 +161,31 @@ class User:
     display_name: str
     created_at: float
     disabled: bool = False
+    email_verified_at: float | None = None
+
+    @property
+    def email_verified(self) -> bool:
+        return self.email_verified_at is not None
 
     def public(self) -> dict:
         """화면에 내려보낼 형태. 여기에 비밀번호 관련 필드를 절대 넣지 않는다."""
         return {"id": self.id, "email": self.email,
-                "display_name": self.display_name, "created_at": self.created_at}
+                "display_name": self.display_name,
+                "created_at": self.created_at,
+                "email_verified": self.email_verified}
 
 
 def _user_of(row: sqlite3.Row | None) -> User | None:
     if row is None:
         return None
+    keys = row.keys()
     return User(id=row["id"], email=row["email"],
                 display_name=row["display_name"], created_at=row["created_at"],
-                disabled=bool(row["disabled"]))
+                disabled=bool(row["disabled"]),
+                # 옛 DB 에는 이 컬럼이 없을 수 있다. 없으면 '확인 안 됨'이다 —
+                # 없는 것을 확인된 것으로 읽으면 확인 절차가 무의미해진다.
+                email_verified_at=(row["email_verified_at"]
+                                   if "email_verified_at" in keys else None))
 
 
 def normalize_email(email: str) -> str:
@@ -279,3 +327,61 @@ def purge_expired() -> int:
         cur = c.execute("DELETE FROM sessions WHERE expires_at < ?",
                         (time.time(),))
     return cur.rowcount
+
+
+# ── 한 번 쓰고 버리는 토큰 (DAY 22) ─────────────────────────────────
+def new_token(user_id: str, kind: str, ttl: float) -> str:
+    """토큰을 만들고 **평문**을 돌려준다. 저장되는 것은 해시뿐이다.
+
+    같은 종류의 **이전 토큰은 무효로 만든다.** 재설정 메일을 세 번 보내면
+    링크가 세 개 살아 있게 되는데, 그중 하나만 새 것이고 나머지 둘은
+    사용자가 잊은 채로 메일함에 남는다. 가장 최근 것만 산다.
+    """
+    token = secrets.token_urlsafe(TOKEN_BYTES)
+    now = time.time()
+    with _lock, conn() as c:
+        c.execute("DELETE FROM auth_tokens WHERE user_id = ? AND kind = ?",
+                  (user_id, kind))
+        c.execute(
+            "INSERT INTO auth_tokens (token_hash, user_id, kind, created_at, "
+            "expires_at) VALUES (?, ?, ?, ?, ?)",
+            (_hash_token(token), user_id, kind, now, now + ttl))
+    return token
+
+
+def use_token(token: str, kind: str) -> str | None:
+    """토큰을 쓰고 사용자 id 를 돌려준다. 못 쓰면 None.
+
+    **확인과 사용을 한 번에** 한다. 나눠 두면 같은 토큰으로 두 요청이
+    동시에 들어왔을 때 둘 다 통과한다(경쟁 상태). 여기서는 `used_at IS
+    NULL` 조건을 붙인 UPDATE 한 번이라, 이긴 쪽만 1행을 바꾼다.
+    """
+    if not token:
+        return None
+    now = time.time()
+    with _lock, conn() as c:
+        cur = c.execute(
+            "UPDATE auth_tokens SET used_at = ? "
+            "WHERE token_hash = ? AND kind = ? AND used_at IS NULL "
+            "AND expires_at > ?",
+            (now, _hash_token(token), kind, now))
+        if cur.rowcount != 1:
+            return None
+        row = c.execute(
+            "SELECT user_id FROM auth_tokens WHERE token_hash = ?",
+            (_hash_token(token),)).fetchone()
+    return row["user_id"] if row else None
+
+
+def mark_email_verified(user_id: str) -> None:
+    with _lock, conn() as c:
+        c.execute("UPDATE users SET email_verified_at = ? WHERE id = ?",
+                  (time.time(), user_id))
+
+
+def purge_expired_tokens() -> int:
+    """만료된 토큰을 치운다. 쓴 토큰도 만료되면 함께 사라진다."""
+    with _lock, conn() as c:
+        cur = c.execute("DELETE FROM auth_tokens WHERE expires_at < ?",
+                        (time.time(),))
+        return cur.rowcount

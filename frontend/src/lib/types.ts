@@ -227,6 +227,9 @@ export interface User {
   email: string;
   display_name: string;
   created_at: number;
+  /** 이메일이 확인됐는가 (DAY 22). 확인 전이라고 막지는 않는다 —
+   *  막으면 메일이 안 나가는 서버에서 아무도 못 쓴다. 대신 말한다. */
+  email_verified?: boolean;
 }
 
 export interface MeResponse {

@@ -17,6 +17,10 @@
 import { usePathname } from "next/navigation";
 
 import { LANGS, LANG_LABEL, useLang } from "@/lib/i18n";
+import { useState } from "react";
+
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/useAuth";
 import { NavLink } from "./ui";
 
 export function LangSwitch({ compact = false }: { compact?: boolean }) {
@@ -46,6 +50,46 @@ export function LangSwitch({ compact = false }: { compact?: boolean }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * 이메일이 아직 확인되지 않았다는 알림 (DAY 22).
+ *
+ * 막지 않고 **말한다.** 확인 전이라고 막으면 메일이 안 나가는 서버에서
+ * 아무도 제품을 못 쓴다 — 기본 발송기가 로그이므로 그 서버는 잠긴다.
+ */
+export function VerifyNote() {
+  const { t } = useLang();
+  const { user } = useAuth();
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (!user || user.email_verified !== false) return null;
+
+  return (
+    <p className="flex items-center justify-center gap-2 border-b border-line
+      px-4 py-1.5 text-[11px]" style={{ color: "var(--warn)" }}>
+      {t("verify.notice")}
+      {sent ? (
+        <span className="text-dim">{t("verify.sent")}</span>
+      ) : (
+        <button
+          type="button"
+          disabled={busy}
+          className="underline disabled:opacity-50"
+          onClick={() => {
+            setBusy(true);
+            void api
+              .sendVerification()
+              .then(() => setSent(true))
+              .finally(() => setBusy(false));
+          }}
+        >
+          {t("verify.send")}
+        </button>
+      )}
+    </p>
   );
 }
 

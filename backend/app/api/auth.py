@@ -125,3 +125,77 @@ def revoke_sessions(request: Request, response: Response):
     n = store.drop_all_sessions(user.id)
     deps.clear_session_cookie(response, request)
     return {"ok": True, "revoked": n}
+
+
+# ── 비밀번호 재설정 · 이메일 확인 (DAY 22) ──────────────────────────
+class ForgotReq(BaseModel):
+    email: str
+
+
+class ResetReq(BaseModel):
+    token: str
+    password: str
+
+
+class TokenReq(BaseModel):
+    token: str
+
+
+@router.post("/forgot")
+def forgot(req: ForgotReq, request: Request):
+    """재설정 메일을 보낸다.
+
+    **계정이 있든 없든 같은 답을 준다.** "그런 계정 없습니다"는 친절해
+    보이지만, 아무나 주소를 넣어보며 가입 여부를 확인할 수 있다는 뜻이다.
+    가입 여부는 그 자체로 사생활이다.
+
+    메일이 실제로 나갔는지는 숨기지 않는다 — `delivered` 가 false 면
+    운영자가 SMTP 를 아직 붙이지 않은 것이고, 화면이 그 사실을 말해야
+    사용자가 **오지 않는 메일을 기다리지 않는다.**
+    """
+    try:
+        d = service.request_reset(req.email, ip=_client_ip(request))
+    except service.RateLimited as e:
+        raise HTTPException(429, str(e))
+    except service.AuthError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "delivered": d.delivered, "how": d.how,
+            "detail": d.detail}
+
+
+@router.post("/reset")
+def reset(req: ResetReq, response: Response, request: Request):
+    """새 비밀번호를 정한다. 토큰은 한 번만 쓴다.
+
+    성공하면 **기존 세션이 전부 끊긴다** — 비밀번호를 되찾는 이유는 대개
+    누가 들어와 있기 때문이다. 그 다음 이 요청을 보낸 브라우저에만 새
+    세션을 준다. 바로 로그인시키는 이유는, 안 그러면 방금 정한 비밀번호를
+    한 번 더 입력하게 되기 때문이다.
+    """
+    try:
+        user = service.reset_password(req.token, req.password)
+    except service.AuthError as e:
+        raise HTTPException(400, str(e))
+    token = store.new_session(
+        user.id, user_agent=request.headers.get("user-agent", ""))
+    deps.set_session_cookie(response, token, request)
+    return {"ok": True, "user": user.public()}
+
+
+@router.post("/verify/send")
+def send_verification(request: Request):
+    user = deps.current_user(request)
+    if user is None:
+        raise HTTPException(401, "로그인이 필요합니다.")
+    d = service.request_verification(user.id)
+    return {"ok": True, "delivered": d.delivered, "how": d.how,
+            "detail": d.detail}
+
+
+@router.post("/verify")
+def verify(req: TokenReq):
+    try:
+        user = service.verify_email(req.token)
+    except service.AuthError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "user": user.public()}

@@ -33,6 +33,7 @@ import time
 from dataclasses import dataclass, field
 
 from app.auth import passwords, store
+from app.auth import mail
 
 PROVIDER = "email"
 
@@ -189,3 +190,89 @@ def change_password(user_id: str, current: str, new: str) -> None:
 
 def me(token: str) -> store.User | None:
     return store.session_user(token)
+
+
+# ── 비밀번호 재설정 · 이메일 확인 (DAY 22) ──────────────────────────
+#
+# 수명. 재설정은 짧아야 한다 — 메일함이 털린 사람에게 30분과 하루는
+# 완전히 다른 이야기다. 확인 메일은 나중에 열어보는 일이 흔해서 길게 둔다.
+RESET_TTL = 60 * 30            # 30분
+VERIFY_TTL = 60 * 60 * 24      # 24시간
+
+
+def request_reset(email: str, *, ip: str = "") -> mail.Delivery:
+    """재설정 메일을 보낸다.
+
+    ## 계정이 있는지 알려주지 않는다
+
+    "그런 계정 없습니다"는 친절해 보이지만, 그건 **아무나 이메일 주소를
+    넣어보며 가입 여부를 확인할 수 있다**는 뜻이다. 가입 여부는 그 자체로
+    사생활이다(어느 서비스를 쓰는지). 있든 없든 같은 답을 준다.
+
+    같은 이유로 **걸리는 시간도 비슷해야** 하지만, 여기서는 그것까지
+    맞추지 않는다 — 메일 발송이 훨씬 느려서 해시 하나의 차이는 묻힌다.
+    정직하게 적어둔다: 이건 완전한 방어가 아니다.
+
+    ## 요청만으로는 아무것도 바뀌지 않는다
+
+    비밀번호는 그대로고 세션도 그대로다. 남이 내 주소로 요청을 눌러도
+    나는 메일 한 통을 받을 뿐이다.
+    """
+    email = store.normalize_email(email)
+    # 재설정 요청도 남용될 수 있다 — 남의 메일함을 우리 서버로 때리는 일.
+    _check_rate(f"reset:{email}")
+    _record_failure(f"reset:{email}")
+    if ip:
+        _check_rate(f"reset-ip:{ip}")
+        _record_failure(f"reset-ip:{ip}")
+
+    user = store.user_by_email(email)
+    if user is None or user.disabled:
+        # 보내지 않았지만 **보낸 것과 같은 답**을 돌려준다.
+        return mail.Delivery(False, "none", "")
+    token = store.new_token(user.id, "reset", RESET_TTL)
+    return mail.send_reset(user.email, token)
+
+
+def reset_password(token: str, new: str) -> store.User:
+    """토큰으로 비밀번호를 바꾼다. 토큰은 한 번만 쓴다."""
+    user_id = store.use_token(token, "reset")
+    if user_id is None:
+        # 만료·사용됨·없음을 구분해 말하지 않는다. 구분해 주면 토큰을
+        # 훑어보며 어떤 것이 살아 있는지 알아낼 수 있다.
+        raise AuthError("링크가 만료됐거나 이미 사용됐습니다. 다시 요청하세요.")
+    user = store.user_by_id(user_id)
+    if user is None or user.disabled:
+        raise AuthError("계정을 찾을 수 없습니다.")
+    if issues := passwords.problems(new, user.email):
+        raise AuthError(" ".join(issues))
+
+    store.update_password_hash(user.id, passwords.hash_password(new))
+    # 비밀번호를 되찾는 이유는 대개 **누가 들어와 있기 때문**이다.
+    # 기존 세션을 전부 끊지 않으면 되찾은 의미가 없다.
+    store.drop_all_sessions(user.id)
+    # 재설정 링크를 열었다는 것은 그 메일함을 실제로 쓴다는 뜻이다.
+    store.mark_email_verified(user.id)
+    _clear_failures(f"email:{user.email}")
+    return user
+
+
+def request_verification(user_id: str) -> mail.Delivery:
+    user = store.user_by_id(user_id)
+    if user is None:
+        raise AuthError("계정을 찾을 수 없습니다.")
+    if user.email_verified:
+        return mail.Delivery(True, "none", "이미 확인된 주소입니다")
+    token = store.new_token(user.id, "verify", VERIFY_TTL)
+    return mail.send_verification(user.email, token)
+
+
+def verify_email(token: str) -> store.User:
+    user_id = store.use_token(token, "verify")
+    if user_id is None:
+        raise AuthError("링크가 만료됐거나 이미 사용됐습니다. 다시 요청하세요.")
+    user = store.user_by_id(user_id)
+    if user is None:
+        raise AuthError("계정을 찾을 수 없습니다.")
+    store.mark_email_verified(user.id)
+    return store.user_by_id(user.id) or user

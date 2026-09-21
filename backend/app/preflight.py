@@ -155,6 +155,27 @@ def checks(strict: bool = False) -> list[dict]:
         out.append(_row("계정", OK,
                         "로컬 모드 — 로그인 없이 'local' 사용자로 동작합니다."))
 
+    # ── 메일 (DAY 22) ──────────────────────────────────────────────
+    # 파는 제품에서 비밀번호를 잊은 사람이 돌아올 길이 있어야 한다.
+    if deploy.is_saas():
+        from app.auth import mail
+        if not mail.configured():
+            out.append(_row(
+                "메일", WARN,
+                "SMTP_URL 이 없습니다. 비밀번호 재설정과 이메일 확인 메일이 "
+                "나가지 않고 서버 로그에만 남습니다 — 비밀번호를 잊은 "
+                "사용자는 돌아올 방법이 없습니다.",
+                "SMTP_URL 을 설정하세요. 화면은 메일이 나가지 않았다는 "
+                "사실을 사용자에게 그대로 알립니다."))
+        elif not os.getenv("PUBLIC_URL", "").strip():
+            out.append(_row(
+                "메일 링크", WARN,
+                f"PUBLIC_URL 이 없어 메일 속 링크가 {mail.public_url()} 을 "
+                f"가리킵니다. 받는 사람은 그 주소를 열 수 없습니다.",
+                "PUBLIC_URL 에 실제 서비스 주소를 넣으세요."))
+        else:
+            out.append(_row("메일", OK, f"SMTP 설정됨 · 링크 {mail.public_url()}"))
+
     # ── 고객 키 보관 (BYOK · DAY 19) ───────────────────────────────
     # 파는 제품에서 남의 키를 맡아두는 일이다. 운영자가 이 한 줄을
     # 빠뜨렸다는 사실이 고객에게만 보이고 운영자에게 안 보이면 안 된다.

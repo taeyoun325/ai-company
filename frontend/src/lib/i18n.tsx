@@ -464,6 +464,49 @@ const S = {
   },
   "auth.logout": { ko: "로그아웃", en: "Log out", ja: "ログアウト" },
 
+  // ── 비밀번호 재설정 · 이메일 확인 (DAY 22) ────────────────────
+  "reset.forgot": { ko: "비밀번호를 잊으셨나요?", en: "Forgot your password?", ja: "パスワードをお忘れですか？" },
+  "reset.title": { ko: "비밀번호 재설정", en: "Reset password", ja: "パスワードの再設定" },
+  "reset.askEmail": {
+    ko: "가입한 이메일 주소를 적으면 재설정 링크를 보냅니다.",
+    en: "Enter the email you signed up with and we will send a reset link.",
+    ja: "登録したメールアドレスを入力すると、再設定リンクを送ります。",
+  },
+  "reset.send": { ko: "링크 보내기", en: "Send link", ja: "リンクを送る" },
+  "reset.sentAnyway": {
+    ko: "그 주소로 계정이 있다면 링크를 보냈습니다. 계정이 있는지 여부는 알려드리지 않습니다 — 아무나 주소를 넣어보며 가입 여부를 확인할 수 있게 되기 때문입니다.",
+    en: "If an account exists for that address, a link is on its way. We do not say whether it exists — otherwise anyone could check who is signed up.",
+    ja: "そのアドレスのアカウントがあればリンクを送りました。アカウントの有無はお伝えしません — 誰でも登録の有無を確認できてしまうからです。",
+  },
+  "reset.notDelivered": {
+    ko: "다만 이 서버는 메일을 보내도록 설정되지 않았습니다. 링크는 서버 로그에만 남았습니다 — 운영자에게 문의하세요.",
+    en: "That said, this server is not configured to send mail. The link only went to the server log — ask the operator.",
+    ja: "ただしこのサーバーはメール送信が設定されていません。リンクはサーバーのログにのみ残りました — 運営者にお問い合わせください。",
+  },
+  "reset.newPassword": { ko: "새 비밀번호", en: "New password", ja: "新しいパスワード" },
+  "reset.apply": { ko: "비밀번호 바꾸기", en: "Change password", ja: "パスワードを変更" },
+  "reset.done": {
+    ko: "비밀번호를 바꿨습니다. 다른 기기의 로그인은 전부 끊었습니다 — 되찾는 이유는 대개 누가 들어와 있기 때문입니다.",
+    en: "Password changed. Every other session was signed out — you usually reset because someone else is in.",
+    ja: "パスワードを変更しました。他の端末のログインはすべて切りました — 再設定する理由は、たいてい誰かが入っているからです。",
+  },
+  "reset.noToken": {
+    ko: "링크가 올바르지 않습니다. 메일의 주소를 그대로 열어주세요.",
+    en: "That link is not valid. Open the address from the email as-is.",
+    ja: "リンクが正しくありません。メールのアドレスをそのまま開いてください。",
+  },
+  "reset.toOffice": { ko: "사무실로 가기", en: "Go to the office", ja: "オフィスへ" },
+  "verify.title": { ko: "이메일 확인", en: "Verify email", ja: "メールの確認" },
+  "verify.working": { ko: "확인하는 중…", en: "Verifying…", ja: "確認中…" },
+  "verify.done": { ko: "이메일 주소를 확인했습니다.", en: "Your email address is verified.", ja: "メールアドレスを確認しました。" },
+  "verify.notice": {
+    ko: "이메일이 아직 확인되지 않았습니다.",
+    en: "Your email address is not verified yet.",
+    ja: "メールアドレスがまだ確認されていません。",
+  },
+  "verify.send": { ko: "확인 메일 보내기", en: "Send verification email", ja: "確認メールを送る" },
+  "verify.sent": { ko: "확인 메일을 보냈습니다.", en: "Verification email sent.", ja: "確認メールを送りました。" },
+
   // ── 인사 (DAY 21) ─────────────────────────────────────────────
   "staff.rename": { ko: "이름 바꾸기", en: "Rename", ja: "名前を変更" },
   "staff.save": { ko: "저장", en: "Save", ja: "保存" },

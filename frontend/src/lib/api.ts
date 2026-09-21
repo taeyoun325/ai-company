@@ -162,6 +162,22 @@ export const api = {
   setEmployeeModel: (id: string, model: string) =>
     post<{ ok: boolean }>(`/api/employees/${seg(id)}/model`, { model }),
 
+  // ── 비밀번호 재설정 · 이메일 확인 (DAY 22) ──────────────────────
+  // `delivered` 를 그대로 화면에 올린다. 서버가 메일을 못 보냈는데
+  // "보냈습니다"라고 적으면, 사용자는 오지 않는 메일을 기다린다.
+  forgot: (email: string) =>
+    post<{ ok: boolean; delivered: boolean; how: string; detail: string }>(
+      "/api/auth/forgot", { email },
+    ),
+  resetPassword: (token: string, password: string) =>
+    post<{ ok: boolean; user: User }>("/api/auth/reset", { token, password }),
+  sendVerification: () =>
+    post<{ ok: boolean; delivered: boolean; how: string; detail: string }>(
+      "/api/auth/verify/send",
+    ),
+  verifyEmail: (token: string) =>
+    post<{ ok: boolean; user: User }>("/api/auth/verify", { token }),
+
   providers: () => call<ProviderStatus>("/api/providers"),
 
   // ── 인사 (DAY 21) ───────────────────────────────────────────────
