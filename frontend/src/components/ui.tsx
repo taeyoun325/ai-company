@@ -107,7 +107,9 @@ export function Button({
  * 결과로 믿는다. 그건 버그가 아니라 사고다. 그래서 눈에 띄는 전용 색을
  * 쓰고, 어디에도 그 색을 재사용하지 않는다.
  */
-export function MockBadge({ className = "" }: { className?: string }) {
+export function MockBadge({
+  className = "", title = "Mock",
+}: { className?: string; title?: string }) {
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5
@@ -117,7 +119,7 @@ export function MockBadge({ className = "" }: { className?: string }) {
         borderColor: "color-mix(in srgb, var(--mock) 45%, transparent)",
         background: "color-mix(in srgb, var(--mock) 12%, transparent)",
       }}
-      title="실제 모델이 아니라 Mock 제공자가 만든 결과입니다"
+      title={title}
     >
       MOCK
     </span>

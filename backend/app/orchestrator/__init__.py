@@ -9,4 +9,5 @@ LLM 이 아니라 파이썬 상태머신이 정한다.
     score.py     완성도 계산
 """
 from app.orchestrator.engine import (cancel, is_running, route,  # noqa: F401
-                                     running_slugs, start)
+                                     running_slugs, start,
+                                     sweep_stale_runs)

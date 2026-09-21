@@ -250,7 +250,7 @@ function Desk({
           <div className="flex flex-wrap items-center gap-1.5">
             <NameField e={e} onStaffChange={onStaffChange} />
             <span className="text-xs text-muted">{e.role}</span>
-            {e.mock && <MockBadge />}
+            {e.mock && <MockBadge title={t("mock.badge")} />}
             {e.active === false && (
               <span className="text-[11px]" style={{ color: "var(--dim)" }}>
                 {t("staff.empty")}

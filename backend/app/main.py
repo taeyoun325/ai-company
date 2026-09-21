@@ -53,6 +53,10 @@ secrets_broker.init()   # 기동 즉시 환경변수에서 키를 꺼내 지운�
 # 산출물은 멀쩡한데 목록만 비어 있으면 사용자는 잃어버렸다고 생각한다.
 _INDEX_READY = project_index.ensure_ready()
 
+# 프로세스가 죽으면 '진행 중'을 끝낼 사람이 없다. 기동 시 한 번 치운다 —
+# 안 치우면 목록에 좀비가 쌓이고, 화면은 오지 않는 로그를 기다린다.
+_SWEPT = orchestrator.sweep_stale_runs()
+
 app = FastAPI(title="AI Agent Company")
 
 

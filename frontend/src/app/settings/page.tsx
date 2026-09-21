@@ -194,7 +194,7 @@ export default function SettingsPage() {
               <span className="w-20 font-medium">{p.name}</span>
               <span className="text-xs text-muted">{p.model}</span>
               {p.mock ? (
-                <MockBadge />
+                <MockBadge title={t("mock.badge")} />
               ) : (
                 <span className="text-xs" style={{ color: "var(--ok)" }}>
                   {t("set.real")}
@@ -239,7 +239,7 @@ export default function SettingsPage() {
                     </option>
                   ))}
                 </select>
-                {e.mock && <MockBadge />}
+                {e.mock && <MockBadge title={t("mock.badge")} />}
               </li>
             );
           })}

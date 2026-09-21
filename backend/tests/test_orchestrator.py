@@ -279,3 +279,39 @@ def test_runner_strips_secrets_from_child_env(monkeypatch):
     assert "ANTHROPIC_API_KEY" not in env
     assert "MY_DB_PASSWORD" not in env
     assert env["PYTHONNOUSERSITE"] == "1", "usercustomize.py 자동 import 를 막아야 한다"
+
+
+# ── 죽은 실행 치우기 (DAY 22) ──────────────────────────────────────
+def test_a_run_left_behind_by_a_restart_is_closed(tmp_path, monkeypatch):
+    """`new_project()` 는 status 를 running 으로 쓰고, 그걸 끝으로 바꾸는
+    것은 실행 스레드뿐이다. 프로세스가 죽으면 되돌릴 사람이 없어서, 그
+    프로젝트는 목록에서 영원히 '진행 중'으로 남는다."""
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    slug = store.new_project("재시작에 버려진 실행")
+    store.save_meta(slug, {"beat": time.time() - engine.BEAT_STALE - 10})
+
+    assert engine.sweep_stale_runs() == [slug]
+    meta = store.meta(slug)
+    assert meta["status"] == "stopped"
+    assert meta["stopped_reason"], "왜 멈췄는지 적히지 않았다"
+
+
+def test_a_fresh_beat_is_left_alone(tmp_path, monkeypatch):
+    """박자가 최근이면 다른 인스턴스가 돌리는 중일 수 있다. 살아 있는
+    실행을 죽었다고 하는 쪽이 더 나쁘다."""
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    slug = store.new_project("지금 도는 실행")
+    store.save_meta(slug, {"beat": time.time()})
+    assert engine.sweep_stale_runs() == []
+    assert store.meta(slug)["status"] == "running"
+
+
+def test_sweeping_keeps_the_files(tmp_path, monkeypatch):
+    """지우지 않고 중단으로 표시한다. 조용히 사라지면 사용자는 자기가
+    뭘 잘못했는지 찾게 된다."""
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    slug = store.new_project("산출물이 남아야 한다")
+    (store.dir_of(slug) / "src" / "calc.py").write_text("x = 1", encoding="utf-8")
+    store.save_meta(slug, {"beat": 0})
+    engine.sweep_stale_runs()
+    assert (store.dir_of(slug) / "src" / "calc.py").exists()

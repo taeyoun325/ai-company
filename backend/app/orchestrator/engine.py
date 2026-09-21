@@ -34,6 +34,7 @@ from __future__ import annotations
 import hashlib
 import os
 import threading
+import time
 
 from app import bus, config, lang, tenant, usage
 from app.agents import employee, roles
@@ -74,6 +75,84 @@ def is_running(slug: str | None = None) -> bool:
     _reap()
     with _runs_lock:
         return slug in _runs if slug else bool(_runs)
+
+
+# ── 살아 있다는 신호 (DAY 22) ───────────────────────────────────────
+#
+# ## 왜 필요한가
+#
+# `new_project()` 는 status 를 `running` 으로 쓰고, 그걸 끝으로 바꾸는 것은
+# **실행 스레드뿐**이다. 프로세스가 죽으면 되돌릴 사람이 없다. 그 프로젝트는
+# 목록에서 영원히 "진행 중"으로 남고, 화면은 오지 않는 로그를 기다린다.
+#
+# 서버를 다시 켜는 일은 드물지 않다 — 배포, 재시작, 죽음. 그때마다 좀비가
+# 하나씩 쌓인다.
+#
+# ## 왜 시각을 쓰나
+#
+# "이 프로세스가 살아 있나"는 **다른 프로세스에서 확인할 수 없다.** pid 는
+# 재사용되고, 컨테이너가 바뀌면 의미도 없다. 대신 **최근에 무언가 했는가**를
+# 본다 — 실행 중에는 주기적으로 시각을 찍고, 그게 오래되면 죽은 것으로 친다.
+#
+# 간격보다 넉넉하게 잡는다. 모델 호출 하나가 몇 분씩 걸리므로, 박자가 조금
+# 늦었다고 살아 있는 실행을 죽었다고 하면 그게 더 나쁘다.
+BEAT_EVERY = 20.0          # 초. 실행 중에 이 간격으로 찍는다
+BEAT_STALE = 180.0         # 초. 이보다 오래됐으면 죽은 것으로 본다
+
+_beater: threading.Thread | None = None
+
+
+def _beat_once() -> None:
+    for slug in running_slugs():
+        try:
+            store.save_meta(slug, {"beat": time.time()})
+        except Exception:                                      # noqa: BLE001
+            # 박자를 못 찍는다고 실행을 멈추지는 않는다. 다음에 찍힌다.
+            pass
+
+
+def _beat_loop() -> None:
+    while True:
+        time.sleep(BEAT_EVERY)
+        if not running_slugs():
+            return
+        _beat_once()
+
+
+def _start_beating() -> None:
+    """실행이 있는 동안만 도는 스레드 하나. 실행마다 두지 않는다."""
+    global _beater
+    if _beater is not None and _beater.is_alive():
+        return
+    _beater = threading.Thread(target=_beat_loop, daemon=True, name="beat")
+    _beater.start()
+
+
+def sweep_stale_runs() -> list[str]:
+    """기동 시 한 번. 아무도 돌리고 있지 않은 '진행 중'을 끝낸다.
+
+    **지우지 않고 중단으로 표시한다.** 그때까지 만든 산출물은 그대로 있고,
+    사용자는 무슨 일이 있었는지 알아야 한다 — 조용히 사라지면 자기가 뭘
+    잘못했는지 찾게 된다.
+    """
+    stopped = []
+    now = time.time()
+    for row in store.list_projects():
+        if row.get("status") != "running":
+            continue
+        slug = row.get("slug")
+        if not slug or slug in running_slugs():
+            continue
+        beat = float(row.get("beat") or row.get("created_at") or 0)
+        if now - beat < BEAT_STALE:
+            continue          # 다른 인스턴스가 돌리는 중일 수 있다
+        store.save_meta(slug, {
+            "status": "stopped",
+            "stopped_reason": "서버가 다시 시작되어 중단됐습니다. "
+                              "그때까지 만든 산출물은 그대로 남아 있습니다.",
+        })
+        stopped.append(slug)
+    return stopped
 
 
 def cancel(slug: str) -> bool:
@@ -137,6 +216,8 @@ def start(requirement: str, attachment_ids: list[str] | None = None,
         daemon=True, name=f"run:{slug}")
     with _runs_lock:
         _runs[slug] = t
+    store.save_meta(slug, {"beat": time.time()})
+    _start_beating()
     t.start()
     return slug
 

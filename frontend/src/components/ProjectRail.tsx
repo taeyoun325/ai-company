@@ -138,7 +138,7 @@ export function ProjectRail({
                     <span className="min-w-0 flex-1 truncate text-[13px]">
                       {p.name || p.slug}
                     </span>
-                    {p.mock && <MockBadge />}
+                    {p.mock && <MockBadge title={t("mock.badge")} />}
                   </span>
                   <span className="mt-0.5 block truncate text-[11px] text-dim">
                     {when(p.created_at)}

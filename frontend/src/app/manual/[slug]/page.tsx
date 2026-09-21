@@ -21,12 +21,14 @@ import {
   Button, ErrorBox, Panel, Screen, Warning,
 } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { useLang } from "@/lib/i18n";
 import type { Employee, Verdict } from "@/lib/types";
 import { useLoader } from "@/lib/useLoader";
 import { useSlug } from "@/lib/useSlug";
 import { foldState, useStream } from "@/lib/useStream";
 
 export default function ManualPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { t } = useLang();
   const slug = useSlug(use(params));
   const { data, error: loadError, reload } = useLoader(slug, () =>
     api.manualState(slug),
@@ -91,16 +93,16 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
     <div className="space-y-4">
       {allMock && (
         <Warning>
-          <strong>Mock 직원입니다.</strong> 지시는 실제로 전달되지만 답은 대본입니다.
+          <strong>{t("man.mock")}</strong> {t("man.mockBody")}
         </Warning>
       )}
       {(error || loadError) && <ErrorBox>{error ?? loadError}</ErrorBox>}
 
       <Panel
-        title="직원을 고르세요"
+        title={t("man.pick")}
         right={
           <Button onClick={verify} disabled={!!busy}>
-            지금 검증하기
+            {t("man.verifyNow")}
           </Button>
         }
       >
@@ -114,18 +116,20 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
 
       <Panel
         title={
-          employee ? `${employee.name}(${employee.role})에게 지시` : "직원을 고르세요"
+          employee
+            ? t("man.instructTo", { who: `${employee.name}(${employee.role})` })
+            : t("man.pick")
         }
       >
         {employee && (
           <p className="mb-2 text-xs text-dim">
-            쓸 수 있는 폴더:{" "}
+            {t("man.canWrite")}{" "}
             <strong className="text-muted">
               {employee.writes.length
                 ? employee.writes.map((w) => `${w}/`).join(", ")
-                : "없음 (글로만 답합니다)"}
+                : t("man.writesNone")}
             </strong>
-            {" · "}읽기: {employee.reads.map((r) => `${r}/`).join(", ")}
+            {" · "}{t("man.reads")}: {employee.reads.map((r) => `${r}/`).join(", ")}
           </p>
         )}
         <textarea
@@ -133,14 +137,14 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
           onChange={(e) => setMessage(e.target.value)}
           rows={3}
           disabled={!!busy}
-          placeholder="예) div 에 0 나눗셈 예외 처리를 넣어주세요"
+          placeholder={t("man.placeholder")}
           className="w-full resize-y rounded-lg border border-line bg-panel2 px-3 py-2
             text-sm outline-none placeholder:text-dim focus:border-accent
             disabled:opacity-50"
         />
         <div className="mt-2 flex items-center gap-2">
           <Button tone="primary" onClick={send} disabled={!!busy || !message.trim() || !picked}>
-            {busy ? "작업 중…" : "지시하기"}
+            {busy ? t("man.working") : t("man.instruct")}
           </Button>
           <span className="text-xs text-dim">
             {folded.phase && `${folded.phase} · ${folded.detail}`}
@@ -149,12 +153,14 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
       </Panel>
 
       {verdict && (
-        <Panel title="검증 결과">
+        <Panel title={t("man.verdict")}>
           <p
             className="text-sm font-semibold"
             style={{ color: verdict.verdict === "pass" ? "var(--ok)" : "var(--bad)" }}
           >
-            {verdict.verdict === "pass" ? "통과" : `반려 (${verdict.severity})`}
+            {verdict.verdict === "pass"
+                ? t("man.pass")
+                : t("man.reject", { severity: verdict.severity })}
           </p>
           <p className="mt-1 text-sm text-muted">{verdict.message_to_team}</p>
           {verdict.findings.length > 0 && (
@@ -171,10 +177,10 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
       )}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <Panel title="산출물">
+        <Panel title={t("proj.files")}>
           <FileViewer slug={slug} files={files} />
         </Panel>
-        <Panel title="작업 로그" className="flex max-h-[30rem] flex-col overflow-hidden">
+        <Panel title={t("office.log")} className="flex max-h-[30rem] flex-col overflow-hidden">
           <div className="-m-4 flex min-h-0 flex-1 flex-col">
             <ChatLog
               events={stream.events}

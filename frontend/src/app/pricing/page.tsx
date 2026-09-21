@@ -60,7 +60,7 @@ function SourceNote({ plan }: { plan: PlanRow }) {
   if (plan.source === "mock")
     return (
       <li className="flex items-center gap-1.5">
-        <MockBadge /> {t("price.noRealCalls")}
+        <MockBadge title={t("mock.badge")} /> {t("price.noRealCalls")}
       </li>
     );
   if (plan.source === "byok")
@@ -189,7 +189,7 @@ export default function PricingPage() {
 
           {wallet.source === "mock" && (
             <p className="mt-3 flex items-center gap-2 text-sm">
-              <MockBadge />
+              <MockBadge title={t("mock.badge")} />
               <span className="text-muted">
                 <strong>{t("price.mockPlan")}</strong> {t("price.mockPlanBody")}
               </span>
@@ -257,7 +257,10 @@ export default function PricingPage() {
               <p className="text-2xl font-bold tabular-nums">
                 {p.price_usd === 0 ? t("price.free") : `$${p.price_usd}`}
                 {p.price_usd > 0 && (
-                  <span className="text-xs font-normal text-dim"> / 월</span>
+                  <span className="text-xs font-normal text-dim">
+                      {" "}
+                      {t("plan.perMonth")}
+                    </span>
                 )}
               </p>
               <ul className="mt-3 space-y-1 text-xs text-muted">

@@ -9,6 +9,7 @@
  * 무엇이 바뀌었는지 CEO 가 직접 볼 수 없으면, "고쳤습니다"라는 말을
  * 믿는 수밖에 없다. 그건 검증이 아니다.
  */
+import { useLang } from "@/lib/i18n";
 import { useState } from "react";
 
 import { api } from "@/lib/api";
@@ -16,6 +17,7 @@ import { useLoader } from "@/lib/useLoader";
 import { Empty } from "./ui";
 
 export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
+  const { t } = useLang();
   // 고른 파일이 없거나 목록에서 사라졌으면 첫 번째를 본다. 상태로 들고
   // 있다가 effect 로 맞추면, 목록이 바뀔 때마다 렌더가 한 번 더 돈다.
   const [chosen, setChosen] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
     }
   };
 
-  if (files.length === 0) return <Empty>산출물이 없습니다.</Empty>;
+  if (files.length === 0) return <Empty>{t("file.none")}</Empty>;
 
   // 이전 회차만 비교 대상이다. version 0 은 현재 파일이다.
   const past = versions.filter((v) => v.version !== 0);
@@ -78,7 +80,7 @@ export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
 
         {past.length > 0 && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="text-dim">회차 비교:</span>
+            <span className="text-dim">{t("file.compare")}</span>
             {past.map((v) => (
               <button
                 key={v.version}
@@ -91,7 +93,7 @@ export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
                 }`}
                 title={v.note}
               >
-                v{v.version} → 현재
+                {t("file.toCurrent", { n: v.version })}
               </button>
             ))}
             {compare !== null && (
@@ -103,7 +105,7 @@ export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
                 }}
                 className="text-dim underline"
               >
-                원문 보기
+                {t("file.raw")}
               </button>
             )}
           </div>
@@ -113,7 +115,7 @@ export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
           {compare === null ? (
             <code>{content}</code>
           ) : diff.length === 0 ? (
-            <code className="text-dim">차이가 없습니다.</code>
+            <code className="text-dim">{t("file.noDiff")}</code>
           ) : (
             diff.map((d, i) => (
               <div

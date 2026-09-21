@@ -140,7 +140,7 @@ export function ByokPanel({
               onChange={(e) =>
                 setDraft((d) => ({ ...d, [name]: e.target.value }))
               }
-              placeholder={k.masked ?? "등록되지 않음"}
+              placeholder={k.masked ?? t("set.notRegistered")}
               className="min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 py-1.5
                 font-mono text-sm outline-none focus:border-accent"
             />

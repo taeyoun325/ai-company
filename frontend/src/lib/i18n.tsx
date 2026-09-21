@@ -11,11 +11,17 @@
  *
  * ## 어디까지 번역됐는지 숨기지 않는다
  *
- * 지금 번역된 것은 **로그인 이전 화면과 요금제·사무실**이다. 프로젝트
- * 상세·설정·MANUAL 화면, 그리고 **서버가 보내는 문장(오류·직원 대사)**
- * 은 아직 한국어다. 반쯤 번역된 제품에서 제일 나쁜 것은 어디까지
- * 번역됐는지 모르는 것이므로, 언어를 고르면 그 사실을 한 줄로 알린다.
- * 다 번역되면 그 줄을 지운다.
+ * DAY 22 에 **화면은 전부 번역했다** — 랜딩·로그인·사무실·프로젝트
+ * 목록과 상세·MANUAL·요금제·설정. 요금제 이름처럼 서버가 가진 값도
+ * 서버가 언어에 맞춰 보낸다.
+ *
+ * 남은 것은 **모델이 쓰는 글**이다. 직원의 대사·요약·산출물은 프롬프트
+ * 에서 언어를 정하므로(backend/app/lang.py) 그쪽 언어를 따르지만, 이미
+ * 만들어진 프로젝트의 기록은 만들 때의 언어로 남는다. 서버 오류 문장도
+ * 자주 쓰이는 것만 번역돼 있다.
+ *
+ * 반쯤 번역된 제품에서 제일 나쁜 것은 어디까지 번역됐는지 모르는
+ * 것이므로, 언어를 고르면 그 사실을 한 줄로 알린다.
  *
  * ## 고른 언어는 그 브라우저에만 남는다
  *
@@ -64,8 +70,8 @@ const S = {
   },
   "lang.partial": {
     ko: "",
-    en: "Some screens (project detail, settings, and messages from the server) are still Korean.",
-    ja: "一部の画面（プロジェクト詳細・設定・サーバーからのメッセージ）はまだ韓国語です。",
+    en: "Screens are translated. Messages the employees write, and a few server messages, are still Korean.",
+    ja: "画面は翻訳済みです。社員が書く文章と一部のサーバーメッセージはまだ韓国語です。",
   },
 
   // ── 랜딩: 히어로 ──────────────────────────────────────────────
@@ -251,6 +257,80 @@ const S = {
     en: "If you have reduced motion turned on (prefers-reduced-motion), nothing on this page moves.",
     ja: "視差効果を減らす設定（prefers-reduced-motion）が有効なら、この画面は動きません。",
   },
+
+  "mock.badge": {
+    ko: "실제 모델이 아니라 Mock 제공자가 만든 결과입니다",
+    en: "Produced by the mock provider, not a real model",
+    ja: "実際のモデルではなく Mock プロバイダが作った結果です",
+  },
+
+  // ── 프로젝트 목록 (DAY 22) ────────────────────────────────────
+  "list.running": { ko: "진행 중", en: "Running", ja: "進行中" },
+  "list.done": { ko: "완료", en: "Done", ja: "完了" },
+  "list.stopped": { ko: "중단", en: "Stopped", ja: "中断" },
+  "list.manual": { ko: "직접 지시", en: "Manual", ja: "直接指示" },
+  "list.confirmDelete": {
+    ko: "{slug} 을(를) 영구히 지웁니다. 되돌릴 수 없습니다.",
+    en: "This permanently deletes {slug}. It cannot be undone.",
+    ja: "{slug} を完全に削除します。元に戻せません。",
+  },
+  "list.fromDisk": {
+    ko: "색인을 읽지 못해 파일에서 직접 목록을 만들고 있습니다. 산출물은 안전합니다 — 파일이 진실이고 색인은 사본입니다.",
+    en: "The index could not be read, so this list is built straight from files. Your deliverables are safe — files are the truth, the index is a copy.",
+    ja: "索引を読めなかったため、ファイルから直接一覧を作っています。成果物は安全です — ファイルが真実で、索引は写しです。",
+  },
+  "list.rebuild": { ko: "색인 다시 만들기", en: "Rebuild index", ja: "索引を作り直す" },
+  "list.summary": { ko: "요약", en: "Summary", ja: "サマリー" },
+  "list.projects": { ko: "프로젝트", en: "Projects", ja: "プロジェクト" },
+  "list.totalCost": { ko: "누적 비용", en: "Total cost", ja: "累計コスト" },
+  "list.mockOutput": { ko: "Mock 산출물", en: "Mock output", ja: "Mock 成果物" },
+  "list.countOf": { ko: "{total}건 중 {shown}건", en: "{shown} of {total}", ja: "{total} 件中 {shown} 件" },
+  "list.search": { ko: "이름이나 요구사항으로 검색", en: "Search by name or requirement", ja: "名前や要件で検索" },
+  "list.allStatus": { ko: "전체 상태", en: "All statuses", ja: "すべての状態" },
+  "list.sortCreated": { ko: "만든 순", en: "Newest", ja: "作成順" },
+  "list.sortUpdated": { ko: "최근 변경 순", en: "Recently updated", ja: "更新順" },
+  "list.sortCost": { ko: "비용 순", en: "By cost", ja: "コスト順" },
+  "list.sortScore": { ko: "완성도 순", en: "By completeness", ja: "完成度順" },
+  "list.noMatch": { ko: "조건에 맞는 프로젝트가 없습니다.", en: "No project matches those filters.", ja: "条件に合うプロジェクトがありません。" },
+  "list.none": {
+    ko: "아직 만든 것이 없습니다. 사무실에서 일을 맡겨보세요.",
+    en: "Nothing here yet. Hand some work to the office.",
+    ja: "まだ何もありません。オフィスで仕事を任せてみてください。",
+  },
+  "list.delete": { ko: "영구 삭제", en: "Delete permanently", ja: "完全に削除" },
+  "list.prev": { ko: "이전", en: "Previous", ja: "前へ" },
+  "list.next": { ko: "다음", en: "Next", ja: "次へ" },
+
+  // ── MANUAL 화면 (DAY 22) ──────────────────────────────────────
+  "man.mock": { ko: "Mock 직원입니다.", en: "These are mock employees.", ja: "Mock 社員です。" },
+  "man.mockBody": {
+    ko: "지시는 실제로 전달되지만 답은 대본입니다.",
+    en: "Your instruction really is delivered, but the answer comes from a script.",
+    ja: "指示は実際に伝わりますが、答えは台本です。",
+  },
+  "man.pick": { ko: "직원을 고르세요", en: "Pick an employee", ja: "社員を選んでください" },
+  "man.verifyNow": { ko: "지금 검증하기", en: "Verify now", ja: "今すぐ検証" },
+  "man.instructTo": { ko: "{who}에게 지시", en: "Instruct {who}", ja: "{who} に指示" },
+  "man.canWrite": { ko: "쓸 수 있는 폴더:", en: "Can write to:", ja: "書き込めるフォルダ:" },
+  "man.writesNone": { ko: "없음 (글로만 답합니다)", en: "none (answers in prose only)", ja: "なし（文章のみで答えます）" },
+  "man.reads": { ko: "읽기", en: "Reads", ja: "読み取り" },
+  "man.placeholder": {
+    ko: "예) div 에 0 나눗셈 예외 처리를 넣어주세요",
+    en: "e.g. Add divide-by-zero handling to div",
+    ja: "例）div に 0 除算の例外処理を入れてください",
+  },
+  "man.working": { ko: "작업 중…", en: "Working…", ja: "作業中…" },
+  "man.instruct": { ko: "지시하기", en: "Send instruction", ja: "指示する" },
+  "man.verdict": { ko: "검증 결과", en: "Review result", ja: "検証結果" },
+  "man.pass": { ko: "통과", en: "Pass", ja: "合格" },
+  "man.reject": { ko: "반려 ({severity})", en: "Rejected ({severity})", ja: "差し戻し（{severity}）" },
+
+  // ── 산출물 보기 (DAY 22) ──────────────────────────────────────
+  "file.none": { ko: "산출물이 없습니다.", en: "No deliverables yet.", ja: "成果物がありません。" },
+  "file.compare": { ko: "회차 비교:", en: "Compare rounds:", ja: "ラウンド比較:" },
+  "file.toCurrent": { ko: "v{n} → 현재", en: "v{n} → current", ja: "v{n} → 現在" },
+  "file.raw": { ko: "원문 보기", en: "View raw", ja: "原文を見る" },
+  "file.noDiff": { ko: "차이가 없습니다.", en: "No differences.", ja: "差分はありません。" },
 
   // ── 요금제 화면 (DAY 22) ──────────────────────────────────────
   "price.myCredits": { ko: "내 크레딧", en: "My credits", ja: "マイクレジット" },
