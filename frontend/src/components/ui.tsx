@@ -9,15 +9,23 @@ export function Panel({
   right,
   children,
   className = "",
+  ...rest
 }: {
   title?: ReactNode;
   right?: ReactNode;
   children: ReactNode;
   className?: string;
-}) {
+  // 등장 애니메이션이 `data-reveal` 로 대상을 고른다(lib/motion.ts).
+  // 감싸는 요소를 하나 더 두는 대신 속성을 그대로 통과시킨다 — 껍데기
+  // div 가 늘어나면 그리드 간격이 어긋난다.
+  // `title` 은 빼고 받는다. HTML 의 title 은 문자열(툴팁)이고 우리 것은
+  // 제목 노드다. 그대로 합치면 두 타입이 충돌해서, 제목에 JSX 를 넘기던
+  // 기존 화면들이 전부 타입 오류가 난다.
+} & Omit<React.HTMLAttributes<HTMLElement>, "title">) {
   return (
     <section
       className={`rounded-xl border border-line bg-panel ${className}`}
+      {...rest}
     >
       {(title || right) && (
         <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">

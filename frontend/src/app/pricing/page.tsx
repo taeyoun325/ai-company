@@ -23,11 +23,12 @@
  * 실제로 막히는가** 하나다. 그래서 "충전"은 데모용이라고 화면에 적는다 —
  * 적지 않으면 결제가 붙은 줄 안다.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button, ErrorBox, MockBadge, Panel, Warning, money } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { PlanRow } from "@/lib/types";
+import { T, revealFrom, stagger, withScope } from "@/lib/motion";
 import { useLoader } from "@/lib/useLoader";
 
 /**
@@ -73,6 +74,20 @@ export default function PricingPage() {
   });
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+
+  // 요금제 카드만 순서대로 들어온다. 이 화면에서 사용자가 하는 일은
+  // **비교**이고, 한꺼번에 나타나면 어디부터 볼지가 사라진다. 잔액 패널은
+  // 건드리지 않는다 — 내 돈이 적힌 칸이 뒤늦게 나타나면 불안하다.
+  useEffect(() => {
+    const el = root.current;
+    if (!el || !data) return;
+    return withScope(el, () => {
+      revealFrom(el.querySelectorAll("[data-reveal]"), {
+        y: 12, delay: stagger(T.step),
+      });
+    });
+  }, [data]);
 
   const plans = data?.plans.plans ?? {};
   const topups = data?.plans.topups ?? {};
@@ -92,7 +107,7 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div ref={root} className="space-y-4">
       {(error || failure) && <ErrorBox>{failure ?? error}</ErrorBox>}
 
       {wallet && !wallet.prices_verified && (
@@ -220,7 +235,10 @@ export default function PricingPage() {
             <Panel
               key={name}
               title={p.label}
-              className={current ? "border-accent" : ""}
+              data-reveal
+              className={`transition-transform duration-200 hover:-translate-y-0.5 ${
+                current ? "border-accent" : ""
+              }`}
               right={
                 current && (
                   <span className="text-[11px]" style={{ color: "var(--accent)" }}>

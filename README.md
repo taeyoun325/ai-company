@@ -99,6 +99,8 @@ ai-company/
 ├── frontend/                Next.js 16 · TypeScript · Tailwind 4
 │   └── src/
 │       ├── app/             사무실 · 프로젝트 · MANUAL · 요금제 · 설정
+│       ├── components/      랜딩 · 흐름 도형(PipelineFigure) · 공용 UI
+│       └── lib/motion.ts    움직임 한 곳 (anime.js v4 · DAY 20)
 │       ├── components/      Office · ChatLog · TaskBoard · FileViewer
 │       └── lib/             api · useStream(SSE) · useLoader
 ├── backend/
