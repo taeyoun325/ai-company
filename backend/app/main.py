@@ -493,9 +493,30 @@ def get_credits(request: Request):
 
 
 @app.get("/api/plans")
-def get_plans():
+def get_plans(request: Request):
+    """요금제와 **크레딧이 실제로 뭘 사주는지**.
+
+    바깥 제품들에 대해 가장 많이 나오는 불평이 "크레딧이 뭘 사주는지
+    모르겠다"이다(docs/market.md). 우리는 호출 단위로 원가를 집계하고
+    있으므로, 끝난 프로젝트들의 실제 비용을 함께 보낸다.
+
+    셀 만큼 돌지 않았으면 `measured: false` 로 답한다 — 화면은 그때
+    추정값을 쓰고 **추정이라고 말한다.** 여기서 없는 데이터를 그럴듯한
+    숫자로 채우면 그게 제일 나쁜 거짓말이다.
+    """
+    # 이 라우트는 **로그인 전에도** 보인다(랜딩의 요금제). 여기서 세션을
+    # 요구하면 처음 온 사람에게 가격이 안 보인다.
+    #
+    # 로그인한 사람에게는 **자기 프로젝트**로 잰 값을 준다. 로그인하지
+    # 않았고 서버 배포라면 재지 않는다 — 남의 사용량을 모아 보여주는
+    # 것이라, 값이 아무리 뭉뚱그려져 있어도 우리가 줄 이유가 없다.
+    user = auth.current_user(request)
+    owner = user.id if user else None
+    measurable = owner is not None or not deploy.is_saas()
     return {"plans": credits.plans(), "topups": credits.topups(),
-            "credit_usd": config.CREDIT_USD}
+            "credit_usd": config.CREDIT_USD,
+            "per_project": (project_index.project_costs(owner) if measurable
+                            else project_index.project_costs("__none__"))}
 
 
 @app.post("/api/credits/plan")

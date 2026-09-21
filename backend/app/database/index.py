@@ -272,6 +272,75 @@ def get(slug: str) -> dict | None:
         return None
 
 
+# ── 프로젝트 한 건이 실제로 얼마였나 (DAY 22) ──────────────────────
+#
+# ## 왜 이것이 중요한가
+#
+# 바깥 제품들에 대해 가장 많이 나오는 불평이 이것이다(docs/market.md):
+# **"크레딧이 얼마인지는 알겠는데, 그게 뭘 사주는지는 모르겠다."**
+#
+# 우리도 같은 문제를 갖고 있다 — 요금제 화면의 "월 N건"은 추정이다.
+# 다른 점은 하나, 우리는 그게 추정이라고 적었다. 그리고 우리는 호출
+# 단위로 원가를 이미 집계하고 있으므로, **실제로 끝난 프로젝트들의
+# 비용**을 보면 추정을 실측으로 바꿀 수 있다. 시장 전체가 못 하고 있는
+# 것이고 우리에게는 데이터가 이미 있다.
+#
+# ## 평균이 아니라 중앙값과 p90
+#
+# 평균은 한 번의 사고(재작업 열 번)에 끌려간다. 사용자가 알고 싶은
+# 것은 "보통 얼마"와 "나쁠 때 얼마"이지 "합계를 개수로 나눈 값"이 아니다.
+#
+# ## Mock 은 빼고 센다
+#
+# Mock 프로젝트의 원가는 0 이다. 그걸 섞으면 "프로젝트 한 건에 0원"이
+# 되고, 그 숫자를 근거로 요금제를 고른 사람은 첫 달에 놀란다.
+MIN_SAMPLES = 3            # 이보다 적으면 실측이라 부르지 않는다
+
+
+def _percentile(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    pos = q * (len(ordered) - 1)
+    low = int(pos)
+    high = min(low + 1, len(ordered) - 1)
+    frac = pos - low
+    return ordered[low] * (1 - frac) + ordered[high] * frac
+
+
+def project_costs(owner: str | None = None) -> dict:
+    """끝난 프로젝트들의 실제 원가 분포.
+
+    `measured` 가 False 면 **아직 셀 만큼 돌지 않았다**는 뜻이다. 화면은
+    그때 추정값을 쓰고, 추정이라고 말해야 한다.
+    """
+    where = ["status = 'done'", "mock = 0", "cost > 0"]
+    args: list = []
+    if owner:
+        where.append("owner = ?")
+        args.append(owner)
+    clause = "WHERE " + " AND ".join(where)
+    try:
+        with _lock, conn() as c:
+            rows = c.execute(
+                f"SELECT cost FROM projects {clause} "
+                f"ORDER BY created_at DESC LIMIT 200", args).fetchall()
+    except sqlite3.Error:
+        rows = []
+
+    costs = [float(r["cost"]) for r in rows]
+    return {
+        "samples": len(costs),
+        "measured": len(costs) >= MIN_SAMPLES,
+        "median_usd": round(_percentile(costs, 0.5), 4),
+        "p90_usd": round(_percentile(costs, 0.9), 4),
+        "max_usd": round(max(costs), 4) if costs else 0.0,
+        "min_samples": MIN_SAMPLES,
+    }
+
+
 def stats(owner: str | None = None) -> dict:
     """대시보드 요약 (§12).
 

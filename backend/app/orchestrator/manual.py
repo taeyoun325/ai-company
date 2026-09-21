@@ -48,7 +48,7 @@ from __future__ import annotations
 import json
 import threading
 
-from app import bus, config, tenant, usage
+from app import bus, config, lang, tenant, usage
 from app.agents import employee, roles
 from app.agents.schemas import Verdict, WorkResult
 from app.database import store
@@ -267,7 +267,7 @@ def instruct(slug: str, employee_id: str, message: str,
     with _Session(slug, employee_id, owner):
         _guard(employee_id, slug, owner)
         bus.say("USER", f"@{e.name}({e.role}) {message}")
-        bus.phase("MANUAL", f"{e.name} · 직접 지시")
+        bus.phase("MANUAL", lang.t("phase.manual", who=roles.display_name(e.id)))
         hist = history(slug, employee_id)
 
         if not e.writes:
@@ -323,7 +323,7 @@ def verify(slug: str, owner: str = "local") -> dict:
 
     with _Session(slug, roles.VERIFIER, owner):
         _guard(roles.VERIFIER, slug, owner)
-        bus.phase("REVIEW", "CEO 요청으로 검증")
+        bus.phase("REVIEW", lang.t("phase.review_manual"))
         report = runner.run(pfs.root())
         bus.say("SYSTEM", runner.summary_line(report), kind="tool")
 

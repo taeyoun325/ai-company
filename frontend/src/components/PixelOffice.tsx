@@ -229,8 +229,68 @@ function Laptop({ seat, working, empty }: {
   );
 }
 
+/**
+ * 탁자 한가운데에 지금 무슨 단계인지 놓는다.
+ *
+ * 자리마다 맥박이 도는 것은 **누가** 일하는지를 말하지만 **무엇을**
+ * 하는지는 말하지 않는다. 화면 위에 글로 적어두면 그림과 글이 따로
+ * 놀고, 보는 사람은 둘을 눈으로 이어붙여야 한다.
+ *
+ * 단계 이름은 서버가 영문 대문자로 보낸다(PLAN · IMPLEMENT …). 그대로
+ * 두는 이유: 그건 제품의 **상태 이름**이지 문장이 아니다. 로그와 화면이
+ * 같은 낱말을 써야 "그 PLAN 이 이 PLAN 인가"를 묻지 않는다.
+ */
+function PhaseChip({ phase, detail }: { phase?: string; detail?: string }) {
+  if (!phase) return null;
+  const label = detail ? `${phase} · ${detail}` : phase;
+  const w = Math.min(70, Math.max(26, label.length * 2.6 + 8));
+  return (
+    <g>
+      <rect
+        x={TABLE.cx - w / 2} y={TABLE.cy - 5} width={w} height="10" rx="5"
+        fill="var(--panel-solid)"
+        stroke="color-mix(in srgb, var(--accent) 55%, transparent)"
+        strokeWidth="0.8"
+      />
+      <text
+        x={TABLE.cx} y={TABLE.cy + 2.4} textAnchor="middle" fontSize="4.6"
+        fontWeight="600" fill="var(--accent)"
+      >
+        {label.length > 26 ? `${label.slice(0, 26)}…` : label}
+      </text>
+    </g>
+  );
+}
+
+/**
+ * 일감이 자리에서 탁자 가운데로 흘러가는 점.
+ *
+ * 일하는 자리에서만 나온다 — 그 자리의 결과가 팀으로 간다는 뜻이다.
+ * 움직임을 끈 사람에게는 아예 그리지 않는다.
+ */
+function WorkFlow({ seat, color }: { seat: { x: number; y: number }; color: string }) {
+  const id = `flow-${Math.round(seat.x)}-${Math.round(seat.y)}`;
+  return (
+    <g>
+      <path
+        id={id}
+        d={`M ${seat.x} ${seat.y} L ${TABLE.cx} ${TABLE.cy}`}
+        fill="none"
+        stroke={color}
+        strokeWidth="0.6"
+        strokeDasharray="2 3"
+        opacity="0.55"
+      />
+      <circle r="1.6" fill={color}>
+        <animateMotion dur="1.8s" repeatCount="indefinite"
+                       path={`M ${seat.x} ${seat.y} L ${TABLE.cx} ${TABLE.cy}`} />
+      </circle>
+    </g>
+  );
+}
+
 export function PixelOffice({
-  employees, working, onPick, picked, className = "",
+  employees, working, onPick, picked, className = "", phase, detail,
 }: {
   employees: Employee[];
   /** 지금 일하는 직원 id. */
@@ -238,6 +298,9 @@ export function PixelOffice({
   onPick?: (id: string) => void;
   picked?: string | null;
   className?: string;
+  /** 지금 어느 단계인가. 탁자 가운데에 놓는다. */
+  phase?: string;
+  detail?: string;
 }) {
   const { t } = useLang();
   const [frame, setFrame] = useState(0);
@@ -278,6 +341,8 @@ export function PixelOffice({
                  ry={TABLE.ry - 3} fill="none" stroke="var(--line)"
                  strokeWidth="0.5" opacity="0.7" />
 
+        <PhaseChip phase={phase} detail={detail} />
+
         {employees.slice(0, SEATS.length).map((e, i) => {
           const seat = SEATS[i];
           const empty = e.active === false;
@@ -285,6 +350,7 @@ export function PixelOffice({
           const color = `var(--${e.id}, var(--accent))`;
           return (
             <g key={e.id}>
+              {isWorking && !still && <WorkFlow seat={seat} color={color} />}
               <Laptop seat={seat} working={isWorking} empty={empty} />
               <Worker
                 seat={seat}

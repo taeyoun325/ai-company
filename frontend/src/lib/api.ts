@@ -305,6 +305,16 @@ export const api = {
       plans: Record<string, PlanRow>;
       topups: Record<string, TopupRow>;
       credit_usd: number;
+      /** 끝난 프로젝트에서 **실제로 잰** 비용. `measured` 가 false 면
+       *  아직 셀 만큼 돌지 않았다는 뜻이고, 화면은 추정값을 쓴다. */
+      per_project: {
+        samples: number;
+        measured: boolean;
+        median_usd: number;
+        p90_usd: number;
+        max_usd: number;
+        min_samples: number;
+      };
     }>("/api/plans"),
   changePlan: (plan: string) => post<CreditStatus>("/api/credits/plan", { plan }),
   topUp: (amount: number) =>

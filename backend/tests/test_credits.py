@@ -350,3 +350,56 @@ def test_language_variants_do_not_leak_to_the_screen():
 def test_internal_notes_never_reach_the_screen():
     for row in credits.plans().values():
         assert not any(k.startswith("_") for k in row)
+
+
+# ── 크레딧이 뭘 사주는지 (DAY 22 · docs/market.md 1순위) ───────────
+def test_costs_are_not_called_measured_until_there_are_enough(tmp_path, monkeypatch):
+    """없는 데이터를 그럴듯한 숫자로 채우는 것이 제일 나쁜 거짓말이다."""
+    from app.database import index, store
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    index.close()
+
+    r = index.project_costs()
+    assert r["measured"] is False and r["samples"] == 0
+
+    for i in range(index.MIN_SAMPLES):
+        slug = store.new_project(f"실측 표본 {i}")
+        store.save_meta(slug, {"status": "done", "cost": 1.0 + i, "mock": False})
+        index.upsert(store.meta(slug))
+
+    r = index.project_costs()
+    assert r["measured"] is True
+    assert r["samples"] == index.MIN_SAMPLES
+    assert r["median_usd"] > 0
+
+
+def test_mock_projects_are_not_counted(tmp_path, monkeypatch):
+    """Mock 원가는 0 이다. 섞으면 '프로젝트 한 건에 0원'이 되고,
+    그 숫자로 요금제를 고른 사람은 첫 달에 놀란다."""
+    from app.database import index, store
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    index.close()
+
+    for i in range(6):
+        slug = store.new_project(f"대본 {i}")
+        store.save_meta(slug, {"status": "done", "cost": 0.0, "mock": True})
+        index.upsert(store.meta(slug))
+
+    assert index.project_costs()["measured"] is False
+
+
+def test_median_is_not_dragged_by_one_disaster(tmp_path, monkeypatch):
+    """평균은 재작업 열 번짜리 사고 하나에 끌려간다. 사용자가 알고 싶은
+    것은 '보통 얼마'와 '나쁠 때 얼마'다."""
+    from app.database import index, store
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    index.close()
+
+    for cost in (1.0, 1.0, 1.0, 1.0, 50.0):
+        slug = store.new_project(f"비용 {cost}")
+        store.save_meta(slug, {"status": "done", "cost": cost, "mock": False})
+        index.upsert(store.meta(slug))
+
+    r = index.project_costs()
+    assert r["median_usd"] == 1.0, "중앙값이 사고에 끌려갔다"
+    assert r["p90_usd"] > r["median_usd"], "나쁠 때가 보통보다 커야 한다"

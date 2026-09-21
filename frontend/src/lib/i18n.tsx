@@ -393,6 +393,17 @@ const S = {
     ja: "切り替える前に設定でご自身の API キーを登録してください。キーがないと実行は拒否されます — 運営者のキーで代わりに呼ぶことはありません。",
   },
   "price.estimate": { ko: "프로젝트당 크레딧은 추정입니다.", en: "Credits per project are an estimate.", ja: "プロジェクトごとのクレジットは推定です。" },
+  "price.measured": {
+    ko: "프로젝트당 크레딧은 실제로 끝난 프로젝트 {n}건에서 잰 값입니다.",
+    en: "Credits per project are measured from {n} finished projects.",
+    ja: "プロジェクトごとのクレジットは、実際に完了した {n} 件から測った値です。",
+  },
+  "price.measuredBody": {
+    ko: "중앙값 {median} · 나쁠 때(상위 10%) {p90}. 쓰는 방식이 달라지면 숫자도 달라집니다.",
+    en: "Median {median} · bad case (top 10%) {p90}. The numbers move with how you use it.",
+    ja: "中央値 {median} · 悪い場合（上位 10%）{p90}。使い方が変われば数字も変わります。",
+  },
+  "price.perMonthMeasured": { ko: "월 {a}~{b}건", en: "{a}–{b} projects / mo", ja: "月 {a}〜{b} 件" },
   "price.estimateBody": {
     ko: "아직 실제 모델로 프로젝트를 완주해본 적이 없습니다 — 실측 후 요금제가 조정될 수 있습니다.",
     en: "No project has been run end-to-end on a real model yet — the plans may change once we measure.",

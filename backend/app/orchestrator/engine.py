@@ -398,7 +398,7 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
         bus.say("USER", f"첨부: {attachments_note}", kind="tool")
         store.save_meta(slug, {"attachments": attachments_note})
 
-    bus.phase("PLAN", "전략가가 계획을 세우는 중")
+    bus.phase("PLAN", lang.t("phase.plan"))
     score.push()
 
     try:
@@ -422,7 +422,7 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
 
         # 2) 검증자가 테스트를 **먼저** 쓴다 ─────────────────────────
         #    구현자는 이 파일들을 읽지도 못한다. 보면 맞춰 짜기 때문이다.
-        bus.phase("WRITE_TESTS", "분석가가 인수기준으로 테스트 작성")
+        bus.phase("WRITE_TESTS", lang.t("phase.write_tests"))
         _check_cancelled(slug)
         _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.VERIFIER), owner)
         suite: TestSuite = employee.ask(
@@ -525,7 +525,7 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
             i += 1
 
         # 4) 최종 검수 ───────────────────────────────────────────────
-        bus.phase("FINALIZE", "최종 검수")
+        bus.phase("FINALIZE", lang.t("phase.finalize"))
         _check_cancelled(slug)
         _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.PLANNER), owner)
         final: FinalReport = employee.ask(

@@ -42,13 +42,33 @@ import { useLoader } from "@/lib/useLoader";
  */
 const PER_PROJECT = { low: 100, high: 500 };
 
+/**
+ * 이 요금제로 프로젝트를 몇 건이나 할 수 있나.
+ *
+ * **잰 값이 있으면 잰 값을 쓴다.** 끝난 프로젝트들의 중앙값과 p90 이
+ * 들어오면(backend: index.project_costs) 그걸로 계산하고, 없으면 위의
+ * 추정 폭을 쓴다. 어느 쪽인지는 화면이 따로 말한다 — 없는 데이터를
+ * 그럴듯한 숫자로 채우는 것이 제일 나쁜 거짓말이다.
+ */
 function projectsPerMonth(
-  credits: number, t: (k: Key, v?: Record<string, string | number>) => string,
+  credits: number,
+  t: (k: Key, v?: Record<string, string | number>) => string,
+  measured?: { measured: boolean; median_usd: number; p90_usd: number },
+  creditUsd = 0.01,
 ): string {
   if (credits <= 0) return "";
-  const most = Math.floor(credits / PER_PROJECT.low);
-  const least = Math.floor(credits / PER_PROJECT.high);
+  const [low, high] = measured?.measured
+    ? [measured.median_usd / creditUsd, measured.p90_usd / creditUsd]
+    : [PER_PROJECT.low, PER_PROJECT.high];
+  if (low <= 0 || high <= 0) return "";
+  const most = Math.floor(credits / low);
+  const least = Math.floor(credits / Math.max(high, low));
   if (most < 1) return t("price.lessThanOne");
+  if (measured?.measured) {
+    return least === most
+      ? t("price.perMonthAbout", { n: most })
+      : t("price.perMonthMeasured", { a: least, b: most });
+  }
   if (least < 1) return t("price.perMonthMax", { n: most });
   return least === most
     ? t("price.perMonthAbout", { n: most })
@@ -101,6 +121,7 @@ export default function PricingPage() {
   }, [data]);
 
   const plans = data?.plans.plans ?? {};
+  const measured = data?.plans.per_project;
   const topups = data?.plans.topups ?? {};
   const wallet = data?.credits;
 
@@ -237,7 +258,9 @@ export default function PricingPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {Object.entries(plans).map(([name, p]) => {
           const current = wallet?.plan === name;
-          const per = projectsPerMonth(p.credits, t);
+        const per = projectsPerMonth(
+            p.credits, t, data?.plans.per_project, data?.plans.credit_usd,
+          );
           return (
             <Panel
               key={name}
@@ -289,7 +312,21 @@ export default function PricingPage() {
       </div>
 
       <p className="text-[11px] text-dim">
-        <strong>{t("price.estimate")}</strong> {t("price.estimateBody")}
+        {measured?.measured ? (
+          <>
+            <strong>
+              {t("price.measured", { n: measured.samples })}
+            </strong>{" "}
+            {t("price.measuredBody", {
+              median: money(measured.median_usd),
+              p90: money(measured.p90_usd),
+            })}
+          </>
+        ) : (
+          <>
+            <strong>{t("price.estimate")}</strong> {t("price.estimateBody")}
+          </>
+        )}
       </p>
     </div>
     </Screen>

@@ -100,6 +100,34 @@ _M: dict[str, dict[str, str]] = {
         "en": "You have reached the concurrent run limit ({n}). Start again when a running job finishes.",
         "ja": "同時実行の上限（{n}）に達しました。実行中の作業が終わってから開始してください。",
     },
+    # 단계 설명. 화면 한가운데(사무실 탁자)에 뜨므로 번역되지 않으면
+    # 눈에 제일 먼저 띈다. 태스크 제목처럼 **사용자가 쓴 글**은 번역하지
+    # 않는다 — 그건 그 사람의 문장이다.
+    "phase.plan": {
+        "ko": "전략가가 계획을 세우는 중",
+        "en": "The strategist is planning",
+        "ja": "ストラテジストが計画中",
+    },
+    "phase.write_tests": {
+        "ko": "분석가가 인수기준으로 테스트 작성",
+        "en": "The analyst is writing tests from the criteria",
+        "ja": "アナリストが受け入れ基準からテストを作成",
+    },
+    "phase.finalize": {
+        "ko": "최종 검수",
+        "en": "Final review",
+        "ja": "最終検収",
+    },
+    "phase.manual": {
+        "ko": "{who} · 직접 지시",
+        "en": "{who} · direct instruction",
+        "ja": "{who} · 直接指示",
+    },
+    "phase.review_manual": {
+        "ko": "CEO 요청으로 검증",
+        "en": "Review requested by the CEO",
+        "ja": "CEO の要請で検証",
+    },
     "staff.fired": {
         "ko": "{name} 은(는) 지금 채용되어 있지 않습니다. 사무실에서 다시 채용하세요.",
         "en": "{name} is not currently hired. Hire them again from the office screen.",

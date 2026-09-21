@@ -168,3 +168,19 @@ def test_refusals_are_translated():
         assert "plan" in lang.t("plan.required").lower()
     with lang.bind("ja"):
         assert "プラン" in lang.t("plan.required")
+
+
+def test_phase_labels_are_translated():
+    """단계 설명은 화면 한가운데(사무실 탁자)에 뜬다. 번역되지 않으면
+    눈에 제일 먼저 띈다."""
+    with lang.bind("en"):
+        assert lang.t("phase.plan") == "The strategist is planning"
+    with lang.bind("ja"):
+        assert "ストラテジスト" in lang.t("phase.plan")
+
+
+def test_phase_label_keeps_the_employees_name():
+    """이름은 번역하지 않는다 — 사람 이름이고, 고객이 붙인 것일 수도 있다."""
+    with lang.bind("en"):
+        out = lang.t("phase.manual", who="박도현")
+    assert "박도현" in out

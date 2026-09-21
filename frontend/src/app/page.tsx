@@ -214,10 +214,14 @@ export default function OfficePage() {
               <h1 className="text-[13px] font-semibold tracking-tight">
                 {t("office.title")}
               </h1>
-              {folded.phase && (
-                <span className="truncate text-[11px] text-muted">
-                  {folded.phase}
-                  {folded.detail ? ` · ${folded.detail}` : ""}
+              {/* 단계는 이제 탁자 가운데에 놓인다(PixelOffice). 여기에도
+                  적으면 같은 말이 두 번 보이고, 눈이 어느 쪽을 봐야 하는지
+                  모른다. 대신 실행 중이라는 사실만 표시한다. */}
+              {running && (
+                <span className="flex items-center gap-1.5 text-[11px] text-muted">
+                  <span className="size-1.5 animate-pulse rounded-full"
+                        style={{ background: "var(--accent)" }} />
+                  {t("list.running")}
                 </span>
               )}
             </div>
@@ -226,6 +230,8 @@ export default function OfficePage() {
               working={isWorking}
               onPick={(id) => setPicked((p) => (p === id ? null : id))}
               picked={picked}
+              phase={folded.phase}
+              detail={folded.detail}
             />
           </div>
 

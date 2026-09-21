@@ -371,3 +371,20 @@ def test_local_mode_does_not_require_login(monkeypatch):
 def test_local_owner_is_stable(monkeypatch):
     monkeypatch.setenv("DEPLOY_MODE", "local")
     assert _client().get("/api/state").json()["user"]["id"] == deps.LOCAL_OWNER
+
+
+def test_pricing_stays_public_and_does_not_leak_other_tenants(monkeypatch):
+    """요금제는 **로그인 전에도** 보여야 한다 — 처음 온 사람에게 가격이
+    안 보이면 그 사람은 가입하지 않는다.
+
+    다만 로그인하지 않은 사람에게 '프로젝트 한 건에 얼마'를 주려면 남의
+    사용량을 모아야 한다. 값이 아무리 뭉뚱그려져 있어도 줄 이유가 없다.
+    """
+    monkeypatch.setenv("DEPLOY_MODE", "saas")
+    c = _client()
+    r = c.get("/api/plans")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["plans"], "가격이 안 보인다"
+    assert body["per_project"]["measured"] is False
+    assert body["per_project"]["samples"] == 0
