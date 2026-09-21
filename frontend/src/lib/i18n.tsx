@@ -70,8 +70,8 @@ const S = {
   },
   "lang.partial": {
     ko: "",
-    en: "Screens are translated. Messages the employees write, and a few server messages, are still Korean.",
-    ja: "画面は翻訳済みです。社員が書く文章と一部のサーバーメッセージはまだ韓国語です。",
+    en: "Screens and the activity log are translated. What the employees write follows the language you pick — older projects keep the language they were made in.",
+    ja: "画面と作業ログは翻訳済みです。社員が書く文章は選んだ言語に従います — 以前のプロジェクトは作られた時の言語のままです。",
   },
 
   // ── 랜딩: 히어로 ──────────────────────────────────────────────

@@ -27,7 +27,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
-from app import bus, config
+from app import bus, config, lang
 from app.agents import json_io, roles
 from app.agents.roles import Employee
 from app.providers import registry
@@ -109,8 +109,9 @@ def ask(employee_id: str, user: str, schema: type[T],
             if attempt >= REPAIR_ATTEMPTS:
                 break
             bus.say("SYSTEM",
-                    f"{e.name}({e.role})의 답을 읽지 못해 형식을 고쳐 다시 요청합니다 — "
-                    f"{last_error.splitlines()[0]}", kind="error")
+                    lang.t("log.reask",
+                           who=f"{roles.display_name(e.id)}({e.role})",
+                           why=last_error.splitlines()[0]), kind="error")
 
     raise EmployeeFailed(e.id, f"응답을 스키마로 읽지 못했습니다.\n{last_error}")
 

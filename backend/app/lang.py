@@ -100,6 +100,114 @@ _M: dict[str, dict[str, str]] = {
         "en": "You have reached the concurrent run limit ({n}). Start again when a running job finishes.",
         "ja": "同時実行の上限（{n}）に達しました。実行中の作業が終わってから開始してください。",
     },
+    # ── 작업 로그에 흐르는 문장 (DAY 22) ───────────────────────────
+    #
+    # 실행 중에 사용자가 제일 오래 보는 칸이다. 여기가 한국어로 남으면
+    # 다른 화면을 다 번역해도 "번역이 안 된 제품"으로 읽힌다.
+    #
+    # 직원이 **생성하는** 글(대사·요약·산출물)은 여기 없다. 그건 표로
+    # 옮길 수 없고 프롬프트에서 언어를 정한다(`prompt_line()`).
+    "log.mock": {
+        "ko": "지금은 **Mock 직원**이 일합니다. 산출물은 실제 AI 의 작업 결과가 아닙니다. 설정에서 API 키를 등록하세요.",
+        "en": "**Mock employees** are working. The output is not the work of a real model. Register API keys in settings.",
+        "ja": "今は **Mock 社員**が働いています。成果物は実際の AI の作業結果ではありません。設定で API キーを登録してください。",
+    },
+    "log.attached": {"ko": "첨부: {what}", "en": "Attached: {what}", "ja": "添付: {what}"},
+    "log.pytest": {
+        "ko": "격리 환경에서 pytest 실행 중…",
+        "en": "Running pytest in an isolated environment…",
+        "ja": "隔離環境で pytest を実行中…",
+    },
+    "log.testWritten": {
+        "ko": "`{path}` 작성 — 검증 대상 {covers}",
+        "en": "`{path}` written — covers {covers}",
+        "ja": "`{path}` を作成 — 検証対象 {covers}",
+    },
+    "log.uncovered": {
+        "ko": "자동 검증 불가로 남긴 인수기준: {ids}",
+        "en": "Acceptance criteria left unverifiable by tests: {ids}",
+        "ja": "自動検証できずに残した受け入れ基準: {ids}",
+    },
+    "log.unspecified": {"ko": "미지정", "en": "unspecified", "ja": "未指定"},
+    "log.denied": {
+        "ko": "`{path}` 거부됨 — {why}",
+        "en": "`{path}` refused — {why}",
+        "ja": "`{path}` 拒否 — {why}",
+    },
+    "log.testDenied": {
+        "ko": "테스트 파일 거부됨 — `{path}` ({why})",
+        "en": "Test file refused — `{path}` ({why})",
+        "ja": "テストファイル拒否 — `{path}`（{why}）",
+    },
+    "log.created": {"ko": "`{path}` 새로 만듦", "en": "`{path}` created", "ja": "`{path}` を新規作成"},
+    "log.updated": {
+        "ko": "`{path}` 수정 ({n}줄)",
+        "en": "`{path}` updated ({n} lines)",
+        "ja": "`{path}` を修正（{n} 行）",
+    },
+    "log.stopRequested": {
+        "ko": "CEO 가 정지를 요청했습니다 — 현재 단계가 끝나면 멈춥니다.",
+        "en": "The CEO asked to stop — we will halt at the end of this step.",
+        "ja": "CEO が停止を要請しました — 現在の段階が終わったら止まります。",
+    },
+    "log.stopped": {"ko": "중단: {why}", "en": "Stopped: {why}", "ja": "中断: {why}"},
+    "log.cycle": {
+        "ko": "태스크 의존성에 순환이 있습니다 — 남은 것은 정의된 순서대로 처리합니다.",
+        "en": "The task graph has a cycle — the rest runs in the order it was defined.",
+        "ja": "タスクの依存に循環があります — 残りは定義順に処理します。",
+    },
+    "log.badAssignee": {
+        "ko": "'{task}' 의 담당자 `{who}` 는 맡길 수 없는 직원입니다. {fallback} 에게 넘깁니다.",
+        "en": "'{task}' was assigned to `{who}`, who cannot take tasks. Handing it to {fallback}.",
+        "ja": "'{task}' の担当 `{who}` は任せられない社員です。{fallback} に回します。",
+    },
+    "log.reask": {
+        "ko": "{who}의 답을 읽지 못해 형식을 고쳐 다시 요청합니다 — {why}",
+        "en": "Could not parse {who}'s answer; asking again with the format corrected — {why}",
+        "ja": "{who} の回答を読めなかったため、形式を直して再依頼します — {why}",
+    },
+    "log.retry": {
+        "ko": "{who} 호출 실패 — {delay}초 뒤 재시도 ({n}/{max}) · {why}",
+        "en": "{who} call failed — retrying in {delay}s ({n}/{max}) · {why}",
+        "ja": "{who} の呼び出し失敗 — {delay} 秒後に再試行（{n}/{max}）· {why}",
+    },
+    "log.fallback": {
+        "ko": "{who} 사용 불가 — 다음 제공자로 넘깁니다 ({why})",
+        "en": "{who} unavailable — falling back to the next provider ({why})",
+        "ja": "{who} は利用不可 — 次のプロバイダに回します（{why}）",
+    },
+    "log.manualMode": {
+        "ko": "MANUAL 모드입니다. 직원을 골라 직접 지시하세요.",
+        "en": "This is MANUAL mode. Pick an employee and instruct them directly.",
+        "ja": "MANUAL モードです。社員を選んで直接指示してください。",
+    },
+    "mail.notSent": {
+        "ko": "메일이 **발송되지 않았습니다** (SMTP_URL 이 없습니다). 받는 사람 {to} · 제목 {subject}",
+        "en": "The mail was **not sent** (no SMTP_URL). To {to} · subject {subject}",
+        "ja": "メールは**送信されませんでした**（SMTP_URL がありません）。宛先 {to} · 件名 {subject}",
+    },
+    # 테스트 결과. 이 한 줄이 검증자의 판정 근거이자 화면의 점수다.
+    "test.blocked": {
+        "ko": "테스트 실행 차단됨 (샌드박스 아님)",
+        "en": "Test run blocked (not sandboxed)",
+        "ja": "テスト実行はブロックされました（サンドボックスではありません）",
+    },
+    "test.none": {"ko": "테스트 없음", "en": "no tests", "ja": "テストなし"},
+    "test.timeout": {
+        "ko": "타임아웃 ({n}초)", "en": "timed out ({n}s)", "ja": "タイムアウト（{n} 秒）",
+    },
+    "test.counts": {
+        "ko": "{passed}통과·{failed}실패",
+        "en": "{passed} passed · {failed} failed",
+        "ja": "{passed} 成功 · {failed} 失敗",
+    },
+    "test.passed": {"ko": "테스트 통과", "en": "Tests passed", "ja": "テスト合格"},
+    "test.failed": {
+        "ko": "테스트 실패 — {detail}",
+        "en": "Tests failed — {detail}",
+        "ja": "テスト失敗 — {detail}",
+    },
+
     # 단계 설명. 화면 한가운데(사무실 탁자)에 뜨므로 번역되지 않으면
     # 눈에 제일 먼저 띈다. 태스크 제목처럼 **사용자가 쓴 글**은 번역하지
     # 않는다 — 그건 그 사람의 문장이다.

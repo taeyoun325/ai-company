@@ -294,7 +294,8 @@ def instruct(slug: str, employee_id: str, message: str,
                                  reason=message[:120])
             except pfs.Denied as ex:
                 # "CEO 가 시켰다"는 권한의 근거가 아니다. 거부하고 사실을 남긴다.
-                bus.say(employee_id, f"`{f.path}` 거부됨 — {ex}", kind="error")
+                bus.say(employee_id, lang.t("log.denied", path=f.path, why=ex),
+                        kind="error")
                 continue
             written.append(f.path)
             bus.say(employee_id,
@@ -367,5 +368,5 @@ def open_project(requirement: str, owner: str = "local") -> str:
     store.save_meta(slug, {"status": "manual", "mode": "manual"})
     bus.bind(slug)
     bus.say("USER", requirement)
-    bus.say("SYSTEM", "MANUAL 모드입니다. 직원을 골라 직접 지시하세요.", kind="verdict")
+    bus.say("SYSTEM", lang.t("log.manualMode"), kind="verdict")
     return slug

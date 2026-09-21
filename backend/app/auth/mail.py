@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from email.message import EmailMessage
 from urllib.parse import urlparse
 
-from app import bus
+from app import bus, lang
 
 
 @dataclass(frozen=True)
@@ -74,8 +74,8 @@ def _log_send(to: str, subject: str, body: str) -> Delivery:
     """
     masked = to.split("@")[0][:2] + "…@" + to.split("@")[-1]
     bus.say("SYSTEM",
-            f"메일이 **발송되지 않았습니다** (SMTP_URL 이 없습니다). "
-            f"받는 사람 {masked} · 제목 {subject}\n{body}",
+            lang.t("mail.notSent", to=masked, subject=subject)
+            + "\n" + body,
             kind="error")
     return Delivery(False, "log", "SMTP_URL 이 설정되지 않아 로그로만 남겼습니다")
 

@@ -228,11 +228,17 @@ def run_entry(project_dir, entry: str, timeout: int | None = None) -> dict:
 
 
 def summary_line(r: dict) -> str:
+    """테스트 결과 한 줄.
+
+    이 문장이 검증자의 판정 근거이자 화면의 점수다. 번역되지 않으면
+    영어로 쓰는 사람은 "무엇이 통과했는지"를 읽을 수 없다.
+    """
+    from app import lang
     if r.get("blocked"):
-        return "테스트 실행 차단됨 (샌드박스 아님)"
+        return lang.t("test.blocked")
     if r.get("skipped_run"):
-        return "테스트 없음"
+        return lang.t("test.none")
     if r["timed_out"]:
-        return f"타임아웃 ({TIMEOUT}초)"
+        return lang.t("test.timeout", n=TIMEOUT)
     bad = r["failed"] + r["errors"]
-    return f"{r['passed']}통과·{bad}실패"
+    return lang.t("test.counts", passed=r["passed"], failed=bad)

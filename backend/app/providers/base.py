@@ -32,7 +32,7 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
-from app import bus, config, usage
+from app import bus, config, lang, usage
 
 Role = Literal["user", "assistant"]
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
@@ -207,8 +207,9 @@ class AIProvider(abc.ABC):
                     raise
                 delay = backoff_delay(attempt, getattr(e, "retry_after", None))
                 bus.say("SYSTEM",
-                        f"{self.name} 호출 실패 — {delay:.1f}초 뒤 재시도 "
-                        f"({attempt + 1}/{config.MAX_RETRY}) · {type(e).__name__}",
+                        lang.t("log.retry", who=self.name, delay=f"{delay:.1f}",
+                               n=attempt + 1, max=config.MAX_RETRY,
+                               why=type(e).__name__),
                         kind="error")
                 _sleep(delay)
                 continue
@@ -285,8 +286,9 @@ class FallbackProvider(AIProvider):
                 return p.generate(req)
             except ProviderError as e:
                 last = e
-                bus.say("SYSTEM", f"{p.name} 사용 불가 — 다음 제공자로 넘깁니다 "
-                                  f"({type(e).__name__})", kind="error")
+                bus.say("SYSTEM",
+                        lang.t("log.fallback", who=p.name,
+                               why=type(e).__name__), kind="error")
         raise last or ProviderUnavailable("모든 제공자 실패", provider=self.name)
 
     def stream(self, req: GenerateRequest) -> Iterator[str]:

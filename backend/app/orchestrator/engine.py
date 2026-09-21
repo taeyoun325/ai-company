@@ -166,8 +166,7 @@ def cancel(slug: str) -> bool:
         if slug not in _runs:
             return False
         _cancelled.add(slug)
-    bus.say("SYSTEM", "CEO 가 정지를 요청했습니다 — 현재 단계가 끝나면 멈춥니다.",
-            kind="error")
+    bus.say("SYSTEM", lang.t("log.stopRequested"), kind="error")
     return True
 
 
@@ -263,8 +262,7 @@ def _topo(tasks: list[Task]) -> list[Task]:
     while pending:
         ready = [t for t in pending if all(d in done for d in t.deps)]
         if not ready:
-            bus.say("SYSTEM", "태스크 의존성에 순환이 있습니다 — 남은 것은 정의된 "
-                              "순서대로 진행합니다.", kind="error")
+            bus.say("SYSTEM", lang.t("log.cycle"), kind="error")
             out.extend(pending)
             break
         for t in ready:
@@ -295,8 +293,9 @@ def _assignee(task: Task) -> str:
     if task.assignee in roles.assignable():
         return task.assignee
     fallback = roles.assignable()[0]
-    bus.say("SYSTEM", f"'{task.title}' 의 담당자 `{task.assignee}` 는 맡길 수 없는 "
-                      f"직원이라 {roles.get(fallback).name}에게 배정합니다.", kind="error")
+    bus.say("SYSTEM",
+            lang.t("log.badAssignee", task=task.title, who=task.assignee,
+                   fallback=roles.display_name(fallback)), kind="error")
     return fallback
 
 
@@ -326,21 +325,25 @@ def _apply(result: WorkResult, employee_id: str, *,
             info = pfs.write(f.path, f.content, employee_id,
                              round=round, reason=reason)
         except pfs.Denied as e:
-            bus.say(employee_id, f"`{f.path}` 거부됨 — {e}", kind="error")
+            bus.say(employee_id, lang.t("log.denied", path=f.path, why=e),
+                    kind="error")
             continue
         written.append(f.path)
-        verb = "새로 만듦" if info["created"] else f"수정 ({info['new_lines']}줄)"
-        bus.say(employee_id, f"`{f.path}` {verb}", kind="tool")
+        bus.say(employee_id,
+                lang.t("log.created", path=f.path) if info["created"]
+                else lang.t("log.updated", path=f.path, n=info["new_lines"]),
+                kind="tool")
     return written
 
 
 def _run_tests(score: Score) -> dict:
-    bus.say("SYSTEM", "격리 환경에서 pytest 실행 중…", kind="tool")
+    bus.say("SYSTEM", lang.t("log.pytest"), kind="tool")
     r = runner.run(pfs.root())
     score.tests_ran = not r.get("skipped_run")
     score.tests_pass = r["ok"]
     score.tests = {k: r.get(k, 0) for k in ("passed", "failed", "errors")}
-    head = "테스트 통과" if r["ok"] else f"테스트 실패 — {runner.summary_line(r)}"
+    head = (lang.t("test.passed") if r["ok"]
+            else lang.t("test.failed", detail=runner.summary_line(r)))
     detail = "\n".join(r["failed_tests"][:5])
     bus.say("SYSTEM", head + (f"\n```\n{detail}\n```" if detail else ""), kind="tool")
     return r
@@ -393,14 +396,13 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
 
     bus.say("USER", requirement)
     if any_mock:
-        bus.say("SYSTEM", "지금은 **Mock 직원**이 일합니다. 산출물은 실제 AI 의 "
-                          "작업 결과가 아닙니다. 설정에서 API 키를 등록하세요.",
-                kind="error")
+        bus.say("SYSTEM", lang.t("log.mock"), kind="error")
     attachments_note = ""
     if attachment_ids:
         from app import attachments
         attachments_note = attachments.summary(attachment_ids)
-        bus.say("USER", f"첨부: {attachments_note}", kind="tool")
+        bus.say("USER", lang.t("log.attached", what=attachments_note),
+                kind="tool")
         store.save_meta(slug, {"attachments": attachments_note})
 
     bus.phase("PLAN", lang.t("phase.plan"))
@@ -439,16 +441,19 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
             try:
                 pfs.write(path, tf.content, roles.VERIFIER, round=rounds)
             except pfs.Denied as e:
-                bus.say(roles.VERIFIER, f"테스트 파일 거부됨 — `{path}` ({e})", kind="error")
+                bus.say(roles.VERIFIER,
+                        lang.t("log.testDenied", path=path, why=e),
+                        kind="error")
                 continue
             covered.update(tf.covers)
             bus.say(roles.VERIFIER,
-                    f"`{path}` 작성 — 검증 대상 {', '.join(tf.covers) or '미지정'}",
+                    lang.t("log.testWritten", path=path,
+                           covers=", ".join(tf.covers) or lang.t("log.unspecified")),
                     kind="tool")
         score.ac_covered = len(covered & {c.id for c in criteria})
         if suite.uncovered:
             bus.say(roles.VERIFIER,
-                    "자동 검증 불가로 남긴 인수기준: " + ", ".join(suite.uncovered),
+                    lang.t("log.uncovered", ids=", ".join(suite.uncovered)),
                     kind="verdict")
         bus.state(files=store.files_of(slug))
         score.push()
@@ -588,7 +593,7 @@ def _persist(slug, plan, rows, score, status="running",
 
 
 def _fail(slug, plan, rows, score, msg: str) -> None:
-    bus.say("SYSTEM", f"중단: {msg}", kind="error")
+    bus.say("SYSTEM", lang.t("log.stopped", why=msg), kind="error")
     _persist(slug, plan, rows, score, status="stopped")
     store.save_meta(slug, {"stopped_reason": msg})
     bus.emit("projects", list=store.list_projects())

@@ -184,3 +184,22 @@ def test_phase_label_keeps_the_employees_name():
     with lang.bind("en"):
         out = lang.t("phase.manual", who="박도현")
     assert "박도현" in out
+
+
+def test_the_activity_log_speaks_the_request_language():
+    """실행 중에 사용자가 제일 오래 보는 칸이다. 여기가 한국어로 남으면
+    다른 화면을 다 번역해도 '번역이 안 된 제품'으로 읽힌다."""
+    with lang.bind("en"):
+        assert "Mock employees" in lang.t("log.mock")
+        assert lang.t("log.updated", path="a.py", n=3) == "`a.py` updated (3 lines)"
+        assert lang.t("test.passed") == "Tests passed"
+    with lang.bind("ja"):
+        assert "Mock 社員" in lang.t("log.mock")
+        assert lang.t("test.passed") == "テスト合格"
+
+
+def test_employee_names_are_not_translated_in_the_log():
+    """이름은 사람 이름이고, 고객이 붙인 것일 수도 있다."""
+    with lang.bind("en"):
+        out = lang.t("log.reask", who="박도현(개발자)", why="bad json")
+    assert "박도현" in out
