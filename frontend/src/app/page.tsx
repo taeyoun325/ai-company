@@ -198,6 +198,7 @@ export default function OfficePage() {
           employees={employees}
           phase={folded.phase}
           detail={folded.detail}
+          onStaffChange={reload}
         />
       </Panel>
 

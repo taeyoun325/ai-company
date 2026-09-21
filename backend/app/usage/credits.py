@@ -42,9 +42,9 @@ class InsufficientCredits(RuntimeError):
     """잔액이 모자란다. 시작 전에 막는다."""
 
     def __init__(self, needed: float, balance: float):
-        super().__init__(
-            f"크레딧이 부족합니다 — 이 작업의 최대 예상치 {needed:.1f} 크레딧, "
-            f"잔액 {balance:.1f} 크레딧")
+        from app import lang
+        super().__init__(lang.t("credits.short", needed=f"{needed:.1f}",
+                                balance=f"{balance:.1f}"))
         self.needed = needed
         self.balance = balance
 

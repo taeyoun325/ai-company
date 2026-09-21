@@ -61,6 +61,11 @@ def _request(e: Employee, user: str, schema: type[BaseModel] | None,
     system = e.system
     if schema is not None:
         system = f"{system}\n\n{json_io.render_instruction(schema)}"
+    # 어느 언어로 쓸지 (DAY 21). 산출물·주석·요약이 전부 이 언어로 나온다.
+    # 영어 사용자에게 한국어 주석이 달린 코드를 주는 것은 번역 문제가
+    # 아니라 **쓸 수 없는 산출물**이다.
+    from app import lang
+    system += lang.prompt_line()
     messages = [*(history or []), Message("user", user)]
     return GenerateRequest(
         system=system, messages=messages, model=e.model,
@@ -141,13 +146,17 @@ def status(run: str | None = None) -> list[dict]:
     아무 실행도 묶여 있지 않아 전부 0 으로 나온다. 화면에는 "아직 아무도
     일하지 않음"으로 보이고, 실제로는 한창 일하는 중이다.
     """
-    from app import usage
+    from app import tenant, usage
+    from app.agents import staff
     per = usage.agents_of(run)
+    owner = (tenant.current().owner if tenant.current() else "local")
     out = []
     for e in roles.EMPLOYEES.values():
         row = e.info()
         row["mock"] = is_mock(e)
         row["usage"] = per.get(e.id, {})
+        # 인사 정보(§8 · DAY 21). 이름은 테넌트의 것, 권한은 자리의 것.
+        row.update(staff.overlay(owner)[e.id])
         out.append(row)
     return out
 

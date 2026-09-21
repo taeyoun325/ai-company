@@ -164,3 +164,20 @@ code,
 [class*="font-mono"] {
   word-break: normal;
 }
+
+/* 일하는 자리의 모니터 (DAY 21 · PixelOffice).
+   깜빡임이 너무 빠르면 신경이 쓰이고, 너무 느리면 멈춘 줄 안다. */
+@keyframes px-screen {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.px-screen {
+  animation: px-screen 1.1s steps(2, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-screen {
+    animation: none;
+  }
+}

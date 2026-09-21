@@ -35,7 +35,7 @@ import hashlib
 import os
 import threading
 
-from app import bus, config, tenant, usage
+from app import bus, config, lang, tenant, usage
 from app.agents import employee, roles
 from app.agents.schemas import (Criterion, FinalReport, Plan, Routing, Task,
                                 TestSuite, Verdict, WorkResult)
@@ -119,9 +119,7 @@ def start(requirement: str, attachment_ids: list[str] | None = None,
                     .get("max_concurrent", MAX_CONCURRENT)))
     with _runs_lock:
         if len(_runs) >= seats:
-            raise RuntimeError(
-                f"동시 실행 한도({seats})에 도달했습니다. "
-                f"진행 중인 작업이 끝난 뒤에 시작하세요.")
+            raise RuntimeError(lang.t("run.concurrent", n=seats))
 
     # 잔액을 **시작 전에** 본다 (§15). 0 이 된 다음에 막으면 이미 쓴 것이다.
     # 다만 프로젝트 상한 전액이 아니라 **한 번 부를 돈**만 요구한다.
@@ -130,9 +128,13 @@ def start(requirement: str, attachment_ids: list[str] | None = None,
     credits.reserve(owner, employee.max_worst_case())
 
     slug = store.new_project(requirement, owner=owner)
-    t = threading.Thread(target=_run,
-                         args=(requirement, slug, attachment_ids or [], owner),
-                         daemon=True, name=f"run:{slug}")
+    # 요청의 언어를 **여기서** 집는다. 실행 스레드는 요청 컨텍스트를
+    # 물려받지 못하므로, 안 집으면 영어로 요청한 사람이 한국어 산출물을
+    # 받는다 (DAY 21).
+    t = threading.Thread(
+        target=_run,
+        args=(requirement, slug, attachment_ids or [], owner, lang.current()),
+        daemon=True, name=f"run:{slug}")
     with _runs_lock:
         _runs[slug] = t
     t.start()
@@ -270,14 +272,14 @@ def route(requirement: str) -> Routing:
 
 # ── 본체 ────────────────────────────────────────────────────────────
 def _run(requirement: str, slug: str, attachment_ids: list[str],
-         owner: str = "local") -> None:
+         owner: str = "local", language: str = "ko") -> None:
     """실행 스레드의 입구. 테넌트 자세를 **이 스레드에서 다시 세운다.**
 
     컨텍스트 변수는 새 스레드로 따라오지 않는다. 여기서 세우지 않으면
     실행 전체가 운영자 키로 돌아간다 — 무료 사용자가 우리 키를 태우고,
     BYOK 고객의 요금을 우리가 낸다. 둘 다 조용히 일어난다.
     """
-    with tenant.bind(owner):
+    with tenant.bind(owner), lang.bind(language):
         _run_bound(requirement, slug, attachment_ids, owner)
 
 

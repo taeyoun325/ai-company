@@ -101,18 +101,15 @@ def require_runnable(owner: str) -> Posture:
     만들어진 프로젝트와 함께 "왜 멈췄는지 모르겠는" 화면이 남는다.
     """
     p = posture_for(owner)
+    from app import lang
     if p.source == "none":
-        raise NoPlan("요금제를 선택해야 시작할 수 있습니다. "
-                     "요금제 화면에서 하나를 고르세요.")
+        raise NoPlan(lang.t("plan.required"))
     if p.source == "byok":
         missing = byok.missing(owner)
         if missing:
             from app import secrets_broker
             labels = ", ".join(secrets_broker.KEYS[n][1] for n in missing)
-            raise KeysMissing(
-                f"자체 키 요금제입니다. 설정 화면에 본인 API 키를 등록하세요 "
-                f"— 아직 없는 키: {labels}. 이 요금제에서는 운영자 키로 "
-                f"대신 호출하지 않습니다.")
+            raise KeysMissing(lang.t("byok.missing", keys=labels))
     return p
 
 

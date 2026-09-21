@@ -24,6 +24,7 @@
  * 하나로 충분하다 — 다만 **읽기가 실패할 수 있다**(사생활 보호 모드).
  * 실패하면 기본값으로 돌아갈 뿐 화면이 깨지지는 않는다.
  */
+import { setApiLanguage } from "@/lib/api";
 import {
   createContext, useCallback, useContext, useEffect, useMemo,
   useSyncExternalStore, type ReactNode,
@@ -256,6 +257,19 @@ const S = {
     ja: "視差効果を減らす設定（prefers-reduced-motion）が有効なら、この画面は動きません。",
   },
 
+  // ── 인사 (DAY 21) ─────────────────────────────────────────────
+  "staff.rename": { ko: "이름 바꾸기", en: "Rename", ja: "名前を変更" },
+  "staff.save": { ko: "저장", en: "Save", ja: "保存" },
+  "staff.reset": { ko: "기본 이름", en: "Default", ja: "既定の名前" },
+  "staff.hire": { ko: "채용하기", en: "Hire", ja: "採用する" },
+  "staff.fire": { ko: "내보내기", en: "Let go", ja: "退職させる" },
+  "staff.empty": { ko: "빈 자리", en: "empty seat", ja: "空席" },
+  "staff.locked": {
+    ko: "이 자리는 비울 수 없습니다 — 없으면 회사가 돌지 않습니다.",
+    en: "This seat cannot be emptied — the company does not run without it.",
+    ja: "この席は空にできません — なければ会社が回りません。",
+  },
+
   // ── 사무실 ────────────────────────────────────────────────────
   "office.model": { ko: "모델", en: "Model", ja: "モデル" },
   "office.calls": { ko: "호출", en: "Calls", ja: "呼び出し" },
@@ -341,6 +355,9 @@ export function LangProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // 화면 밖에서도 언어는 읽힌다 — 스크린리더와 검색엔진이 이 속성을 본다.
     document.documentElement.lang = lang;
+    // 서버도 알아야 한다. 오류 문장과 **직원이 쓰는 글**의 언어가 여기서
+    // 정해진다 (DAY 21).
+    setApiLanguage(lang);
   }, [lang]);
 
   const setLang = useCallback((l: Lang) => store(l), []);

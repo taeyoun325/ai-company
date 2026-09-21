@@ -23,6 +23,7 @@ from app import bus
 from app import byok
 from app import config
 from app import deploy
+from app import lang
 from app.api import auth as auth_api
 from app.api import local_tools
 from app.auth import deps as auth
@@ -34,6 +35,7 @@ from app import screen
 from app import secrets_broker
 from app.agents import employee as employees
 from app.agents import roles
+from app.agents import staff
 from app.agents import subagents
 from app.database import index as project_index
 from app.database import store
@@ -52,6 +54,17 @@ secrets_broker.init()   # 기동 즉시 환경변수에서 키를 꺼내 지운�
 _INDEX_READY = project_index.ensure_ready()
 
 app = FastAPI(title="AI Agent Company")
+
+
+@app.middleware("http")
+async def _language(request: Request, call_next):
+    """이 요청의 언어를 정한다 (DAY 21 · app/lang.py).
+
+    라우트마다 헤더를 읽지 않는 이유는 늘 같다 — 하나를 빠뜨리면 그
+    화면만 한국어로 돌아가고, 사용자는 번역이 깨졌다고 생각한다.
+    """
+    lang.set(lang.from_header(request.headers.get("accept-language")))
+    return await call_next(request)
 app.include_router(auth_api.router)
 # 이전 제품(로컬 개발도구)의 라우트. DEPLOY_MODE=saas 에서는 전부 403.
 app.include_router(local_tools.router)
@@ -76,6 +89,12 @@ class KeysReq(BaseModel):
     gemini: str | None = None
     openai: str | None = None
     remember: bool = False
+
+
+class StaffReq(BaseModel):
+    """이름과 채용 여부. 권한은 여기 없다 — 자리의 것이라 바꿀 수 없다."""
+    name: str | None = None
+    active: bool | None = None
 
 
 class ByokReq(BaseModel):
@@ -744,10 +763,36 @@ def delete_project(slug: str, request: Request):
 # ── AI 직원 (지시서 §8) ─────────────────────────────────────────────
 @app.get("/api/employees")
 def list_employees(request: Request, run: str | None = None):
-    """직원 5명의 정의 · 권한 · 현재 모델 · Mock 여부 · 사용량."""
-    return {"employees": employees.status(_my_run(request, run)),
-            "assignable": roles.assignable(),
-            "planner": roles.PLANNER, "verifier": roles.VERIFIER}
+    """직원 5명의 정의 · 권한 · 현재 모델 · Mock 여부 · 사용량 · 인사."""
+    owner = auth.owner_of(request)
+    with tenant.bind(owner):
+        return {"employees": employees.status(_my_run(request, run)),
+                "assignable": roles.assignable(),
+                "planner": roles.PLANNER, "verifier": roles.VERIFIER}
+
+
+@app.patch("/api/employees/{employee_id}")
+def update_employee(employee_id: str, req: StaffReq, request: Request):
+    """이름을 바꾸거나, 채용하거나, 내보낸다 (DAY 21 · agents/staff.py).
+
+    권한은 바꿀 수 없다. 이름은 고객의 것이지만 **자리의 권한은 제품의
+    것**이다 — 개발자를 '수석 아키텍트'라고 불러도 src/ 밖에는 못 쓴다.
+    """
+    if not roles.exists(employee_id):
+        raise HTTPException(404, f"없는 직원: {employee_id}")
+    owner = auth.owner_of(request)
+    try:
+        if req.name is not None:
+            staff.rename(owner, employee_id, req.name)
+        if req.active is not None:
+            staff.set_active(owner, employee_id, req.active)
+    except ValueError as e:
+        # 400 이 아니라 409 다. 형식이 틀린 것이 아니라 **지금 상태에서
+        # 할 수 없는 일**이다 — 교차검증을 맡은 자리는 비울 수 없다.
+        raise HTTPException(409, str(e))
+    with tenant.bind(owner):
+        return {"ok": True, "employees": employees.status(_my_run(request, None)),
+                "assignable": roles.assignable()}
 
 
 @app.get("/api/employees/{employee_id}")

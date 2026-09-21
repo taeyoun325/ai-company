@@ -60,12 +60,29 @@ export function onUnauthorized(fn: Listener): () => void {
   return () => unauthorizedListeners.delete(fn);
 }
 
+/**
+ * 지금 화면의 언어. 서버가 이걸 보고 오류 문장과 **직원 프롬프트**의
+ * 언어를 정한다 (DAY 21 · backend/app/lang.py).
+ *
+ * 모듈 변수인 이유: `api` 는 훅이 아니라 함수 모음이라 컨텍스트를 읽을 수
+ * 없다. i18n 쪽에서 언어가 바뀔 때마다 여기 한 줄을 갱신한다.
+ */
+let acceptLanguage = "ko";
+
+export function setApiLanguage(lang: string) {
+  acceptLanguage = lang;
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
       ...init,
-      headers: { "Content-Type": "application/json", ...init?.headers },
+      headers: {
+        "Content-Type": "application/json",
+        "Accept-Language": acceptLanguage,
+        ...init?.headers,
+      },
     });
   } catch (e) {
     // 네트워크 자체가 끊긴 경우. 서버 오류와 구분해서 말해야 한다 —
@@ -146,6 +163,13 @@ export const api = {
     post<{ ok: boolean }>(`/api/employees/${seg(id)}/model`, { model }),
 
   providers: () => call<ProviderStatus>("/api/providers"),
+
+  // ── 인사 (DAY 21) ───────────────────────────────────────────────
+  updateEmployee: (id: string, patch: { name?: string; active?: boolean }) =>
+    call<{ ok: boolean; employees: Employee[] }>(
+      `/api/employees/${seg(id)}`,
+      { method: "PATCH", body: JSON.stringify(patch) },
+    ),
   settings: () => call<Settings>("/api/settings"),
   setKeys: (keys: Record<string, string>, remember: boolean) =>
     post<Settings & { providers: ProviderStatus }>("/api/settings/keys", {

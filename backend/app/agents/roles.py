@@ -202,8 +202,40 @@ def by_kind(kind: str) -> list[Employee]:
 
 
 def assignable() -> list[str]:
-    """태스크를 맡길 수 있는 직원. 기획자와 검증자는 태스크 담당이 아니다."""
-    return [e.id for e in EMPLOYEES.values() if e.kind in ("build", "write", "design")]
+    """태스크를 맡길 수 있는 직원. 기획자와 검증자는 태스크 담당이 아니다.
+
+    **지금 채용된 직원만** 돌려준다 (DAY 21 · agents/staff.py). 내보낸
+    직원에게 태스크가 배정되면, 그 태스크는 아무도 손대지 않은 채로
+    검증까지 흘러가 '미완성'으로 판정된다. 사용자는 자기가 내보낸 것과
+    그 실패를 연결짓지 못한다.
+
+    누구의 회사인지는 실행에 묶인 테넌트 자세에서 온다. 자세가 없으면
+    (테스트·로컬 도구) 전원이 일한다 — 기존 동작 그대로다.
+    """
+    everyone = [e.id for e in EMPLOYEES.values()
+                if e.kind in ("build", "write", "design")]
+    try:
+        from app import tenant
+        from app.agents import staff
+        p = tenant.current()
+        if p is None:
+            return everyone
+        return [i for i in everyone if staff.is_active(p.owner, i)] or everyone
+    except Exception:                                          # noqa: BLE001
+        return everyone
+
+
+def display_name(employee_id: str) -> str:
+    """화면과 말풍선에 나갈 이름. 테넌트가 바꿨으면 그 이름이다."""
+    try:
+        from app import tenant
+        from app.agents import staff
+        p = tenant.current()
+        if p is not None:
+            return staff.name_of(p.owner, employee_id)
+    except Exception:                                          # noqa: BLE001
+        pass
+    return get(employee_id).name
 
 
 PLANNER = "strategist"

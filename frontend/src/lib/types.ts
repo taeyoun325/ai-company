@@ -38,6 +38,15 @@ export interface Employee {
   usage: Partial<UsageRow>;
   system?: string;
   worst_case_usd?: number;
+  // ── 인사 (DAY 21) ──────────────────────────────────────────────
+  /** 우리가 지은 기본 이름. 되돌리기 버튼이 이걸 쓴다. */
+  default_name?: string;
+  /** 지금 채용되어 있는가. 아니면 자리가 비어 있다. */
+  active?: boolean;
+  /** 내보낼 수 있는 자리인가. 핵심 세 자리는 비울 수 없다. */
+  can_fire?: boolean;
+  /** 못 내보내는 이유. 버튼만 막아두면 사용자는 고장인 줄 안다. */
+  fire_reason?: string;
 }
 
 export interface ProviderRow {

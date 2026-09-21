@@ -31,14 +31,16 @@
  * 장식은 더하지 않았다. 작업 화면에서 움직임은 소음이고, 소음이 늘면
  * 진짜 신호(맥박)가 묻힌다.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { T, animate, prefersReducedMotion, stagger, withScope }
   from "@/lib/motion";
+import { api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import type { Employee } from "@/lib/types";
+import { PixelOffice } from "./PixelOffice";
 import { Icon, iconOfAgent } from "./icons";
-import { MockBadge, money } from "./ui";
+import { Button, MockBadge, money } from "./ui";
 
 const PHASE_OWNER: Record<string, string[]> = {
   PLAN: ["strategist"],
@@ -58,6 +60,7 @@ export function Office({
   busy,
   onPick,
   picked,
+  onStaffChange,
 }: {
   employees: Employee[];
   phase?: string;
@@ -66,6 +69,8 @@ export function Office({
   busy?: string | null;
   onPick?: (id: string) => void;
   picked?: string | null;
+  /** 이름을 바꾸거나 채용·해고한 뒤 목록을 다시 불러오라는 신호. */
+  onStaffChange?: () => void | Promise<void>;
 }) {
   const working = (id: string) => {
     if (busy) return busy === id;
@@ -98,19 +103,30 @@ export function Office({
   }, [employees.length]);
 
   return (
-    <div
-      ref={root}
-      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
-    >
-      {employees.map((e) => (
-        <Desk
-          key={e.id}
-          e={e}
-          working={working(e.id)}
-          picked={picked === e.id}
-          onPick={onPick}
-        />
-      ))}
+    <div className="space-y-3">
+      {/* 그림이 먼저다. 카드 목록은 숫자를 주지만 "지금 회사가 돌고
+          있는가"를 한 번에 말하지는 못한다. */}
+      <PixelOffice
+        employees={employees}
+        working={working}
+        onPick={onPick}
+        picked={picked}
+      />
+      <div
+        ref={root}
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      >
+        {employees.map((e) => (
+          <Desk
+            key={e.id}
+            e={e}
+            working={working(e.id)}
+            picked={picked === e.id}
+            onPick={onPick}
+            onStaffChange={onStaffChange}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -161,11 +177,13 @@ function Desk({
   working,
   picked,
   onPick,
+  onStaffChange,
 }: {
   e: Employee;
   working: boolean;
   picked: boolean;
   onPick?: (id: string) => void;
+  onStaffChange?: () => void | Promise<void>;
 }) {
   const { t } = useLang();
   const color = `var(--${e.id}, var(--accent))`;
@@ -210,9 +228,14 @@ function Desk({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-sm font-semibold">{e.name}</span>
+            <NameField e={e} onStaffChange={onStaffChange} />
             <span className="text-xs text-muted">{e.role}</span>
             {e.mock && <MockBadge />}
+            {e.active === false && (
+              <span className="text-[11px]" style={{ color: "var(--dim)" }}>
+                {t("staff.empty")}
+              </span>
+            )}
           </div>
           <p className="mt-0.5 truncate text-xs text-dim" title={e.desc}>
             {e.desc}
@@ -240,7 +263,161 @@ function Desk({
       <p className="mt-1 text-[11px]" style={{ color: working ? color : "var(--dim)" }}>
         {working ? t("office.working") : t("office.idle")}
       </p>
+
+      <HireButton e={e} onStaffChange={onStaffChange} />
     </Tag>
+  );
+}
+
+/**
+ * 이름 바꾸기.
+ *
+ * 따로 화면을 만들지 않은 이유: 이름은 자리를 보면서 바꾸는 것이다.
+ * 설정 화면으로 보내면 누가 누구인지 다시 찾아야 한다.
+ *
+ * `Tag` 가 button 일 수 있어서(직원 지목 모드) 안에 input 을 넣으면
+ * 클릭이 겹친다. 그래서 편집 중에는 이벤트를 여기서 멈춘다.
+ */
+function NameField({
+  e, onStaffChange,
+}: {
+  e: Employee; onStaffChange?: () => void | Promise<void>;
+}) {
+  const { t } = useLang();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(e.name);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.updateEmployee(e.id, { name: draft.trim() });
+      await onStaffChange?.();
+      setEditing(false);
+    } catch {
+      setDraft(e.name);        // 실패하면 원래 이름으로 되돌린다
+      setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <span
+        className="group inline-flex items-center gap-1 text-sm font-semibold"
+        onClick={(ev) => {
+          ev.stopPropagation();
+          setDraft(e.name);
+          setEditing(true);
+        }}
+        title={t("staff.rename")}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(ev) => {
+          if (ev.key === "Enter") {
+            ev.stopPropagation();
+            setEditing(true);
+          }
+        }}
+      >
+        {e.name}
+        <span className="text-[10px] text-dim opacity-0 transition group-hover:opacity-100">
+          ✎
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex items-center gap-1"
+      onClick={(ev) => ev.stopPropagation()}
+    >
+      <input
+        autoFocus
+        value={draft}
+        disabled={busy}
+        maxLength={24}
+        onChange={(ev) => setDraft(ev.target.value)}
+        onKeyDown={(ev) => {
+          if (ev.key === "Enter") void save();
+          if (ev.key === "Escape") setEditing(false);
+        }}
+        className="w-28 rounded border border-line bg-panel2 px-1.5 py-0.5 text-sm
+          outline-none focus:border-accent"
+      />
+      <Button tone="ghost" disabled={busy} onClick={() => void save()}>
+        {t("staff.save")}
+      </Button>
+      {e.default_name && e.name !== e.default_name && (
+        <button
+          type="button"
+          className="text-[10px] text-dim underline"
+          onClick={() => {
+            setDraft("");
+            void api.updateEmployee(e.id, { name: "" }).then(() => {
+              void onStaffChange?.();
+              setEditing(false);
+            });
+          }}
+        >
+          {t("staff.reset")}
+        </button>
+      )}
+    </span>
+  );
+}
+
+/**
+ * 채용 · 해고.
+ *
+ * 못 내보내는 자리는 **버튼을 숨기지 않고 이유를 보여준다.** 숨기면
+ * 사용자는 기능이 없는 줄 알고, 비활성만 하면 고장인 줄 안다.
+ */
+function HireButton({
+  e, onStaffChange,
+}: {
+  e: Employee; onStaffChange?: () => void | Promise<void>;
+}) {
+  const { t } = useLang();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fired = e.active === false;
+
+  if (e.can_fire === false) {
+    return (
+      <p className="mt-2 border-t border-line pt-2 text-[11px] text-dim">
+        {t("staff.locked")}
+      </p>
+    );
+  }
+
+  const flip = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.updateEmployee(e.id, { active: fired });
+      await onStaffChange?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 border-t border-line pt-2">
+      <Button tone={fired ? "primary" : "ghost"} disabled={busy}
+              onClick={() => void flip()}>
+        {fired ? t("staff.hire") : t("staff.fire")}
+      </Button>
+      {error && (
+        <p className="mt-1 text-[11px]" style={{ color: "var(--bad)" }}>
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 

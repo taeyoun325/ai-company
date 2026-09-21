@@ -106,7 +106,9 @@ def roster() -> dict:
     try:
         from app.agents import roles
         for e in roles.EMPLOYEES.values():
-            out[e.id] = {"name": f"{e.name} ({e.role})",
+            # 이름은 테넌트가 바꿀 수 있다 (DAY 21). 직함은 자리의 것이라
+            # 바뀌지 않는다 — 개발자를 뭐라 부르든 src/ 밖에는 못 쓴다.
+            out[e.id] = {"name": f"{roles.display_name(e.id)} ({e.role})",
                          "icon": ICONS.get(e.id, "👤")}
     except Exception:                           # noqa: BLE001
         pass
