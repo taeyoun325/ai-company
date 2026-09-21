@@ -221,3 +221,50 @@ def test_index_failure_does_not_lose_the_project(monkeypatch):
         sqlite3.DatabaseError("색인 손상")))
     slug = store.new_project("그래도 남아야 한다")
     assert store.meta(slug)["requirement"] == "그래도 남아야 한다"
+
+
+# ── 색인은 사본, 파일이 진실 (§12 · DAY 22) ────────────────────────
+def test_list_hides_projects_whose_files_are_gone(tmp_path, monkeypatch):
+    """색인에는 있는데 파일이 없는 행을 그대로 내보내면, 목록에는 있는데
+    누르면 '없는 프로젝트'가 되는 항목이 남는다. 사용자는 자기가 지운
+    것과 그 항목을 연결짓지 못한다."""
+    from app.database import index
+
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    index.close()
+
+    slug = store.new_project("색인 정리 시험")
+    index.upsert(store.meta(slug))
+    assert any(p["slug"] == slug for p in index.search()["projects"])
+
+    # 파일만 지운다 — 색인 행은 그대로 남는다
+    import shutil
+    shutil.rmtree(config.PROJECTS / slug)
+
+    rows = index.search()
+    assert all(p["slug"] != slug for p in rows["projects"]), "죽은 행이 보인다"
+    # 사본을 진실에 맞춘다 — 다음 조회에서 또 걸러낼 필요가 없어야 한다
+    assert all(p["slug"] != slug for p in index.search()["projects"])
+
+
+def test_partially_emptied_index_is_refilled_from_disk(tmp_path, monkeypatch):
+    """비었을 때만 채우면 부분적으로 빈 색인은 아무도 채우지 않는다.
+    디스크에 있는데 색인에 없는 프로젝트는 목록에서 사라진 것과 같다."""
+    from app.database import index
+
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    index.close()
+
+    kept = store.new_project("남는 것")
+    lost = store.new_project("색인에서만 사라진 것")
+    index.upsert(store.meta(kept))
+    index.upsert(store.meta(lost))
+
+    # 색인에서만 지운다 — 파일은 그대로다
+    with index.conn() as c:
+        c.execute("DELETE FROM projects WHERE slug = ?", (lost,))
+
+    index.ensure_ready()
+    slugs = {p["slug"] for p in index.search()["projects"]}
+    assert lost in slugs, "디스크에 있는데 목록에서 사라졌다"
+    assert kept in slugs

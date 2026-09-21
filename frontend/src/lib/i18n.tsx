@@ -257,6 +257,33 @@ const S = {
     ja: "視差効果を減らす設定（prefers-reduced-motion）が有効なら、この画面は動きません。",
   },
 
+  // ── 프로젝트 상세 (DAY 22) ────────────────────────────────────
+  "proj.loading": { ko: "불러오는 중…", en: "Loading…", ja: "読み込み中…" },
+  "proj.mockWarn": {
+    ko: "이 프로젝트는 Mock 직원이 만들었습니다.",
+    en: "This project was produced by mock employees.",
+    ja: "このプロジェクトは Mock 社員が作りました。",
+  },
+  "proj.mockWarnBody": {
+    ko: "산출물은 실제 AI 의 작업 결과가 아닙니다.",
+    en: "The deliverables are not the output of a real model.",
+    ja: "成果物は実際の AI の作業結果ではありません。",
+  },
+  "proj.stop": { ko: "정지", en: "Stop", ja: "停止" },
+  "proj.stopped": { ko: "중단", en: "Stopped", ja: "中断" },
+  "proj.unmet": {
+    ko: "충족되지 않은 인수기준",
+    en: "Unmet acceptance criteria",
+    ja: "満たされていない受け入れ基準",
+  },
+  "proj.files": { ko: "산출물", en: "Deliverables", ja: "成果物" },
+  "proj.score": { ko: "완성도와 비용", en: "Completeness and cost", ja: "完成度とコスト" },
+  "proj.tasks": { ko: "태스크", en: "Tasks", ja: "タスク" },
+  "proj.criteria": { ko: "인수기준", en: "Acceptance criteria", ja: "受け入れ基準" },
+  "proj.usage": { ko: "직원별 사용량", en: "Usage by employee", ja: "社員ごとの使用量" },
+  "proj.calls": { ko: "{n}회", en: "{n} calls", ja: "{n} 回" },
+  "proj.back": { ko: "사무실로", en: "To the office", ja: "オフィスへ" },
+
   // ── 내 API 키 (BYOK · DAY 22) ─────────────────────────────────
   "byok.title": {
     ko: "내 API 키 (자체 키 요금제)",

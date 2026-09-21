@@ -60,6 +60,11 @@ CREATE INDEX IF NOT EXISTS ix_projects_status ON projects (status);
 """
 
 
+# 죽은 행을 걷어내며 다시 읽는 횟수 상한. 색인이 통째로 죽어 있어도
+# 요청 하나가 영원히 돌면 안 된다.
+SWEEPS = 6
+
+
 def path() -> Path:
     """설정이 바뀌어도(테스트 등) 따라오도록 매번 계산한다."""
     return config.data_dir() / "ai_company.db"
@@ -188,20 +193,60 @@ def search(owner: str | None = None, status: str | None = None,
         args += [like, like, like]
     clause = f"WHERE {' AND '.join(where)}" if where else ""
 
+    take = max(1, min(limit, 200))
+    skip = max(0, offset)
+    # slug 로 모은다. 죽은 행을 지우면 같은 offset 이 앞으로 당겨지므로,
+    # 다음 쓸기에서 **이미 담은 행이 다시 나온다.** 목록으로 모으면 그게
+    # 그대로 중복이 되고, 화면에는 같은 프로젝트가 두 번 보인다.
+    live: dict[str, sqlite3.Row] = {}
+    total = 0
+
+    # 색인은 **사본**이고 파일이 진실이다 (§12). 파일이 사라진 행을 그대로
+    # 내보내면, 목록에는 있는데 누르면 "없는 프로젝트"가 되는 항목이 남고,
+    # 사용자는 자기가 지운 것과 그 항목을 연결짓지 못한다.
+    #
+    # 걸러내는 것만으로는 모자라다 — 한 페이지가 통째로 죽은 행이면 빈
+    # 목록이 나간다. 살아 있는 것을 채울 때까지 다시 읽되, **횟수를
+    # 묶는다**: 색인이 통째로 죽어 있어도 요청 하나가 영원히 돌면 안 된다.
+    for _ in range(SWEEPS):
+        try:
+            with _lock, conn() as c:
+                total = c.execute(
+                    f"SELECT COUNT(*) FROM projects {clause}", args).fetchone()[0]
+                rows = c.execute(
+                    f"SELECT * FROM projects {clause} "
+                    f"ORDER BY {col} {order} LIMIT ? OFFSET ?",
+                    [*args, take, skip]).fetchall()
+        except sqlite3.Error:
+            # 색인이 깨졌으면 디스크가 진실이다. 빈 화면 대신 파일에서 읽는다.
+            return _from_disk(owner, status, q, limit, offset)
+
+        stale = []
+        for r in rows:
+            if store.exists(r["slug"]):
+                live.setdefault(r["slug"], r)
+            else:
+                stale.append(r["slug"])
+        if stale:
+            _forget(stale)
+            total = max(0, total - len(stale))
+        # 더 읽을 것이 없거나, 페이지를 채웠으면 끝
+        if not stale or len(rows) < take or len(live) >= take:
+            break
+
+    return {"projects": [dict(r) for r in list(live.values())[:take]],
+            "total": total, "limit": limit, "offset": offset,
+            "source": "index"}
+
+
+def _forget(slugs) -> None:
+    """파일이 없어진 행을 색인에서 지운다. 실패해도 목록은 이미 걸러졌다."""
     try:
         with _lock, conn() as c:
-            total = c.execute(
-                f"SELECT COUNT(*) FROM projects {clause}", args).fetchone()[0]
-            rows = c.execute(
-                f"SELECT * FROM projects {clause} "
-                f"ORDER BY {col} {order} LIMIT ? OFFSET ?",
-                [*args, max(1, min(limit, 200)), max(0, offset)]).fetchall()
+            c.executemany("DELETE FROM projects WHERE slug = ?",
+                          [(s,) for s in slugs])
     except sqlite3.Error:
-        # 색인이 깨졌으면 디스크가 진실이다. 빈 화면 대신 파일에서 읽는다.
-        return _from_disk(owner, status, q, limit, offset)
-
-    return {"projects": [dict(r) for r in rows], "total": total,
-            "limit": limit, "offset": offset, "source": "index"}
+        pass
 
 
 def _from_disk(owner, status, q, limit, offset) -> dict:
@@ -287,6 +332,11 @@ def ensure_ready() -> dict:
     except sqlite3.Error:
         n = 0
     on_disk = len(store.list_projects())
-    if n == 0 and on_disk > 0:
-        return {"rebuilt": rebuild(), "reason": "색인이 비어 있고 디스크에 있음"}
+    # 비었을 때만 채우면, **부분적으로** 빈 색인은 아무도 채우지 않는다.
+    # 디스크에 있는데 색인에 없는 프로젝트는 목록에서 영영 사라진 것과
+    # 같다 — 산출물은 멀쩡히 있는데 사용자는 잃어버렸다고 생각한다.
+    # 색인은 사본이므로, 사본이 모자라면 진실에서 다시 만든다.
+    if on_disk > n:
+        return {"rebuilt": rebuild(), "indexed": n, "on_disk": on_disk,
+                "reason": "디스크에 있는데 색인에 없음"}
     return {"rebuilt": 0, "indexed": n, "on_disk": on_disk}
