@@ -51,7 +51,7 @@
  * 돌아다니는 고양이 같은 것은 넣지 않았다. 귀엽지만 아무 말도 하지
  * 않고, 말하지 않는 것으로 시선을 끌면 말하는 것이 묻힌다.
  */
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 
 import { prefersReducedMotion } from "@/lib/motion";
 import { useLang } from "@/lib/i18n";
@@ -240,6 +240,35 @@ function Laptop({ seat, working, empty }: {
  * 두는 이유: 그건 제품의 **상태 이름**이지 문장이 아니다. 로그와 화면이
  * 같은 낱말을 써야 "그 PLAN 이 이 PLAN 인가"를 묻지 않는다.
  */
+/**
+ * 방 — 가구와 회의 탁자. **한 번도 바뀌지 않는다**(생성된 좌표표).
+ *
+ * `memo` 로 감싼 이유: 실행 중에는 타자 프레임이 초당 5번 바뀌고, 그때마다
+ * 이 안의 요소 147개가 다시 만들어졌다. 값이 같아서 브라우저는 DOM 을
+ * 안 건드렸지만(측정해보니 DOM 변이는 손 2개뿐이었다), **만드는 일
+ * 자체가 낭비다.** 이 기기에서는 60fps 가 유지됐지만 약한 기기에서는
+ * 그 낭비가 프레임을 갉아먹는다.
+ */
+const Room = memo(function Room() {
+  return (
+    <>
+      {/* 생성된 데이터 (scripts/gen-office.mjs) */}
+      {ROOM_RECTS.map((q, i) => (
+        <rect key={i} x={q.x} y={q.y} width={q.w} height={q.h} rx={q.rx}
+              fill={PAINT[q.fill] ?? "var(--line)"} />
+      ))}
+      <ellipse cx={TABLE.cx} cy={TABLE.cy} rx={TABLE.rx} ry={TABLE.ry}
+               fill="color-mix(in srgb, var(--fg) 14%, transparent)"
+               stroke="color-mix(in srgb, var(--fg) 26%, transparent)"
+               strokeWidth="1" />
+      <ellipse cx={TABLE.cx} cy={TABLE.cy} rx={TABLE.rx - 4}
+               ry={TABLE.ry - 3} fill="none" stroke="var(--line)"
+               strokeWidth="0.5" opacity="0.7" />
+    </>
+  );
+});
+
+
 function PhaseChip({ phase, detail }: { phase?: string; detail?: string }) {
   if (!phase) return null;
   const label = detail ? `${phase} · ${detail}` : phase;
@@ -312,8 +341,23 @@ export function PixelOffice({
   // 아무도 일하지 않는 화면이 계속 다시 그려질 이유가 없다.
   useEffect(() => {
     if (still || !anyWorking) return;
-    const id = window.setInterval(() => setFrame((f) => (f + 1) % 2), 190);
-    return () => window.clearInterval(id);
+    let id = 0;
+    // 탭이 숨어 있으면 아무도 안 본다. 그때도 도는 타이머는 배터리만 쓴다.
+    const start = () => {
+      if (id) return;
+      id = window.setInterval(() => setFrame((f) => (f + 1) % 2), 190);
+    };
+    const stop = () => {
+      window.clearInterval(id);
+      id = 0;
+    };
+    const onVisibility = () => (document.hidden ? stop() : start());
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [still, anyWorking]);
 
   const open = employees.find((e) => e.id === (picked ?? hover));
@@ -326,20 +370,7 @@ export function PixelOffice({
         role="img"
         aria-label={t("office.alt")}
       >
-        {/* 방 — 생성된 데이터 (scripts/gen-office.mjs) */}
-        {ROOM_RECTS.map((q, i) => (
-          <rect key={i} x={q.x} y={q.y} width={q.w} height={q.h} rx={q.rx}
-                fill={PAINT[q.fill] ?? "var(--line)"} />
-        ))}
-
-        {/* 회의 탁자 */}
-        <ellipse cx={TABLE.cx} cy={TABLE.cy} rx={TABLE.rx} ry={TABLE.ry}
-                 fill="color-mix(in srgb, var(--fg) 14%, transparent)"
-                 stroke="color-mix(in srgb, var(--fg) 26%, transparent)"
-                 strokeWidth="1" />
-        <ellipse cx={TABLE.cx} cy={TABLE.cy} rx={TABLE.rx - 4}
-                 ry={TABLE.ry - 3} fill="none" stroke="var(--line)"
-                 strokeWidth="0.5" opacity="0.7" />
+        <Room />
 
         <PhaseChip phase={phase} detail={detail} />
 

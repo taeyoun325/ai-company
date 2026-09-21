@@ -196,3 +196,34 @@ def test_approval_events_do_not_clash():
     bus.bind("run-a")
     approvals.decide("없는승인", "approve")     # 없는 id 여도 이벤트 경로는 탄다
     assert all(isinstance(e["id"], int) for e in bus.history("run-a"))
+
+
+# ── 메모리가 실행 개수만큼 자라지 않는가 (DAY 22) ──────────────────
+def test_old_runs_are_evicted_from_memory():
+    """이벤트 수만 묶어두면 부족하다. 실행 하나가 2000개로 묶여 있어도
+    끝난 실행의 이력이 지워지지 않으면 **실행 개수만큼** 쌓인다.
+    오래 도는 서버에서는 끝없이 자란다."""
+    bus.reset()
+    limit = bus.RUN_HISTORY_LIMIT
+    for n in range(limit + 6):
+        bus.bind(f"run-{n}")
+        bus.say("SYSTEM", "일했다")
+
+    assert len(bus._history) <= limit
+    # 최근 것은 남고
+    assert bus.replay(f"run-{limit + 5}", 0)
+    # 가장 오래된 것은 나갔다
+    assert bus.replay("run-0", 0) == []
+
+
+def test_the_running_one_is_never_evicted():
+    """지금 도는 실행의 로그가 사라지면 화면이 그 자리에서 빈다."""
+    bus.reset()
+    bus.bind("지금-도는-것")
+    bus.say("SYSTEM", "시작")
+    for n in range(bus.RUN_HISTORY_LIMIT + 10):
+        bus.bind(f"다른-실행-{n}")
+        bus.say("SYSTEM", "x")
+    bus.bind("지금-도는-것")
+    bus.say("SYSTEM", "계속")
+    assert len(bus.replay("지금-도는-것", 0)) >= 1

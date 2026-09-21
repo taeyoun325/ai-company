@@ -35,6 +35,7 @@ from __future__ import annotations
 import itertools
 import json
 import queue
+import os
 import threading
 import time
 from collections import defaultdict, deque
@@ -46,13 +47,40 @@ from app import config
 HISTORY_LIMIT = 2000
 # 한 구독자가 밀리는 것을 허용하는 한계
 SUBSCRIBER_LIMIT = 4000
+# **메모리에 이력을 남겨둘 실행의 수** (DAY 22).
+#
+# 이벤트 수만 묶어두면 부족했다. 실행 하나가 2000개로 묶여 있어도,
+# 끝난 실행의 이력이 지워지지 않아서 **실행 개수만큼 쌓였다.** 실행
+# 50개에 3.4MB — 오래 도는 서버에서는 끝없이 자란다.
+#
+# 오래된 실행부터 내보낸다. 내보낸 뒤에도 잃는 것은 **화면의 실시간
+# 로그**뿐이다 — 산출물·점수·태스크는 파일에 있고, 프로젝트 상세 화면은
+# 그걸 읽는다. 서버를 한 번 재시작해도 같은 일이 일어나므로, 이건 새로
+# 생긴 손실이 아니라 이미 있던 성질이다.
+RUN_HISTORY_LIMIT = int(os.getenv("RUN_HISTORY_LIMIT", "24"))
 
 _lock = threading.RLock()
 _local = threading.local()
 _seq = itertools.count(1)
 
-# run -> 최근 이벤트
-_history: dict[str | None, deque] = defaultdict(lambda: deque(maxlen=HISTORY_LIMIT))
+# run -> 최근 이벤트. **삽입 순서가 곧 오래된 순서**다(파이썬 dict 성질).
+# 새 이벤트가 올 때마다 그 실행을 맨 뒤로 옮기므로, 앞쪽이 가장 오래
+# 건드리지 않은 실행이 된다.
+_history: dict[str | None, deque] = {}
+
+
+def _bucket(run: str | None) -> deque:
+    """이 실행의 이벤트 통. 없으면 만들고, 넘치면 오래된 실행을 내보낸다."""
+    d = _history.pop(run, None)
+    if d is None:
+        d = deque(maxlen=HISTORY_LIMIT)
+    _history[run] = d                      # 맨 뒤로 = 가장 최근에 쓰임
+    while len(_history) > RUN_HISTORY_LIMIT:
+        oldest = next(iter(_history))
+        if oldest == run:                  # 지금 쓰는 것은 내보내지 않는다
+            break
+        _history.pop(oldest, None)
+    return d
 
 
 class Subscriber:
@@ -186,7 +214,7 @@ def emit(type: str, **payload: Any) -> dict:
     run = current()
     ev = {"id": next(_seq), "type": type, "ts": time.time(), "run": run, **payload}
     with _lock:
-        _history[run].append(ev)
+        _bucket(run).append(ev)
         subs = list(_subscribers)
     for s in subs:
         s.offer(ev)
