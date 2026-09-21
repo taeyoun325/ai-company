@@ -154,6 +154,15 @@ def close() -> None:
 
 
 # ── 값 ──────────────────────────────────────────────────────────────
+class AlreadyExists(Exception):
+    """같은 이메일이 이미 있다.
+
+    DB 가 던지는 예외(`sqlite3.IntegrityError`)를 **여기서** 우리 예외로
+    바꾼다. 서비스가 그걸 직접 잡으면 서비스도 SQLite 를 아는 코드가
+    되고, PostgreSQL 로 옮길 때 고칠 곳이 하나 늘어난다(§5).
+    """
+
+
 @dataclass(frozen=True)
 class User:
     id: str
@@ -203,11 +212,14 @@ def create_user(email: str, display_name: str = "") -> User:
     user = User(id=uuid.uuid4().hex, email=email,
                 display_name=display_name.strip() or email.split("@")[0],
                 created_at=time.time())
-    with _lock, conn() as c:
-        c.execute(
-            "INSERT INTO users (id, email, display_name, created_at, disabled) "
-            "VALUES (?, ?, ?, ?, 0)",
-            (user.id, user.email, user.display_name, user.created_at))
+    try:
+        with _lock, conn() as c:
+            c.execute(
+                "INSERT INTO users (id, email, display_name, created_at, "
+                "disabled) VALUES (?, ?, ?, ?, 0)",
+                (user.id, user.email, user.display_name, user.created_at))
+    except sqlite3.IntegrityError as e:
+        raise AlreadyExists(user.email) from e
     return user
 
 
@@ -237,12 +249,20 @@ def set_display_name(user_id: str, name: str) -> None:
 # ── 로그인 수단 ─────────────────────────────────────────────────────
 def add_identity(user_id: str, provider: str, subject: str,
                  password_hash: str | None = None) -> None:
-    with _lock, conn() as c:
-        c.execute(
-            "INSERT INTO identities (id, user_id, provider, subject, "
-            "password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (uuid.uuid4().hex, user_id, provider, subject, password_hash,
-             time.time()))
+    """로그인 수단을 붙인다. (provider, subject) 는 유일해야 한다.
+
+    같은 이메일로 두 요청이 동시에 들어오면 여기서 부딪힌다 —
+    `create_user` 와 같은 이유로, DB 예외를 우리 예외로 바꿔서 올린다.
+    """
+    try:
+        with _lock, conn() as c:
+            c.execute(
+                "INSERT INTO identities (id, user_id, provider, subject, "
+                "password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (uuid.uuid4().hex, user_id, provider, subject, password_hash,
+                 time.time()))
+    except sqlite3.IntegrityError as e:
+        raise AlreadyExists(f"{provider}:{subject}") from e
 
 
 def identity(provider: str, subject: str) -> sqlite3.Row | None:

@@ -123,12 +123,13 @@ def sign_up(email: str, password: str, display_name: str = "") -> store.User:
     if store.user_by_email(email) is not None:
         raise AuthError("이미 가입된 이메일입니다.")
 
-    import sqlite3
     try:
         user = store.create_user(email, display_name)
         store.add_identity(user.id, PROVIDER, email,
                            passwords.hash_password(password))
-    except sqlite3.IntegrityError as e:
+    except store.AlreadyExists as e:
+        # DB 예외를 여기서 잡으면 이 파일도 SQLite 를 아는 코드가 된다.
+        # 저장소가 우리 예외로 바꿔서 올린다(§5).
         raise AuthError("이미 가입된 이메일입니다.") from e
     return user
 

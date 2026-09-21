@@ -90,15 +90,20 @@ def get(owner: str) -> dict | None:
 def create(owner: str, plan: str, granted: float) -> dict:
     """없으면 만든다. 이미 있으면 그대로 둔다.
 
-    `INSERT OR IGNORE` 인 이유: 두 요청이 같은 순간에 같은 지갑을 만들려
-    하면 하나는 실패해야 하는데, 그 실패가 예외로 올라가면 멀쩡한 요청이
+    충돌을 무시하는 이유: 두 요청이 같은 순간에 같은 지갑을 만들려 하면
+    하나는 실패해야 하는데, 그 실패가 예외로 올라가면 멀쩡한 요청이
     죽는다. 이미 있으면 그게 답이다.
+
+    `INSERT OR IGNORE` 가 아니라 `ON CONFLICT ... DO NOTHING` 을 쓴다 —
+    앞의 것은 SQLite 에만 있고, 뒤의 것은 PostgreSQL 에도 있다. 옮길 때
+    고칠 곳을 늘리지 않는다(§5).
     """
     with _lock, conn() as c:
         c.execute(
-            "INSERT OR IGNORE INTO wallets "
+            "INSERT INTO wallets "
             "(owner, plan, granted, spent, topped_up, byok_usd, renewed_at) "
-            "VALUES (?, ?, ?, 0, 0, 0, ?)",
+            "VALUES (?, ?, ?, 0, 0, 0, ?) "
+            "ON CONFLICT (owner) DO NOTHING",
             (owner, plan, granted, time.time()))
     return get(owner) or {}
 
@@ -170,9 +175,10 @@ def migrate_from(file: Path) -> int:
             continue
         with _lock, conn() as c:
             c.execute(
-                "INSERT OR IGNORE INTO wallets "
+                "INSERT INTO wallets "
                 "(owner, plan, granted, spent, topped_up, byok_usd, renewed_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                " VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (owner) DO NOTHING",
                 (owner, row.get("plan", "free"),
                  float(row.get("granted", 0)), float(row.get("spent", 0)),
                  float(row.get("topped_up", 0)), float(row.get("byok_usd", 0)),

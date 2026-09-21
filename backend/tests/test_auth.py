@@ -388,3 +388,21 @@ def test_pricing_stays_public_and_does_not_leak_other_tenants(monkeypatch):
     assert body["plans"], "가격이 안 보인다"
     assert body["per_project"]["measured"] is False
     assert body["per_project"]["samples"] == 0
+
+
+def test_duplicate_signup_reports_a_domain_error_not_a_db_one():
+    """DB 예외를 서비스가 직접 잡으면 서비스도 SQLite 를 아는 코드가
+    되고, 옮길 때 고칠 곳이 하나 늘어난다(§5)."""
+    import sqlite3
+
+    from app.auth import service, store
+
+    service.sign_up("dup@example.com", "Qx7-vault-river-92")
+    with pytest.raises(store.AlreadyExists):
+        store.create_user("dup@example.com")
+    try:
+        service.sign_up("dup@example.com", "Qx7-vault-river-92")
+    except service.AuthError as e:
+        assert not isinstance(e, sqlite3.Error)
+    else:
+        raise AssertionError("같은 이메일로 두 번 가입됐다")
