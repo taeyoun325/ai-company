@@ -257,6 +257,133 @@ const S = {
     ja: "視差効果を減らす設定（prefers-reduced-motion）が有効なら、この画面は動きません。",
   },
 
+  // ── 내 API 키 (BYOK · DAY 22) ─────────────────────────────────
+  "byok.title": {
+    ko: "내 API 키 (자체 키 요금제)",
+    en: "My API keys (bring-your-own-key plan)",
+    ja: "自分の API キー（自前キープラン）",
+  },
+  "byok.inUse": { ko: "사용 중", en: "in use", ja: "使用中" },
+  "byok.short": { ko: "키가 모자랍니다", en: "keys missing", ja: "キーが足りません" },
+  "byok.warn": {
+    ko: "자체 키 요금제인데 키가 모자랍니다 — 실행이 거부됩니다. 운영자 키로 대신 호출하지 않습니다.",
+    en: "You are on the bring-your-own-key plan but keys are missing — runs will be refused. We never fall back to the operator's keys.",
+    ja: "自前キープランですがキーが足りません — 実行は拒否されます。運営者のキーで代わりに呼び出すことはありません。",
+  },
+  "byok.body": {
+    ko: "여기 넣은 키로 내 프로젝트가 돌아가고, {strong} 크레딧은 차감되지 않습니다. 키는 암호화해서 보관하고 화면에는 마스킹된 형태만 돌아옵니다.",
+    en: "Your projects run on the keys you enter here, and {strong} No credits are deducted. Keys are stored encrypted, and only masked values come back to the screen.",
+    ja: "ここに入れたキーで自分のプロジェクトが動き、{strong} クレジットは差し引かれません。キーは暗号化して保管し、画面にはマスクされた形だけが返ります。",
+  },
+  "byok.body.strong": {
+    ko: "모델 요금은 내 계정으로 직접 청구됩니다.",
+    en: "model usage is billed to your own account.",
+    ja: "モデル料金はご自身のアカウントに直接請求されます。",
+  },
+  "byok.kekWarn": {
+    ko: "이 서버는 키 암호화 키(KEK)를 파일에 두고 있습니다. 서버 디스크를 가져간 사람은 여기 넣은 키도 가져갑니다 — 운영자는 BYOK_SECRET 을 환경변수로 넣어야 합니다.",
+    en: "This server keeps the key-encryption key (KEK) in a file. Anyone who takes the server disk takes these keys too — the operator should pass BYOK_SECRET through the environment.",
+    ja: "このサーバーは鍵暗号化キー（KEK）をファイルに置いています。サーバーのディスクを持ち出した人はここのキーも持ち出せます — 運営者は BYOK_SECRET を環境変数で渡すべきです。",
+  },
+  "byok.clear": { ko: "지우기", en: "Clear", ja: "削除" },
+  "byok.crossNote": {
+    ko: "구현자와 검증자는 {strong} — Anthropic 과 Google 키가 둘 다 있어야 교차검증이 성립합니다.",
+    en: "The implementer and the reviewer must be {strong} — cross-checking only holds with both an Anthropic and a Google key.",
+    ja: "実装者と検証者は{strong} — Anthropic と Google のキーが両方あって初めて相互検証が成り立ちます。",
+  },
+  "byok.crossNote.strong": {
+    ko: "서로 다른 회사여야 합니다",
+    en: "from different companies",
+    ja: "別の会社でなければなりません",
+  },
+  "set.fallback": { ko: "대체", en: "fallback", ja: "代替" },
+
+  // ── 설정 (DAY 22) ─────────────────────────────────────────────
+  "set.allMock": {
+    ko: "모든 직원이 Mock 으로 일하고 있습니다. 아래에서 키를 등록하세요.",
+    en: "Every employee is running on mock. Register keys below.",
+    ja: "全社員が Mock で動いています。下でキーを登録してください。",
+  },
+  "set.noCross": {
+    ko: "교차검증이 성립하지 않습니다 — 구현자(Claude)와 검증자(Gemini) 양쪽 키가 모두 있어야 합니다. 같은 모델은 같은 실수를 함께 놓칩니다.",
+    en: "Cross-checking does not hold — you need keys for both the implementer (Claude) and the reviewer (Gemini). The same model misses the same mistakes.",
+    ja: "相互検証が成り立ちません — 実装者（Claude）と検証者（Gemini）の両方のキーが必要です。同じモデルは同じ間違いを一緒に見落とします。",
+  },
+  "set.operatorKeys": { ko: "운영자 API 키", en: "Operator API keys", ja: "運営者の API キー" },
+  "set.operatorLocked": {
+    ko: "서버 배포에서는 운영자 키를 화면에서 바꿀 수 없습니다 — 환경변수로만 들어옵니다. 본인 키를 쓰시려면 위의 '내 API 키'에 등록하세요.",
+    en: "On a server deployment the operator keys cannot be changed from the UI — they come only from the environment. To use your own keys, register them above under 'My API keys'.",
+    ja: "サーバー配備では運営者キーを画面から変更できません — 環境変数からのみ入ります。ご自身のキーを使うには上の「自分の API キー」に登録してください。",
+  },
+  "set.operatorHint": {
+    ko: "키는 저장하지 않으면 서버 메모리에만 남고, 환경변수로 넣은 키는 기동 즉시 환경에서 지워집니다. 화면에는 마스킹된 형태만 돌아옵니다.",
+    en: "Unless you save them, keys live only in server memory; keys passed through the environment are removed from it at startup. Only masked values come back to the screen.",
+    ja: "保存しなければキーはサーバーのメモリにだけ残り、環境変数で渡したキーは起動直後に環境から消されます。画面にはマスクされた形だけが返ります。",
+  },
+  "set.registeredEnv": { ko: "등록됨 (환경변수)", en: "registered (from env)", ja: "登録済み（環境変数）" },
+  "set.notRegistered": { ko: "등록되지 않음", en: "not registered", ja: "未登録" },
+  "set.check": { ko: "확인", en: "Check", ja: "確認" },
+  "set.save": { ko: "저장", en: "Save", ja: "保存" },
+  "set.persist": {
+    ko: "디스크에 저장 (.secrets.json, 소유자만 읽기)",
+    en: "Save to disk (.secrets.json, owner-readable only)",
+    ja: "ディスクに保存（.secrets.json、所有者のみ読み取り）",
+  },
+  "set.forget": { ko: "저장된 키 지우기", en: "Forget stored keys", ja: "保存したキーを削除" },
+  "set.providers": { ko: "제공자", en: "Providers", ja: "プロバイダ" },
+  "set.real": { ko: "실제", en: "live", ja: "実際" },
+  "set.keyYes": { ko: "키 있음", en: "key present", ja: "キーあり" },
+  "set.keyNo": { ko: "키 없음", en: "no key", ja: "キーなし" },
+  "set.models": { ko: "직원별 모델", en: "Model per employee", ja: "社員ごとのモデル" },
+  "set.modelsHint": {
+    ko: "단가표에 없는 모델은 거부됩니다. 단가를 모르면 비용이 0 으로 잡히고, 0 은 공짜가 아니라 모른다는 뜻이라 예산 상한이 걸리지 않습니다.",
+    en: "Models missing from the price table are rejected. Without a price the cost reads as 0, and 0 means 'unknown', not 'free' — so the budget limit would never trigger.",
+    ja: "単価表にないモデルは拒否されます。単価が分からないとコストが 0 になり、0 は無料ではなく「不明」という意味なので、予算上限が効かなくなります。",
+  },
+
+  // ── 로그인 (DAY 22) ───────────────────────────────────────────
+  "auth.loading": { ko: "불러오는 중…", en: "Loading…", ja: "読み込み中…" },
+  "auth.noBackend": {
+    ko: "백엔드에 닿지 못했습니다. 서버가 떠 있는지 확인하세요.",
+    en: "Could not reach the backend. Check that the server is running.",
+    ja: "バックエンドに接続できませんでした。サーバーが起動しているか確認してください。",
+  },
+  "auth.firstAccount": {
+    ko: "이 서버의 첫 계정입니다.",
+    en: "This is the first account on this server.",
+    ja: "このサーバーの最初のアカウントです。",
+  },
+  "auth.firstAccountBody": {
+    ko: "지금 만드는 계정이 첫 사용자가 됩니다. 이 문구가 낯선 서버에서 보인다면 뭔가 잘못된 것입니다.",
+    en: "The account you create now becomes the first user. If you see this on a server you do not own, something is wrong.",
+    ja: "今作るアカウントが最初のユーザーになります。見覚えのないサーバーでこの文が出るなら、何かがおかしいということです。",
+  },
+  "auth.login": { ko: "로그인", en: "Log in", ja: "ログイン" },
+  "auth.signup": { ko: "가입", en: "Sign up", ja: "登録" },
+  "auth.email": { ko: "이메일", en: "Email", ja: "メール" },
+  "auth.displayName": { ko: "표시 이름", en: "Display name", ja: "表示名" },
+  "auth.displayNameHint": {
+    ko: "비워두면 이메일 앞부분을 씁니다.",
+    en: "Left empty, we use the part before the @.",
+    ja: "空のままなら、メールの @ より前を使います。",
+  },
+  "auth.password": { ko: "비밀번호", en: "Password", ja: "パスワード" },
+  "auth.passwordHint": { ko: "10자 이상.", en: "10 characters or more.", ja: "10 文字以上。" },
+  "auth.working": { ko: "확인 중…", en: "Checking…", ja: "確認中…" },
+  "auth.signupCta": { ko: "가입하고 시작", en: "Sign up and start", ja: "登録して始める" },
+  "auth.noGoogle": {
+    ko: "구글 로그인은 아직 없습니다. 계정 구조는 나중에 끼울 수 있게 만들어져 있습니다.",
+    en: "Google sign-in is not here yet. The account model is built so it can be added later without a migration.",
+    ja: "Google ログインはまだありません。アカウント構造は後から差し込めるように作ってあります。",
+  },
+  "auth.localUser": { ko: "로컬 사용자", en: "Local user", ja: "ローカルユーザー" },
+  "auth.localHint": {
+    ko: "DEPLOY_MODE=local — 로그인 없이 동작합니다",
+    en: "DEPLOY_MODE=local — runs without login",
+    ja: "DEPLOY_MODE=local — ログインなしで動作します",
+  },
+  "auth.logout": { ko: "로그아웃", en: "Log out", ja: "ログアウト" },
+
   // ── 인사 (DAY 21) ─────────────────────────────────────────────
   "staff.rename": { ko: "이름 바꾸기", en: "Rename", ja: "名前を変更" },
   "staff.save": { ko: "저장", en: "Save", ja: "保存" },

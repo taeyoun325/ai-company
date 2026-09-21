@@ -22,6 +22,7 @@ import { useState } from "react";
 
 import { Button, Panel, Warning } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useLang } from "@/lib/i18n";
 import type { ByokStatus } from "@/lib/types";
 
 const LABEL: Record<string, string> = {
@@ -37,6 +38,7 @@ export function ByokPanel({
   status: ByokStatus | null;
   reload: () => Promise<void> | void;
 }) {
+  const { t } = useLang();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [checks, setChecks] = useState<
     Record<string, { ok: boolean; detail: string }>
@@ -90,36 +92,31 @@ export function ByokPanel({
 
   return (
     <Panel
-      title="내 API 키 (자체 키 요금제)"
+      title={t("byok.title")}
       right={
         status.source === "byok" && (
           <span
             className="text-[11px]"
             style={{ color: status.ready ? "var(--ok)" : "var(--bad)" }}
           >
-            {status.ready ? "사용 중" : "키가 모자랍니다"}
+            {status.ready ? t("byok.inUse") : t("byok.short")}
           </span>
         )
       }
     >
       {status.source === "byok" && !status.ready && (
         <Warning>
-          자체 키 요금제인데 키가 모자랍니다 — 실행이 거부됩니다. 운영자 키로
-          대신 호출하지 않습니다.
+          {t("byok.warn")}
         </Warning>
       )}
 
       <p className="mb-3 text-xs text-dim">
-        여기 넣은 키로 내 프로젝트가 돌아가고, <strong>모델 요금은 내
-        계정으로 직접 청구됩니다.</strong> 크레딧은 차감되지 않습니다. 키는
-        암호화해서 보관하고 화면에는 마스킹된 형태만 돌아옵니다.
+        <Filled text={t("byok.body")} strong={t("byok.body.strong")} />
       </p>
 
       {!status.kek_from_env && (
         <p className="mb-3 text-[11px]" style={{ color: "var(--bad)" }}>
-          이 서버는 키 암호화 키(KEK)를 파일에 두고 있습니다. 서버 디스크를
-          가져간 사람은 여기 넣은 키도 가져갑니다 — 운영자는 BYOK_SECRET 을
-          환경변수로 넣어야 합니다.
+          {t("byok.kekWarn")}
         </p>
       )}
 
@@ -148,7 +145,7 @@ export function ByokPanel({
                 font-mono text-sm outline-none focus:border-accent"
             />
             <Button onClick={() => void check(name)} disabled={!k.set || busy}>
-              확인
+              {t("set.check")}
             </Button>
             {k.set && (
               <Button
@@ -156,7 +153,7 @@ export function ByokPanel({
                 disabled={busy}
                 onClick={() => void run(() => api.clearByok(name))}
               >
-                지우기
+                {t("byok.clear")}
               </Button>
             )}
             {checks[name] && (
@@ -173,13 +170,28 @@ export function ByokPanel({
 
       <div className="mt-3 flex items-center gap-3">
         <Button tone="primary" onClick={() => void save()} disabled={busy}>
-          저장
+          {t("set.save")}
         </Button>
         <span className="text-[11px] text-dim">
-          구현자와 검증자는 <strong>서로 다른 회사</strong>여야 합니다 —
-          Anthropic 과 Google 키가 둘 다 있어야 교차검증이 성립합니다.
+          <Filled text={t("byok.crossNote")}
+                  strong={t("byok.crossNote.strong")} />
         </span>
       </div>
     </Panel>
+  );
+}
+
+/**
+ * `{strong}` 자리에 굵은 조각을 끼운다. 번역문마다 강조할 조각의
+ * **위치가 다르다** — 문장을 앞뒤로 쪼개 두면 언어마다 어순이 어긋난다.
+ */
+function Filled({ text, strong }: { text: string; strong: string }) {
+  const [before, after = ""] = text.split("{strong}");
+  return (
+    <>
+      {before}
+      <strong className="text-fg">{strong}</strong>
+      {after}
+    </>
   );
 }

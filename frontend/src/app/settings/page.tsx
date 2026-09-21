@@ -25,11 +25,13 @@ import { useState } from "react";
 import { ByokPanel } from "@/components/ByokPanel";
 import { Button, ErrorBox, MockBadge, Panel, Screen, Warning }
   from "@/components/ui";
+import { useLang } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import type { ByokStatus, Employee, ProviderStatus, Settings } from "@/lib/types";
 import { useLoader } from "@/lib/useLoader";
 
 export default function SettingsPage() {
+  const { t } = useLang();
   const { data, error: loadError, reload: load } = useLoader("settings", async () => {
     const [s, st, b] = await Promise.all([
       api.settings(),
@@ -106,23 +108,22 @@ export default function SettingsPage() {
 
       {providers?.all_mock && (
         <Warning>
-          모든 직원이 Mock 으로 일하고 있습니다. 아래에서 키를 등록하세요.
+          {t("set.allMock")}
         </Warning>
       )}
       {providers && !providers.all_mock && !providers.cross_check && (
         <Warning>
-          교차검증이 성립하지 않습니다 — 구현자(Claude)와 검증자(Gemini) 양쪽
-          키가 모두 있어야 합니다. 같은 모델은 같은 실수를 함께 놓칩니다.
+          {t("set.noCross")}
         </Warning>
       )}
 
       <ByokPanel status={byok} reload={load} />
 
-      <Panel title="운영자 API 키">
+      <Panel title={t("set.operatorKeys")}>
         <p className="mb-3 text-xs text-dim">
           {operatorLocked
-            ? "서버 배포에서는 운영자 키를 화면에서 바꿀 수 없습니다 — 환경변수로만 들어옵니다. 본인 키를 쓰시려면 위의 '내 API 키'에 등록하세요."
-            : "키는 저장하지 않으면 서버 메모리에만 남고, 환경변수로 넣은 키는 기동 즉시 환경에서 지워집니다. 화면에는 마스킹된 형태만 돌아옵니다."}
+            ? t("set.operatorLocked")
+            : t("set.operatorHint")}
         </p>
         <div className="space-y-3">
           {settings &&
@@ -140,8 +141,8 @@ export default function SettingsPage() {
                   disabled={operatorLocked}
                   placeholder={
                     operatorLocked
-                      ? (k.set ? "등록됨 (환경변수)" : "등록되지 않음")
-                      : (k.masked ?? "등록되지 않음")
+                      ? (k.set ? t("set.registeredEnv") : t("set.notRegistered"))
+                      : (k.masked ?? t("set.notRegistered"))
                   }
                   className="min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 py-1.5
                     font-mono text-sm outline-none focus:border-accent"
@@ -150,7 +151,7 @@ export default function SettingsPage() {
                   onClick={() => void check(name)}
                   disabled={!k.set || busy || operatorLocked}
                 >
-                  확인
+                  {t("set.check")}
                 </Button>
                 {checks[name] && (
                   <span
@@ -165,7 +166,7 @@ export default function SettingsPage() {
         </div>
         <div className="mt-3 flex items-center gap-3">
           <Button tone="primary" onClick={save} disabled={busy || operatorLocked}>
-            저장
+            {t("set.save")}
           </Button>
           <label className="flex items-center gap-1.5 text-xs text-muted">
             <input
@@ -173,17 +174,17 @@ export default function SettingsPage() {
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
             />
-            디스크에 저장 (.secrets.json, 소유자만 읽기)
+            {t("set.persist")}
           </label>
           {settings?.stored && (
             <Button tone="ghost" onClick={() => void api.forgetKeys().then(load)}>
-              저장된 키 지우기
+              {t("set.forget")}
             </Button>
           )}
         </div>
       </Panel>
 
-      <Panel title="제공자">
+      <Panel title={t("set.providers")}>
         <ul className="space-y-2">
           {providers?.providers.map((p) => (
             <li
@@ -196,22 +197,22 @@ export default function SettingsPage() {
                 <MockBadge />
               ) : (
                 <span className="text-xs" style={{ color: "var(--ok)" }}>
-                  실제
+                  {t("set.real")}
                 </span>
               )}
               <span className="ml-auto text-[11px] text-dim">
-                키 {settings?.keys[KEY_OF[p.name]]?.set ? "있음" : "없음"}
-                {p.fallbacks.length > 0 && ` · 대체 → ${p.fallbacks.join(", ")}`}
+                {settings?.keys[KEY_OF[p.name]]?.set ? t("set.keyYes") : t("set.keyNo")}
+                {p.fallbacks.length > 0 &&
+                  ` · ${t("set.fallback")} → ${p.fallbacks.join(", ")}`}
               </span>
             </li>
           ))}
         </ul>
       </Panel>
 
-      <Panel title="직원별 모델">
+      <Panel title={t("set.models")}>
         <p className="mb-3 text-xs text-dim">
-          단가표에 없는 모델은 거부됩니다. 단가를 모르면 비용이 0 으로 잡히고,
-          0 은 공짜가 아니라 모른다는 뜻이라 예산 상한이 걸리지 않습니다.
+          {t("set.modelsHint")}
         </p>
         <ul className="space-y-2">
           {employees.map((e) => {

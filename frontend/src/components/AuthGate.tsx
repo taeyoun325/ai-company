@@ -20,18 +20,20 @@
  */
 import { useState, type FormEvent, type ReactNode } from "react";
 
+import { useLang } from "@/lib/i18n";
 import { Landing } from "./Landing";
 import { Button, ErrorBox, Panel, Warning } from "./ui";
 import { useAuth } from "@/lib/useAuth";
 
 export function AuthGate({ children }: { children: ReactNode }) {
+  const { t } = useLang();
   const { user, required, loading, connectionError } = useAuth();
 
   // 첫 조회가 끝나기 전에 로그인 화면을 번쩍 보여주면, 이미 로그인한
   // 사용자가 매번 그 깜빡임을 본다.
   if (loading) {
     return (
-      <p className="py-20 text-center text-sm text-dim">불러오는 중…</p>
+      <p className="py-20 text-center text-sm text-dim">{t("auth.loading")}</p>
     );
   }
 
@@ -41,7 +43,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <div className="mx-auto max-w-md py-16">
         <ErrorBox>
-          백엔드에 닿지 못했습니다. 서버가 떠 있는지 확인하세요.
+          {t("auth.noBackend")}
           <span className="mt-1 block text-xs opacity-80">{connectionError}</span>
         </ErrorBox>
       </div>
@@ -65,6 +67,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 }
 
 function LoginScreen() {
+  const { t } = useLang();
   const { signUp, logIn, firstUser, error } = useAuth();
   const [mode, setMode] = useState<"login" | "signup">(
     firstUser ? "signup" : "login",
@@ -93,9 +96,7 @@ function LoginScreen() {
       {firstUser && (
         <div className="mb-3">
           <Warning>
-            <strong>이 서버의 첫 계정입니다.</strong> 지금 만드는 계정이
-            첫 사용자가 됩니다. 이 문구가 낯선 서버에서 보인다면 뭔가
-            잘못된 것입니다.
+            <strong>{t("auth.firstAccount")}</strong> {t("auth.firstAccountBody")}
           </Warning>
         </div>
       )}
@@ -116,7 +117,7 @@ function LoginScreen() {
                 mode === m ? "bg-panel2 font-medium" : "text-muted hover:text-fg"
               }`}
             >
-              {m === "login" ? "로그인" : "가입"}
+              {m === "login" ? t("auth.login") : t("auth.signup")}
             </button>
           ))}
         </div>
@@ -124,7 +125,7 @@ function LoginScreen() {
         <form onSubmit={submit} className="space-y-3">
           <Field
             id="email"
-            label="이메일"
+            label={t("auth.email")}
             type="email"
             value={email}
             onChange={setEmail}
@@ -134,22 +135,22 @@ function LoginScreen() {
           {mode === "signup" && (
             <Field
               id="name"
-              label="표시 이름"
+              label={t("auth.displayName")}
               value={name}
               onChange={setName}
               autoComplete="nickname"
-              hint="비워두면 이메일 앞부분을 씁니다."
+              hint={t("auth.displayNameHint")}
             />
           )}
           <Field
             id="password"
-            label="비밀번호"
+            label={t("auth.password")}
             type="password"
             value={password}
             onChange={setPassword}
             autoComplete={mode === "signup" ? "new-password" : "current-password"}
             required
-            hint={mode === "signup" ? "10자 이상." : undefined}
+            hint={mode === "signup" ? t("auth.passwordHint") : undefined}
           />
 
           {error && <ErrorBox>{error}</ErrorBox>}
@@ -160,14 +161,17 @@ function LoginScreen() {
             className="w-full"
             disabled={busy || !email || !password}
           >
-            {busy ? "확인 중…" : mode === "signup" ? "가입하고 시작" : "로그인"}
+            {busy
+              ? t("auth.working")
+              : mode === "signup"
+                ? t("auth.signupCta")
+                : t("auth.login")}
           </Button>
         </form>
       </Panel>
 
       <p className="mt-3 text-center text-[11px] text-dim">
-        구글 로그인은 아직 없습니다. 계정 구조는 나중에 끼울 수 있게
-        만들어져 있습니다.
+        {t("auth.noGoogle")}
       </p>
     </div>
   );
