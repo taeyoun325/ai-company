@@ -178,12 +178,62 @@ def test_unknown_plan_is_rejected():
         credits.set_plan("local", "없는요금제")
 
 
-def test_wallet_survives_a_restart(tmp_path, monkeypatch):
-    """프로세스가 죽었다고 크레딧이 되살아나면 그건 무료 요금제다."""
+def test_wallet_survives_a_restart():
+    """프로세스가 죽었다고 크레딧이 되살아나면 그건 무료 요금제다.
+
+    DAY 22 부터 지갑은 파일이 아니라 SQLite 에 있다. 연결을 닫는 것이
+    프로세스가 죽는 것에 가깝다 — 메모리에 남은 사본이 없어진다."""
+    from app.usage import wallet_store
+
     credits.charge("local", 0.30)
     spent = credits.wallet("local").spent
-    credits.reset()                          # 메모리를 비운다 = 재기동
+    assert spent > 0
+    wallet_store.close()                     # 연결을 끊는다 = 재기동
     assert credits.wallet("local").spent == pytest.approx(spent)
+
+
+def test_two_charges_do_not_overwrite_each_other():
+    """읽고-고치고-쓰면 두 실행이 동시에 끝났을 때 나중 것이 앞의 차감을
+    덮어쓴다. 돈이 조용히 복구되고, 아무도 눈치채지 못한다."""
+    credits.set_plan("racer", "business")
+    before = credits.balance("racer")
+    for _ in range(10):
+        credits.charge("racer", 0.10)        # 각 10 크레딧
+    assert credits.balance("racer") == pytest.approx(before - 100.0)
+
+
+def test_the_old_file_is_moved_in_once(tmp_path, monkeypatch):
+    """옛 파일이 두 번 읽히면 잔액이 두 배가 된다."""
+    import json
+
+    from app.usage import wallet_store
+
+    legacy = tmp_path / "credits.json"
+    legacy.write_text(json.dumps({
+        "old-user": {"plan": "pro", "granted": 900, "spent": 100,
+                     "topped_up": 0, "byok_usd": 0, "renewed_at": 0},
+    }), encoding="utf-8")
+    monkeypatch.setattr(credits, "WALLET_FILE", legacy)
+    credits.reset()
+
+    assert credits.wallet("old-user").granted == 900
+    assert credits.wallet("old-user").spent == 100
+
+    wallet_store.reset_migration()           # 다시 읽으려 시도해도
+    assert credits.wallet("old-user").granted == 900, "잔액이 두 배가 됐다"
+
+
+def test_moving_the_old_file_does_not_delete_it(tmp_path, monkeypatch):
+    """지우는 코드는 되돌릴 수 없다. 옮기다 틀렸을 때 원본이 있어야 한다."""
+    import json
+
+    legacy = tmp_path / "credits.json"
+    legacy.write_text(json.dumps({"u": {"plan": "pro", "granted": 10}}),
+                      encoding="utf-8")
+    monkeypatch.setattr(credits, "WALLET_FILE", legacy)
+    credits.reset()
+    credits.wallet("u")
+    assert legacy.exists()
 
 
 # ── 요금제와 원가 (§16 §17) ────────────────────────────────────────

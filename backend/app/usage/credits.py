@@ -31,7 +31,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from app import config, safeio
+from app import config
+from app.usage import wallet_store
 
 _lock = threading.RLock()
 
@@ -67,9 +68,6 @@ class Wallet:
         return {"owner": self.owner, "plan": self.plan, "granted": self.granted,
                 "spent": self.spent, "topped_up": self.topped_up,
                 "byok_usd": self.byok_usd, "renewed_at": self.renewed_at}
-
-
-_wallets: dict[str, Wallet] = {}
 
 
 # ── 요금제 (§16) ────────────────────────────────────────────────────
@@ -155,18 +153,26 @@ def plan(name: str) -> dict:
 
 
 # ── 지갑 ────────────────────────────────────────────────────────────
+#
+# 지갑은 **파일이 아니라 SQLite** 에 있다(DAY 22 · usage/wallet_store.py).
+# 차감이 읽고-고치고-쓰는 세 단계였을 때는, 두 실행이 동시에 끝나면 나중
+# 것이 앞의 차감을 덮어써서 돈이 조용히 복구됐다. 이제 한 줄의 UPDATE 다.
 def wallet(owner: str = "local") -> Wallet:
-    with _lock:
-        w = _wallets.get(owner)
-        if w is None:
-            _load()
-            w = _wallets.get(owner)
-        if w is None:
-            w = Wallet(owner=owner, plan=default_plan())
-            w.granted = float(plan(w.plan).get("credits", 0))
-            _wallets[owner] = w
-            _save()
-        return w
+    row = wallet_store.get(owner)
+    if row is None:
+        # 옛 파일이 있으면 한 번 옮겨보고 다시 찾는다.
+        wallet_store.migrate_from(WALLET_FILE)
+        row = wallet_store.get(owner)
+    if row is None:
+        name = default_plan()
+        row = wallet_store.create(owner, name,
+                                  float(plan(name).get("credits", 0)))
+    return Wallet(
+        owner=owner, plan=row.get("plan", default_plan()),
+        granted=float(row.get("granted", 0)), spent=float(row.get("spent", 0)),
+        topped_up=float(row.get("topped_up", 0)),
+        byok_usd=float(row.get("byok_usd", 0)),
+        renewed_at=float(row.get("renewed_at", 0)))
 
 
 def set_plan(owner: str, name: str) -> Wallet:
@@ -182,23 +188,17 @@ def set_plan(owner: str, name: str) -> Wallet:
         # 숨긴 요금제로 **바꾸는** 길을 열어두면, 로컬 기본값(크레딧 10만)이
         # SaaS 에서 한 번의 요청으로 얻어진다.
         raise ValueError(f"고를 수 없는 요금제: {name}")
-    with _lock:
-        w = wallet(owner)
-        w.plan = name
-        w.granted += float(plan(name).get("credits", 0))
-        w.renewed_at = time.time()
-        _save()
-        return w
+    wallet(owner)                       # 없으면 만든다
+    wallet_store.add_plan(owner, name, float(plan(name).get("credits", 0)))
+    return wallet(owner)
 
 
 def top_up(owner: str, credits: float) -> Wallet:
     if credits <= 0:
         raise ValueError("0 이하를 충전할 수 없습니다")
-    with _lock:
-        w = wallet(owner)
-        w.topped_up += credits
-        _save()
-        return w
+    wallet(owner)
+    wallet_store.add_topup(owner, credits)
+    return wallet(owner)
 
 
 def balance(owner: str = "local") -> float:
@@ -237,26 +237,23 @@ def charge(owner: str, usd: float) -> float:
     잔액보다 많이 썼으면 **음수로 둔다.** 0 에서 멈추면 얼마나 초과했는지
     기록이 사라지고, 다음 달에 그만큼 덜 받아야 한다는 사실도 사라진다.
     """
-    with _lock:
-        w = wallet(owner)
-        if not charges_credits(w.plan):
-            # 고객 키로 나간 돈은 **기록만** 한다. 청구는 제공자가 고객에게
-            # 직접 한다. 기록까지 버리면 고객은 자기가 얼마를 썼는지
-            # 우리 화면에서 볼 수 없고, 그러면 비용 상한도 설명할 수 없다.
-            w.byok_usd = round(w.byok_usd + usd, 6)
-            _save()
-            return w.balance
-        w.spent += usd_to_credits(usd)
-        _save()
-        return w.balance
+    w = wallet(owner)
+    if not charges_credits(w.plan):
+        # 고객 키로 나간 돈은 **기록만** 한다. 청구는 제공자가 고객에게
+        # 직접 한다. 기록까지 버리면 고객은 자기가 얼마를 썼는지 우리
+        # 화면에서 볼 수 없고, 그러면 비용 상한도 설명할 수 없다.
+        wallet_store.add_byok_usd(owner, usd)
+        return wallet(owner).balance
+    # **읽지 않고 더한다.** 읽고-고치고-쓰면 두 실행이 동시에 끝났을 때
+    # 나중 것이 앞의 차감을 덮어쓰고, 돈이 조용히 복구된다.
+    wallet_store.add_spent(owner, usd_to_credits(usd))
+    return wallet(owner).balance
 
 
 def refund(owner: str, credits: float) -> float:
-    with _lock:
-        w = wallet(owner)
-        w.spent = max(0.0, w.spent - credits)
-        _save()
-        return w.balance
+    wallet(owner)
+    wallet_store.refund(owner, credits)
+    return wallet(owner).balance
 
 
 def status(owner: str = "local") -> dict:
@@ -380,36 +377,15 @@ def margin_report() -> dict:
     }
 
 
-# ── 영속화 ──────────────────────────────────────────────────────────
-def _save() -> None:
-    try:
-        # 원자적으로 쓴다 (app/safeio.py). 통째 쓰기는 도중에 죽으면 파일을
-        # 잘라놓고, 그러면 **모두의 잔액이 0 이 된다.**
-        safeio.write_json(WALLET_FILE,
-                          {k: v.to_dict() for k, v in _wallets.items()})
-    except OSError:
-        # 저장 실패가 실행을 막지는 않는다. 다만 메모리의 잔액은 살아 있다.
-        pass
-
-
-def _load() -> None:
-    try:
-        data = json.loads(WALLET_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    for owner, row in data.items():
-        if not isinstance(row, dict):
-            continue
-        _wallets[owner] = Wallet(
-            owner=owner, plan=row.get("plan", "free"),
-            granted=float(row.get("granted", 0)),
-            spent=float(row.get("spent", 0)),
-            topped_up=float(row.get("topped_up", 0)),
-            byok_usd=float(row.get("byok_usd", 0)),
-            renewed_at=float(row.get("renewed_at", time.time())))
+# ── 옛 파일 ─────────────────────────────────────────────────────────
+#
+# `.credits.json` 은 DAY 22 이전의 저장 방식이다. 이제 읽기만 한다 —
+# 처음 켤 때 한 번 SQLite 로 옮기고, 그 뒤로는 아무도 쓰지 않는다.
+# 지우지는 않는다: 지우는 코드는 되돌릴 수 없고, 옮기다 무언가 틀렸을 때
+# 원본이 있어야 한다.
 
 
 def reset() -> None:
-    """테스트용. 메모리의 지갑을 비운다."""
-    with _lock:
-        _wallets.clear()
+    """테스트용. 지갑을 비운다."""
+    wallet_store.clear()
+    wallet_store.reset_migration()

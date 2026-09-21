@@ -56,21 +56,25 @@ def test_writes_land(tmp_path):
     assert json.loads(target.read_text(encoding="utf-8")) == {"x": 1}
 
 
-def test_the_wallet_survives_a_failed_write(tmp_path, monkeypatch):
-    """제품 쪽에서 실제로 지켜지는지 본다 — 헬퍼만 맞고 부르는 쪽이
-    옛 방식이면 아무 의미가 없다."""
-    from app.usage import credits
+def test_staff_records_survive_a_failed_write(tmp_path, monkeypatch):
+    """헬퍼만 맞고 부르는 쪽이 옛 방식이면 아무 의미가 없다.
 
-    monkeypatch.setattr(credits, "WALLET_FILE", tmp_path / "credits.json")
-    credits.reset()
-    credits.set_plan("owner", "pro")
-    before = (tmp_path / "credits.json").read_text(encoding="utf-8")
+    지갑은 DAY 22 에 SQLite 로 옮겼으므로 여기서는 아직 파일인 것을
+    본다 — 인사 기록.
+    """
+    from app.agents import staff
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    staff.reset()
+    staff.rename("owner", "developer", "김코딩")
+    before = staff.store_path().read_text(encoding="utf-8")
 
     monkeypatch.setattr(os, "replace", lambda *a, **k: (_ for _ in ()).throw(OSError()))
-    credits.charge("owner", 1.0)          # 저장이 실패해도 터지지 않는다
+    staff.rename("owner", "developer", "덮어쓰기 시도")
 
-    assert (tmp_path / "credits.json").read_text(encoding="utf-8") == before
-    credits.reset()
+    assert staff.store_path().read_text(encoding="utf-8") == before
+    staff.reset()
+    assert staff.name_of("owner", "developer") == "김코딩"
 
 
 def test_project_meta_survives_a_failed_write(tmp_path, monkeypatch):
