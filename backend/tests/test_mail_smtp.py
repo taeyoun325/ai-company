@@ -168,3 +168,60 @@ def test_without_smtp_url_nothing_is_claimed_to_be_sent():
     d = mail.send("someone@example.test", "제목", "본문")
     assert d.delivered is False
     assert d.how == "log"
+
+
+# ── 출항 전 점검 (DAY 22) ──────────────────────────────────────────
+def _mail_rows(monkeypatch, **env):
+    from app import preflight
+
+    monkeypatch.setenv("DEPLOY_MODE", "saas")
+    monkeypatch.setenv("PUBLIC_URL", "https://app.example.test")
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    return [r for r in preflight.checks() if r["check"].startswith("메일")]
+
+
+def test_preflight_mail_checks_actually_run(monkeypatch):
+    """이 줄들은 **한 번도 실행된 적이 없었다.**
+
+    `app/preflight.py` 에 `import os` 가 없는데 메일 점검이 `os.getenv` 를
+    쓰고 있었다. SaaS 이고 SMTP 가 설정돼 있을 때만 닿는 줄이라, 개발
+    중에는 영원히 안 닿는다 — 배포하는 날 NameError 로 터진다.
+
+    점검은 "배포 전에 문제를 말해주는 것"이므로, 점검 자체가 터지면
+    최악이다. 그래서 갈래마다 한 번씩 밟는다.
+    """
+    rows = _mail_rows(monkeypatch, SMTP_URL="smtps://u:p@smtp.example.test")
+    assert [r["level"] for r in rows] == ["ok"]
+    assert "SMTPS" in rows[0]["detail"]
+
+
+def test_preflight_warns_about_plaintext_smtp_to_another_machine(monkeypatch):
+    """발송기가 런타임에 거절할 조건을 **미리** 말한다. 그 조건은 비밀번호를
+    잊은 사용자가 처음 버튼을 누르는 날에 드러나고, 그때는 아무도 보고
+    있지 않다."""
+    rows = _mail_rows(monkeypatch, SMTP_URL="smtp://smtp.example.test")
+    assert rows and rows[0]["level"] == "warn"
+    assert "STARTTLS" in rows[0]["detail"]
+    assert rows[0]["fix"]
+
+    # 로컬 릴레이는 경고하지 않는다 — 평문이 네트워크를 타지 않는다.
+    rows = _mail_rows(monkeypatch, SMTP_URL="smtp://127.0.0.1:1025")
+    assert [r["level"] for r in rows] == ["ok"]
+
+    # 같은 기계라도 계정이 붙어 있으면 발송이 거절되므로 경고한다.
+    rows = _mail_rows(monkeypatch, SMTP_URL="smtp://u:p@localhost:1025")
+    assert rows and rows[0]["level"] == "warn"
+
+
+def test_preflight_still_warns_when_the_link_would_point_at_localhost(monkeypatch):
+    from app import preflight
+
+    monkeypatch.setenv("DEPLOY_MODE", "saas")
+    monkeypatch.setenv("SMTP_URL", "smtps://u:p@smtp.example.test")
+    monkeypatch.delenv("PUBLIC_URL", raising=False)
+    monkeypatch.delenv("BACKEND_ORIGIN", raising=False)
+
+    rows = [r for r in preflight.checks() if r["check"].startswith("메일")]
+    assert rows and rows[0]["level"] == "warn"
+    assert "localhost" in rows[0]["detail"]

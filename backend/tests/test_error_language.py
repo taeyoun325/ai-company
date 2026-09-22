@@ -20,6 +20,8 @@ import io
 import re
 from pathlib import Path
 
+import pytest
+
 APP = Path(__file__).resolve().parents[1] / "app"
 
 # SaaS 로 열리는 경로들. 이 파일들 안의 거절 문장은 사용자가 본다.
@@ -29,14 +31,15 @@ GUARDED = ("main.py", "auth/deps.py", "api/auth.py", "api/projects.py",
            "providers/base.py", "providers/registry.py",
            "providers/claude.py", "providers/gemini.py",
            "providers/openai.py", "providers/anthropic_client.py",
-           "attachments.py", "orchestrator/manual.py", "usage/credits.py")
+           "attachments.py", "orchestrator/manual.py", "usage/credits.py",
+           "tools/project_fs.py")
 
 KOREAN = re.compile(r"[가-힣]")
 # 사용자가 읽는 거절이 만들어지는 자리들. HTTPException 뿐 아니라
 # 도메인 예외도 화면까지 그대로 올라간다 — 엔드포인트가 `str(e)` 를
 # 그대로 넘기기 때문이다.
 RAISE = re.compile(r"HTTPException\(|AuthError\(|out\.append\("
-                   r"|Stop\(|ProviderUnavailable\(|TransientError\(|RefusedError\(|Busy\(")
+                   r"|Stop\(|ProviderUnavailable\(|TransientError\(|RefusedError\(|Busy\(|Denied\(")
 
 
 # `ValueError` 는 두 가지로 쓰인다 — 사용자에게 보이는 거절과, 개발자만
@@ -86,7 +89,7 @@ def test_the_table_answers_in_every_language():
 
     # 거절에 쓰는 앞자리 전부. 하나 늘릴 때마다 여기에 적는다.
     prefixes = ("err.", "auth.", "pw.", "stop.", "prov.",
-                "att.", "manual.", "plan.")
+                "att.", "manual.", "plan.", "fs.")
     keys = [k for k in lang._M if k.startswith(prefixes)]
     assert len(keys) > 20, f"거절 문장 키가 너무 적습니다: {len(keys)}"
     for key in keys:
@@ -120,3 +123,42 @@ def test_signup_rejections_follow_the_request_language():
 
 def _korean(s: str) -> bool:
     return any("가" <= ch <= "힣" for ch in s)
+
+
+def test_permission_refusals_read_in_the_users_language(tmp_path, monkeypatch):
+    """이 문장은 **작업 로그 안으로 들어간다** (`log.denied` 의 {why} 자리).
+
+    직원이 자기 구역 밖에 쓰려 했다는 사실은 이 제품의 핵심 장치다. 틀은
+    번역해두고 이유만 한국어로 박히면, 영어로 쓰는 사람은 로그에서 무엇을
+    막았는지 읽을 수 없다.
+    """
+    from app import config, lang
+    from app.database import store
+    from app.tools import project_fs as pfs
+
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    slug = store.new_project("permission refusal")
+    pfs.use(slug)
+    try:
+        with lang.bind("en"):
+            with pytest.raises(pfs.Denied) as got:
+                pfs.write("src/backdoor.py", "import os", "writer")
+            why = str(got.value)
+            assert "cannot write to src/" in why, why
+            # 직함도 번역된 값으로 나온다 — "이서준(작가)" 이 아니라
+            # "이서준(Writer)". **이름은 번역하지 않는다**(사람 이름이고
+            # 고객이 바꿔둔 것일 수도 있다), 그래서 이 줄에 한글이 남는
+            # 것은 정상이다 — 남으면 안 되는 것은 직함과 설명이다.
+            assert "Writer" in why, why
+            assert "작가" not in why, why
+
+            with pytest.raises(pfs.Denied) as got:
+                pfs.write("../escape.py", "x", "SYSTEM")
+            assert "outside the project folder" in str(got.value)
+
+        with lang.bind("ja"):
+            with pytest.raises(pfs.Denied) as got:
+                pfs.write("src/backdoor.py", "import os", "writer")
+            assert "書き込み権限" in str(got.value)
+    finally:
+        pfs.release()

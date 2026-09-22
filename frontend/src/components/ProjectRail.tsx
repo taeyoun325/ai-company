@@ -32,10 +32,13 @@ import { Empty, MockBadge, Skeleton, StatusDot, clock, when } from "./ui";
 const STORE_KEY = "ai-company.rail";
 
 export function ProjectRail({
-  activeSlug, onNew, refreshKey,
+  activeSlug, onNew, refreshKey, phase,
 }: {
   activeSlug?: string | null;
   onNew?: () => void;
+  /** 지금 돌고 있는 실행의 단계. 사무실에만 있던 정보를 목록에도 둔다 —
+   *  다른 프로젝트를 보는 동안에도 "어디까지 왔나"가 보여야 한다. */
+  phase?: string | null;
   /** 실행이 끝나면 목록이 바뀐다. 이 값이 바뀌면 다시 읽는다. */
   refreshKey?: string | number;
 }) {
@@ -202,6 +205,17 @@ export function ProjectRail({
                       {req}
                     </span>
                   )}
+                  {/* 돌고 있는 줄에는 단계를 적는다. 시각·파일 수는 끝난
+                      것에나 의미가 있고, 지금 돌는 것에 필요한 것은
+                      "어디까지 왔나"다. */}
+                  {p.status === "running" && phase ? (
+                    <span className="mt-0.5 flex items-center gap-1
+                      text-[11px] font-medium" style={{ color: "var(--accent)" }}>
+                      <span className="size-1 animate-pulse rounded-full"
+                            style={{ background: "var(--accent)" }} aria-hidden />
+                      {phase}
+                    </span>
+                  ) : (
                   <span className="mt-0.5 block truncate text-[11px] text-dim"
                         aria-hidden>
                     {g.key === "earlier"
@@ -214,6 +228,7 @@ export function ProjectRail({
                     {!p.mock && typeof p.credits === "number" && p.credits > 0
                       && ` · ${t("rail.credits", { n: p.credits })}`}
                   </span>
+                  )}
                 </Link>
               </li>
             );

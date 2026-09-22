@@ -25,7 +25,7 @@ import threading
 from pathlib import Path
 
 from app.agents import roles
-from app import safeio
+from app import lang, safeio
 from app.database import store
 
 # 어느 구역에도 만들 수 없는 파일들. pytest 가 자동으로 읽어들이거나
@@ -84,26 +84,30 @@ def _resolve(path: str, employee_id: str, write: bool) -> Path:
     r = root().resolve()
     target = (r / path).resolve()
     if not target.is_relative_to(r) or target == r:
-        raise Denied(f"프로젝트 폴더 밖 경로입니다: {path}")
+        raise Denied(lang.t("fs.outside", path=path))
 
     rel = target.relative_to(r)
     top = rel.parts[0]
     if top not in store.AREAS:
-        raise Denied(f"{top}/ 은(는) 산출물 구역이 아닙니다. "
-                     f"허용: {', '.join(a + '/' for a in store.AREAS)}")
+        raise Denied(lang.t(
+            "fs.notArea", top=top,
+            allowed=", ".join(a + "/" for a in store.AREAS)))
 
     allowed = _areas(employee_id, write)
     if top not in allowed:
-        verb = "쓰기" if write else "읽기"
-        label = f"{roles.get(employee_id).name}({roles.get(employee_id).role})" \
-            if roles.exists(employee_id) else employee_id
-        raise Denied(f"{label}는 {top}/ 에 {verb} 권한이 없습니다. "
-                     f"허용: {', '.join(a + '/' for a in allowed) or '(없음)'}")
+        # 직함은 `info()` 에서 가져온다 — 그 쪽이 보는 사람의 언어로 번역된
+        # 값이다. `e.role` 은 표에 적힌 원문(한국어)이다.
+        label = employee_id
+        if roles.exists(employee_id):
+            row = roles.get(employee_id).info()
+            label = f"{row['name']}({row['role']})"
+        raise Denied(lang.t(
+            "fs.noWrite" if write else "fs.noRead", who=label, top=top,
+            allowed=", ".join(a + "/" for a in allowed) or lang.t("fs.none")))
 
     if write and (target.name in FORBIDDEN_NAMES
                   or target.suffix in FORBIDDEN_SUFFIXES):
-        raise Denied(f"{target.name} 은(는) 테스트 실행 환경을 바꿀 수 있어 "
-                     f"금지된 파일명입니다")
+        raise Denied(lang.t("fs.forbiddenName", name=target.name))
     return target
 
 

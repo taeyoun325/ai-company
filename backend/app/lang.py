@@ -307,6 +307,38 @@ _M: dict[str, dict[str, str]] = {
         "ja": "PROVIDER_MODE=real ですが {name} の鍵がありません。Mock で"
               "代用しません。",
     },
+    # ── 권한 거절 (DAY 22) ─────────────────────────────────────────
+    # 이 문장은 **작업 로그 안으로 들어간다** — `log.denied` 의 {why} 자리다.
+    # 틀은 번역돼 있는데 이유가 한국어로 박혀 들어가고 있었다. 직원이
+    # 자기 구역 밖에 쓰려 했다는 사실은 이 제품의 핵심 장치라, 그 줄이
+    # 읽히지 않으면 무엇을 막았는지 알 수 없다.
+    "fs.outside": {
+        "ko": "프로젝트 폴더 밖 경로입니다: {path}",
+        "en": "That path is outside the project folder: {path}",
+        "ja": "プロジェクトフォルダー外のパスです: {path}",
+    },
+    "fs.notArea": {
+        "ko": "{top}/ 은(는) 산출물 구역이 아닙니다. 허용: {allowed}",
+        "en": "{top}/ is not a deliverable area. Allowed: {allowed}",
+        "ja": "{top}/ は成果物の区域ではありません。許可: {allowed}",
+    },
+    "fs.noWrite": {
+        "ko": "{who}는 {top}/ 에 쓰기 권한이 없습니다. 허용: {allowed}",
+        "en": "{who} cannot write to {top}/. Allowed: {allowed}",
+        "ja": "{who} は {top}/ への書き込み権限がありません。許可: {allowed}",
+    },
+    "fs.noRead": {
+        "ko": "{who}는 {top}/ 에 읽기 권한이 없습니다. 허용: {allowed}",
+        "en": "{who} cannot read {top}/. Allowed: {allowed}",
+        "ja": "{who} は {top}/ の読み取り権限がありません。許可: {allowed}",
+    },
+    "fs.forbiddenName": {
+        "ko": "{name} 은(는) 테스트 실행 환경을 바꿀 수 있어 금지된 파일명입니다",
+        "en": "{name} is a forbidden filename — it could change the test "
+              "environment",
+        "ja": "{name} はテスト実行環境を変えられるため禁止されたファイル名です",
+    },
+    "fs.none": {"ko": "(없음)", "en": "(none)", "ja": "(なし)"},
     # ── 첨부 · 수동 지시 · 요금제 (DAY 22) ─────────────────────────
     # 사용자가 직접 하는 행동이 막히는 자리다 — 파일을 올리고, 직원에게
     # 지시하고, 요금제를 고른다. 막힌 이유가 읽히지 않으면 다시 시도할

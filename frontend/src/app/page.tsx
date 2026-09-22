@@ -172,7 +172,11 @@ export default function OfficePage() {
     <div ref={root} className="flex h-full">
       <ProjectRail
         activeSlug={slug}
-        refreshKey={`${slug}-${folded.done}`}
+        phase={folded.phase}
+        // 단계가 바뀔 때마다 목록을 다시 읽는다. 시작할 때만 읽으면
+        // 돌고 있는 줄이 목록에 "진행 중"으로 잡히는 창이 너무 짧고,
+        // 끝난 뒤의 파일 수·크레딧도 늦게 반영된다.
+        refreshKey={`${slug}-${folded.done}-${folded.phase ?? ""}`}
         onNew={() => {
           setSlug(null);
           setRequirement("");

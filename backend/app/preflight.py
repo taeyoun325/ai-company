@@ -24,6 +24,9 @@
 """
 from __future__ import annotations
 
+import os
+from urllib.parse import urlparse
+
 from app import config, deploy, secrets_broker
 from app.agents import roles
 from app.providers import registry
@@ -174,7 +177,34 @@ def checks(strict: bool = False) -> list[dict]:
                 f"가리킵니다. 받는 사람은 그 주소를 열 수 없습니다.",
                 "PUBLIC_URL 에 실제 서비스 주소를 넣으세요."))
         else:
-            out.append(_row("메일", OK, f"SMTP 설정됨 · 링크 {mail.public_url()}"))
+            # 발송 경로가 **런타임에 거절할 조건**을 미리 말한다(DAY 22).
+            # 그 조건은 비밀번호를 잊은 사용자가 처음 버튼을 누르는 날에야
+            # 드러나고, 그때는 아무도 보고 있지 않다.
+            url = urlparse(mail.smtp_url())
+            host = url.hostname or "localhost"
+            if url.scheme == "smtps":
+                out.append(_row(
+                    "메일", OK,
+                    f"SMTPS(암호화) · {host} · 링크 {mail.public_url()}"))
+            elif mail._is_local(host):
+                detail = f"로컬 릴레이({host}) 로 보냅니다."
+                if url.username:
+                    out.append(_row(
+                        "메일 암호화", FAIL if strict else WARN,
+                        detail + " 다만 TLS 없이 SMTP 로그인은 하지 않으므로 "
+                        "발송이 거절됩니다.",
+                        "계정이 필요 없는 릴레이라면 SMTP_URL 에서 계정을 "
+                        "빼거나, smtps:// 를 쓰세요."))
+                else:
+                    out.append(_row("메일", OK,
+                                    detail + f" 링크 {mail.public_url()}"))
+            else:
+                out.append(_row(
+                    "메일 암호화", FAIL if strict else WARN,
+                    f"{host} 에 평문 SMTP 로 설정돼 있습니다. 서버가 STARTTLS "
+                    f"를 내밀면 쓰지만, 안 내밀면 **발송을 거절합니다** — "
+                    f"메일 본문에 비밀번호 재설정 링크가 들어 있습니다.",
+                    "smtps:// 를 쓰거나, 서버에서 STARTTLS 를 켜세요."))
 
     # ── 고객 키 보관 (BYOK · DAY 19) ───────────────────────────────
     # 파는 제품에서 남의 키를 맡아두는 일이다. 운영자가 이 한 줄을
