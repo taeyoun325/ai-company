@@ -364,7 +364,7 @@ def route(requirement: str) -> Routing:
     r = employee.ask(roles.PLANNER, prompts.route(requirement, roster), Routing)
     if r.employee not in roles.assignable():
         r = Routing(employee=roles.assignable()[0],
-                    why=f"{r.employee} 는 맡길 수 없는 직원이라 기본 담당자로 배정했습니다.")
+                    why=lang.t("log.badAssigneeFallback", who=r.employee))
     return r
 
 
@@ -566,7 +566,8 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
     except Stop as e:
         _fail(slug, plan, rows, score, str(e))
     except employee.EmployeeFailed as e:
-        _fail(slug, plan, rows, score, f"직원 호출 실패 — {e}")
+        _fail(slug, plan, rows, score,
+              lang.t("stop.employeeFailed", why=e))
     except Exception as e:                       # noqa: BLE001
         _fail(slug, plan, rows, score, f"{type(e).__name__}: {e}")
     finally:

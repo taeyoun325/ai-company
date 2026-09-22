@@ -22,6 +22,7 @@
 import socket
 import threading
 from email import message_from_string
+from email.header import decode_header, make_header
 
 import pytest
 
@@ -225,3 +226,32 @@ def test_preflight_still_warns_when_the_link_would_point_at_localhost(monkeypatc
     rows = [r for r in preflight.checks() if r["check"].startswith("메일")]
     assert rows and rows[0]["level"] == "warn"
     assert "localhost" in rows[0]["detail"]
+
+
+def test_the_mail_itself_follows_the_request_language(fake_smtp, monkeypatch):
+    """제목과 본문은 받는 사람이 **우리 화면을 안 보고** 읽는 유일한 글이다.
+
+    화면을 전부 번역해놓고도 재설정 메일만 한국어로 가면, 영어로 가입한
+    사람은 메일을 받고도 무엇을 하라는 건지 모른다. DAY 22 까지 실제로
+    그랬다 — 제목·본문이 번역표 밖에 있었고, "거절 문장" 검사는 그 자리를
+    보지 않았다(문장이 함수 인자로 바로 들어가 있어 줄 근처 검사에 안 걸렸다).
+    """
+    from app import lang
+
+    monkeypatch.setenv("SMTP_URL", f"smtp://127.0.0.1:{fake_smtp.port}")
+    monkeypatch.setenv("MAIL_FROM", "no-reply@ai-company.test")
+    monkeypatch.setenv("PUBLIC_URL", "https://app.example.test")
+
+    with lang.bind("en"):
+        d = mail.send_reset("someone@example.test", "tok-en")
+    assert d.delivered is True, d.detail
+
+    fake_smtp.thread.join(timeout=5)
+    got = message_from_string(fake_smtp.data)
+    subject = str(make_header(decode_header(got["Subject"])))
+    body = got.get_payload(decode=True).decode("utf-8")
+
+    assert "Reset your password" in subject, subject
+    assert "Set a new password" in body, body
+    assert "https://app.example.test/reset?token=tok-en" in body
+    assert not any("가" <= ch <= "힣" for ch in subject + body)

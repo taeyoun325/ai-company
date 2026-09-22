@@ -178,7 +178,7 @@ def write(path: str, content: str, employee_id: str = "SYSTEM",
     if before is not None and before != content:
         store.snapshot_version(
             slug(), path, before,
-            note=f"{employee_id} 덮어쓰기 직전",
+            note=lang.t("fs.beforeOverwrite", who=employee_id),
             meta={"author": employee_id, "round": round, "reason": reason})
     safeio.write_text(p, content)
     return {"path": path, "created": before is None,

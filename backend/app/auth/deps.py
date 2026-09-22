@@ -39,7 +39,7 @@ COOKIE = "ai_company_session"
 # 로컬 모드에서 쓰는 고정 사용자. 실제 계정이 아니다.
 LOCAL_OWNER = "local"
 LOCAL_USER = store.User(id=LOCAL_OWNER, email="local@localhost",
-                        display_name="로컬 사용자", created_at=0.0)
+                        display_name=lang.t("who.localUser"), created_at=0.0)
 
 
 def is_https(request: Request | None) -> bool:

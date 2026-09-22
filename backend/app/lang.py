@@ -195,6 +195,58 @@ _M: dict[str, dict[str, str]] = {
         "en": "This is MANUAL mode. Pick an employee and instruct them directly.",
         "ja": "MANUAL モードです。社員を選んで直接指示してください。",
     },
+    # 메일 제목·본문 (DAY 22). 받는 사람이 우리 화면을 안 보고 읽는
+    # 유일한 글이다 — 여기가 한국어면 영어로 가입한 사람은 재설정 메일을
+    # 받고도 무엇을 하라는 건지 모른다. 요청 언어를 그대로 따른다.
+    "mail.resetSubject": {
+        "ko": "[AI COMPANY] 비밀번호 재설정",
+        "en": "[AI COMPANY] Reset your password",
+        "ja": "[AI COMPANY] パスワードの再設定",
+    },
+    "mail.resetBody": {
+        "ko": "아래 주소에서 새 비밀번호를 정하세요. 30분 뒤에 만료됩니다."
+              + "\n\n" + "{link}" + "\n\n"
+              + "본인이 요청하지 않았다면 이 메일을 무시하세요. 요청만으로는 "
+                "비밀번호가 바뀌지 않습니다." + "\n",
+        "en": "Set a new password at the link below. It expires in 30 minutes."
+              + "\n\n" + "{link}" + "\n\n"
+              + "If you did not ask for this, ignore this mail. The request "
+                "alone does not change your password." + "\n",
+        "ja": "以下のリンクで新しいパスワードを設定してください。30 分後に期限が切れます。"
+              + "\n\n" + "{link}" + "\n\n"
+              + "心当たりがない場合はこのメールを無視してください。リクエストだけでは"
+                "パスワードは変わりません。" + "\n",
+    },
+    "mail.verifySubject": {
+        "ko": "[AI COMPANY] 이메일 확인",
+        "en": "[AI COMPANY] Confirm your email",
+        "ja": "[AI COMPANY] メールアドレスの確認",
+    },
+    "mail.verifyBody": {
+        "ko": "아래 주소를 열면 이 이메일 주소가 확인됩니다. 24시간 뒤에 만료됩니다."
+              + "\n\n" + "{link}" + "\n",
+        "en": "Open the link below to confirm this email address. It expires "
+              "in 24 hours." + "\n\n" + "{link}" + "\n",
+        "ja": "以下のリンクを開くと、このメールアドレスが確認されます。24 時間後に"
+              "期限が切れます。" + "\n\n" + "{link}" + "\n",
+    },
+    "who.localUser": {"ko": "로컬 사용자", "en": "Local user",
+                      "ja": "ローカルユーザー"},
+    "fs.beforeOverwrite": {
+        "ko": "{who} 덮어쓰기 직전",
+        "en": "just before {who} overwrote it",
+        "ja": "{who} が上書きする直前",
+    },
+    "log.badAssigneeFallback": {
+        "ko": "{who} 는 맡길 수 없는 직원이라 기본 담당자로 배정했습니다.",
+        "en": "{who} cannot take tasks, so the default assignee took it.",
+        "ja": "{who} は任せられない社員のため、既定の担当者に割り当てました。",
+    },
+    "stop.employeeFailed": {
+        "ko": "직원 호출 실패 — {why}",
+        "en": "The employee call failed — {why}",
+        "ja": "社員の呼び出しに失敗 — {why}",
+    },
     "mail.logOnly": {
         "ko": "SMTP_URL 이 설정되지 않아 로그로만 남겼습니다",
         "en": "No SMTP_URL is set, so this was only written to the log",

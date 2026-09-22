@@ -16,6 +16,7 @@ DAY 22 에 세어보니 그런 자리가 40군데였다. 손으로 고쳤지만,
 `app/api/local_tools.py` 는 `DEPLOY_MODE=local` 에서만 열린다(§배포 자세).
 혼자 쓰는 도구라 화면도 한국어 하나뿐이고, 번역할 대상이 아니다.
 """
+import ast
 import io
 import re
 from pathlib import Path
@@ -77,14 +78,35 @@ def _code(path: Path) -> list[str]:
     독스트링은 **줄 수를 유지한 채** 지운다. 그냥 지우면 뒤쪽 줄 번호가
     전부 밀려서 검사가 엉뚱한 줄을 가리킨다 — 실제로 그랬다. 잘못된
     자리를 가리키는 검사는 고치는 사람을 한 번 더 헤매게 만든다.
+
+    **삼중따옴표를 전부 지우면 안 된다.** 설명만 그 모양인 게 아니라,
+    대입된 긴 문자열도 그 모양이다 — 거기 한국어 문장을 넣으면 검사가
+    통째로 못 본다. `tests/test_portability.py` 가 같은 이유로 SQL 의
+    대부분을 못 보고 있었다(DAY 22). 그래서 문법 트리로 **독스트링
+    노드만** 고른다.
     """
     text = io.open(path, encoding="utf-8").read()
-    text = re.sub(r'"""(?:.|\n)*?"""',
-                  lambda m: "\n" * m.group(0).count("\n"), text)
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:                                        # pragma: no cover
+        tree = None
+    drop: set[int] = set()
+    for node in ast.walk(tree) if tree else []:
+        if not isinstance(node, (ast.Module, ast.ClassDef,
+                                 ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        body = getattr(node, "body", None)
+        if not body:
+            continue
+        first = body[0]
+        if (isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)):
+            drop.update(range(first.lineno,
+                              (first.end_lineno or first.lineno) + 1))
     out = []
-    for line in text.splitlines():
-        stripped = re.sub(r"#.*$", "", line)
-        out.append(stripped)
+    for i, line in enumerate(text.splitlines(), 1):
+        out.append("" if i in drop else re.sub(r"#.*$", "", line))
     return out
 
 
@@ -237,3 +259,24 @@ def test_unreadable_model_answers_are_reported_in_the_users_language():
         with pytest.raises(json_io.ParseFailed) as got:
             json_io.parse("オブジェクトがありません", Plan)
         assert "オブジェクト" in str(got.value)
+
+
+# 이 파일들의 글은 **전부** 사용자에게 간다. 프롬프트(모델용)나 내부
+# 불변식이 섞이지 않으므로, 한국어 리터럴이 하나라도 있으면 번역표를
+# 안 거친 것이다.
+#
+# 줄 근처를 보는 검사(`test_rejections_...`)는 이걸 못 잡는다. 문장을
+# 상수로 빼서 이름으로 부르면 보이지 않기 때문이다 — DAY 22 에 탐침을
+# 넣어보고 알았고, 실제로 **메일 제목·본문 전체**가 그렇게 숨어 있었다.
+ALL_USER_FACING = ("auth/mail.py", "auth/deps.py")
+
+
+def test_files_that_only_talk_to_users_have_no_korean_left():
+    bad = []
+    for rel in ALL_USER_FACING:
+        for i, line in enumerate(_code(APP / rel), 1):
+            if KOREAN_LITERAL.search(line):
+                bad.append(f"{rel}:{i}: {line.strip()[:70]}")
+    assert not bad, (
+        "이 파일의 글은 전부 사용자에게 갑니다. 번역표로 옮기세요:\n"
+        + "\n".join(bad))

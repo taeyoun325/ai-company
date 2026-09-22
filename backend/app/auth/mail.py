@@ -151,11 +151,8 @@ def send_reset(to: str, token: str) -> Delivery:
     link = f"{public_url()}/reset?token={token}"
     return send(
         to,
-        "[AI COMPANY] 비밀번호 재설정",
-        f"아래 주소에서 새 비밀번호를 정하세요. 30분 뒤에 만료됩니다.\n\n"
-        f"{link}\n\n"
-        f"본인이 요청하지 않았다면 이 메일을 무시하세요. "
-        f"요청만으로는 비밀번호가 바뀌지 않습니다.\n",
+        lang.t("mail.resetSubject"),
+        lang.t("mail.resetBody", link=link),
     )
 
 
@@ -163,7 +160,6 @@ def send_verification(to: str, token: str) -> Delivery:
     link = f"{public_url()}/verify?token={token}"
     return send(
         to,
-        "[AI COMPANY] 이메일 확인",
-        f"아래 주소를 열면 이 이메일 주소가 확인됩니다. 24시간 뒤에 만료됩니다.\n\n"
-        f"{link}\n",
+        lang.t("mail.verifySubject"),
+        lang.t("mail.verifyBody", link=link),
     )
