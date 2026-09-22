@@ -93,6 +93,20 @@ def meta(slug: str) -> dict:
         return {}
 
 
+def touched_at(slug: str) -> float:
+    """이 실행이 마지막으로 움직인 시각.
+
+    메타 파일은 단계마다 다시 쓰이므로, 그 파일의 수정 시각이 곧 "마지막
+    움직임"이다. 끝난 실행에서는 끝난 시각이고, `created_at` 과 빼면
+    **얼마나 걸렸는지**가 나온다 — 화면이 세 번째로 묻는 것이다.
+    """
+    p = dir_of(slug) / META
+    try:
+        return p.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def save_meta(slug: str, patch: dict) -> dict:
     """메타데이터를 파일에 쓰고 색인을 따라 갱신한다.
 

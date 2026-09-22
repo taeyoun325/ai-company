@@ -40,7 +40,7 @@ KOREAN = re.compile(r"[가-힣]")
 # 도메인 예외도 화면까지 그대로 올라간다 — 엔드포인트가 `str(e)` 를
 # 그대로 넘기기 때문이다.
 RAISE = re.compile(r"HTTPException\(|AuthError\(|out\.append\("
-                   r"|Stop\(|ProviderUnavailable\(|TransientError\(|RefusedError\(|Busy\(|Denied\(|ParseFailed\(|EmployeeFailed\(")
+                   r"|Stop\(|ProviderUnavailable\(|TransientError\(|RefusedError\(|Busy\(|Denied\(|super\(\).__init__\(|ParseFailed\(|EmployeeFailed\(")
 
 
 # `ValueError` 는 두 가지로 쓰인다 — 사용자에게 보이는 거절과, 개발자만

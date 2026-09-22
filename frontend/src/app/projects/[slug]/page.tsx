@@ -14,7 +14,7 @@ import { ProjectRail } from "@/components/ProjectRail";
 import { FileViewer } from "@/components/FileViewer";
 import { ScorePanel, TaskBoard } from "@/components/TaskBoard";
 import {
-  Button, Empty, ErrorBox, MockBadge, money, Panel, Warning, when,
+  Button, Empty, ErrorBox, MockBadge, money, Panel, took, Warning, when,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
@@ -76,6 +76,13 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
         right={
           <span className="flex items-center gap-2 text-xs text-dim">
             {when(project.created_at, lang)}
+            {/* "끝났나 · 얼마나 됐나 · 얼마 들었나" 다음으로 묻는 것이
+                **얼마나 걸렸나**다. 두 시각의 차이로 이미 알 수 있었다. */}
+            {!project.running && took(project.created_at, project.updated_at) && (
+              <span className="tabular-nums">
+                · {took(project.created_at, project.updated_at)}
+              </span>
+            )}
             {project.running && (
               <Button tone="danger" onClick={() => void api.cancelRun(slug).then(reload)}>
                 {t("proj.stop")}

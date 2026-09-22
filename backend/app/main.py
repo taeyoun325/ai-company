@@ -445,6 +445,7 @@ def get_run(slug: str, request: Request):
         raise HTTPException(404, lang.t("err.noProject"))
     auth.require_owner(request, m.get("owner"))
     m["running"] = orchestrator.is_running(slug)
+    m["updated_at"] = store.touched_at(slug)
     m["events"] = bus.history(slug)
     return m
 

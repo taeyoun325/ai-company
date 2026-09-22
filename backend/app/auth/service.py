@@ -58,8 +58,9 @@ class AuthError(RuntimeError):
 
 class RateLimited(AuthError):
     def __init__(self, seconds: int):
-        super().__init__(
-            f"시도가 너무 많습니다. {max(1, seconds // 60)}분 뒤에 다시 하세요.")
+        # 이 문장도 화면에 그대로 나간다. 클래스 안에 있다는 이유로
+        # 번역표 밖에 남아 있었다 — 검사가 `AuthError(` 만 보고 있었다.
+        super().__init__(lang.t("auth.rateLimited", n=max(1, seconds // 60)))
         self.retry_after = seconds
 
 

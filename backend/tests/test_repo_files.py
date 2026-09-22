@@ -106,3 +106,32 @@ def test_the_root_layout_stays_statically_renderable():
         f"루트 레이아웃이 {used} 를 부릅니다. 그러면 앱 전체가 요청마다 "
         f"서버 렌더가 되고, 랜딩을 CDN 에 얹을 수 없습니다. "
         f"정말 필요하면 그 라우트에서만 부르세요.")
+
+
+# ── 문서가 코드와 어긋나지 않는가 (DAY 22) ─────────────────────────
+DEPLOY_DOC = ROOT / "docs" / "deploy.md"
+
+
+def test_the_deploy_doc_quotes_the_real_cost_ratio():
+    """`docs/deploy.md` 가 "유료 요금제 50% 이하" 라고 적고 있었다.
+
+    상한은 DAY 19 에 **0.35 로 조였다.** 문서만 옛 숫자를 들고 있으면,
+    배포하는 날 그 문서를 보고 요금제를 판단하게 된다. 숫자는 한 곳
+    (`credits.MAX_COST_RATIO`)에서만 산다 — 문서는 그걸 옮겨 적을 뿐이고,
+    옮겨 적은 것이 맞는지는 기계가 본다.
+    """
+    from app.usage import credits
+
+    text = io.open(DEPLOY_DOC, encoding="utf-8").read()
+    want = f"{credits.MAX_COST_RATIO:.0%}"          # "35%"
+    ratios = set(re.findall(r"원가 비율[^\n]*?(\d{1,3})%", text))
+    assert ratios, "배포 문서에서 원가 비율 줄을 못 찾았습니다"
+    assert ratios == {want.rstrip("%")}, (
+        f"문서가 {sorted(ratios)}% 라고 적고 있는데 코드는 {want} 입니다")
+
+
+def test_the_deploy_doc_does_not_claim_mail_is_missing():
+    """DAY 16 의 사실이 DAY 22 까지 남아 있었다 — "발송 경로를 붙이지
+    않았다". 지금은 `SMTP_URL` 한 줄이면 나간다."""
+    text = io.open(DEPLOY_DOC, encoding="utf-8").read()
+    assert "발송 경로(SMTP 등)를 붙이지 않았다" not in text

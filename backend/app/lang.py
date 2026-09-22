@@ -492,6 +492,11 @@ _M: dict[str, dict[str, str]] = {
     # ── 가입·로그인 (DAY 22) ───────────────────────────────────────
     # 제품에서 **제일 먼저** 보는 화면이다. 여기가 한국어면 영어로 쓰는
     # 사람은 계정을 만들다 막히고, 막힌 이유도 못 읽는다.
+    "auth.rateLimited": {
+        "ko": "시도가 너무 많습니다. {n}분 뒤에 다시 하세요.",
+        "en": "Too many attempts. Try again in {n} minutes.",
+        "ja": "試行回数が多すぎます。{n} 分後にもう一度お試しください。",
+    },
     "auth.badEmail": {
         "ko": "이메일 주소 형식이 아닙니다.",
         "en": "That is not a valid email address.",

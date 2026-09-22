@@ -277,6 +277,16 @@ export function money(n: number | undefined) {
  */
 const LOCALE: Record<string, string> = { ko: "ko-KR", en: "en-US", ja: "ja-JP" };
 
+/** 걸린 시간. 초·분·시로만 적는다 — 이 제품의 실행은 그 범위다. */
+export function took(from?: number, to?: number) {
+  if (!from || !to || to <= from) return "";
+  const s = Math.round(to - from);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+}
+
+
 /** 자릿수 구분이 있는 숫자. `98696` 은 한눈에 안 읽힌다. */
 export function num(n: number, lang = "ko", digits = 0) {
   return n.toLocaleString(LOCALE[lang] ?? LOCALE.ko, {

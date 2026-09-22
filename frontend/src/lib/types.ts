@@ -129,6 +129,8 @@ export interface Project {
   requirement: string;
   owner: string;
   created_at: number;
+  /** 마지막으로 움직인 시각. created_at 과 빼면 걸린 시간이다. */
+  updated_at?: number;
   status: "running" | "done" | "stopped" | "manual";
   score: number;
   score_detail?: Record<string, string | number | boolean>;
