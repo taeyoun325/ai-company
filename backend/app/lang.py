@@ -236,6 +236,72 @@ _M: dict[str, dict[str, str]] = {
         "en": "Review requested by the CEO",
         "ja": "CEO の要請で検証",
     },
+    # ── 가입·로그인 (DAY 22) ───────────────────────────────────────
+    # 제품에서 **제일 먼저** 보는 화면이다. 여기가 한국어면 영어로 쓰는
+    # 사람은 계정을 만들다 막히고, 막힌 이유도 못 읽는다.
+    "auth.badEmail": {
+        "ko": "이메일 주소 형식이 아닙니다.",
+        "en": "That is not a valid email address.",
+        "ja": "メールアドレスの形式ではありません。",
+    },
+    "auth.longEmail": {
+        "ko": "이메일 주소가 너무 깁니다.",
+        "en": "That email address is too long.",
+        "ja": "メールアドレスが長すぎます。",
+    },
+    "auth.taken": {
+        "ko": "이미 가입된 이메일입니다.",
+        "en": "That email is already registered.",
+        "ja": "すでに登録されているメールアドレスです。",
+    },
+    # 로그인 실패는 **어느 쪽이 틀렸는지 알려주지 않는다.** 알려주면
+    # 가입된 이메일 목록을 만들 수 있다.
+    "auth.badLogin": {
+        "ko": "이메일 또는 비밀번호가 올바르지 않습니다.",
+        "en": "Email or password is incorrect.",
+        "ja": "メールアドレスまたはパスワードが正しくありません。",
+    },
+    "auth.noAccount": {
+        "ko": "계정을 찾을 수 없습니다.",
+        "en": "Account not found.",
+        "ja": "アカウントが見つかりません。",
+    },
+    "auth.wrongCurrent": {
+        "ko": "현재 비밀번호가 올바르지 않습니다.",
+        "en": "The current password is incorrect.",
+        "ja": "現在のパスワードが正しくありません。",
+    },
+    "auth.deadLink": {
+        "ko": "링크가 만료됐거나 이미 사용됐습니다. 다시 요청하세요.",
+        "en": "That link has expired or was already used. Request a new one.",
+        "ja": "リンクの有効期限が切れたか、すでに使用されています。再度リクエストしてください。",
+    },
+    # 비밀번호 규칙. 이유를 **한 번에 전부** 돌려준다(passwords.problems).
+    "pw.short": {
+        "ko": "{n}자 이상이어야 합니다.",
+        "en": "Must be at least {n} characters.",
+        "ja": "{n} 文字以上にしてください。",
+    },
+    "pw.long": {
+        "ko": "200자를 넘을 수 없습니다.",
+        "en": "Cannot be longer than 200 characters.",
+        "ja": "200 文字を超えることはできません。",
+    },
+    "pw.common": {
+        "ko": "너무 흔한 비밀번호입니다.",
+        "en": "That password is too common.",
+        "ja": "よく使われすぎているパスワードです。",
+    },
+    "pw.hasEmail": {
+        "ko": "이메일 주소가 그대로 들어 있습니다.",
+        "en": "It contains your email address.",
+        "ja": "メールアドレスがそのまま含まれています。",
+    },
+    "pw.spaces": {
+        "ko": "앞뒤 공백은 넣을 수 없습니다.",
+        "en": "Leading or trailing spaces are not allowed.",
+        "ja": "前後の空白は使用できません。",
+    },
     # ── 거절 문장 (DAY 22) ─────────────────────────────────────────
     # 화면은 서버가 준 문장을 **그대로** 찍는다(`useErrorText`). 그래서
     # 여기서 한국어로 쓰면, 화면을 전부 번역해도 무언가 잘못됐을 때만

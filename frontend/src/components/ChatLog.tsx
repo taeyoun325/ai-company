@@ -33,12 +33,15 @@ export function ChatLog({
   connected,
   polling,
   className = "",
+  past = false,
 }: {
   events: BusEvent[];
   roster: Roster;
   connected: boolean;
   polling: boolean;
   className?: string;
+  /** 이미 끝난 실행을 보고 있는가. 빈 칸의 뜻이 달라진다. */
+  past?: boolean;
 }) {
   const { t } = useLang();
   const box = useRef<HTMLDivElement>(null);
@@ -101,8 +104,9 @@ export function ChatLog({
         className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
       >
         {rows.length === 0 ? (
-          <p className="py-8 text-center text-sm text-dim">
-            {t("log.empty")}
+          <p className="mx-auto max-w-sm py-8 text-center text-sm leading-relaxed
+            text-dim">
+            {past ? t("log.past") : t("log.empty")}
           </p>
         ) : (
           <ol className="space-y-2">

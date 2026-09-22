@@ -32,6 +32,8 @@ import hashlib
 import hmac
 import os
 
+from app import lang
+
 SCHEME = "scrypt"
 
 # OWASP 권고에 가까운 값. n 은 2의 거듭제곱이어야 한다.
@@ -137,18 +139,18 @@ def problems(password: str, email: str = "") -> list[str]:
     """
     out: list[str] = []
     if len(password) < MIN_LENGTH:
-        out.append(f"{MIN_LENGTH}자 이상이어야 합니다.")
+        out.append(lang.t("pw.short", n=MIN_LENGTH))
     if len(password) > 200:
         # 상한을 두는 이유: scrypt 는 입력 길이에 비례해 시간을 쓰므로,
         # 아주 긴 비밀번호를 반복 제출하면 그 자체가 부하 공격이 된다.
-        out.append("200자를 넘을 수 없습니다.")
+        out.append(lang.t("pw.long"))
     if password.lower() in _COMMON:
-        out.append("너무 흔한 비밀번호입니다.")
+        out.append(lang.t("pw.common"))
     local = email.split("@")[0].strip().lower()
     if local and len(local) >= 3 and local in password.lower():
-        out.append("이메일 주소가 그대로 들어 있습니다.")
+        out.append(lang.t("pw.hasEmail"))
     if password.strip() != password:
         # 앞뒤 공백은 붙여넣기 사고로 들어오고, 사용자는 왜 로그인이
         # 안 되는지 영영 모른다.
-        out.append("앞뒤 공백은 넣을 수 없습니다.")
+        out.append(lang.t("pw.spaces"))
     return out

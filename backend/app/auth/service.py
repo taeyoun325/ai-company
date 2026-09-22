@@ -32,6 +32,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 
+from app import lang
 from app.auth import passwords, store
 from app.auth import mail
 
@@ -45,7 +46,10 @@ LOCKOUT = 15 * 60           # 넘으면 15분 잠근다
 # 지나치게 엄격한 이메일 정규식은 멀쩡한 주소를 거부한다. 모양만 본다.
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-SAME_MESSAGE = "이메일 또는 비밀번호가 올바르지 않습니다."
+# 로그인 실패 문장은 한 곳에서 온다 — 어느 쪽이 틀렸는지 알려주지 않기
+# 위해서다. 문장은 요청 언어로 고른다(app/lang.py).
+def same_message() -> str:
+    return lang.t("auth.badLogin")
 
 
 class AuthError(RuntimeError):
@@ -110,9 +114,9 @@ def is_first_user() -> bool:
 def sign_up(email: str, password: str, display_name: str = "") -> store.User:
     email = store.normalize_email(email)
     if not _EMAIL.match(email):
-        raise AuthError("이메일 주소 형식이 아닙니다.")
+        raise AuthError(lang.t("auth.badEmail"))
     if len(email) > 254:
-        raise AuthError("이메일 주소가 너무 깁니다.")
+        raise AuthError(lang.t("auth.longEmail"))
 
     if issues := passwords.problems(password, email):
         raise AuthError(" ".join(issues))
@@ -121,7 +125,7 @@ def sign_up(email: str, password: str, display_name: str = "") -> store.User:
     # 여기를 통과할 수 있다. 그래서 DB 의 UNIQUE 제약이 마지막 방어이고,
     # 아래에서 그 실패를 잡아 같은 메시지로 바꾼다.
     if store.user_by_email(email) is not None:
-        raise AuthError("이미 가입된 이메일입니다.")
+        raise AuthError(lang.t("auth.taken"))
 
     try:
         user = store.create_user(email, display_name)
@@ -130,7 +134,7 @@ def sign_up(email: str, password: str, display_name: str = "") -> store.User:
     except store.AlreadyExists as e:
         # DB 예외를 여기서 잡으면 이 파일도 SQLite 를 아는 코드가 된다.
         # 저장소가 우리 예외로 바꿔서 올린다(§5).
-        raise AuthError("이미 가입된 이메일입니다.") from e
+        raise AuthError(lang.t("auth.taken")) from e
     return user
 
 
@@ -154,7 +158,7 @@ def log_in(email: str, password: str, *, ip: str = "",
     if not row or not ok or user is None or user.disabled:
         for k in keys:
             _record_failure(k)
-        raise AuthError(SAME_MESSAGE)
+        raise AuthError(same_message())
 
     # 성공한 이 순간이 평문을 쥐고 있는 유일한 시점이다. 해시가 낡았으면
     # 지금 올린다 — 사용자는 아무것도 하지 않아도 보호 수준이 올라간다.
@@ -178,10 +182,10 @@ def log_out(token: str) -> bool:
 def change_password(user_id: str, current: str, new: str) -> None:
     user = store.user_by_id(user_id)
     if user is None:
-        raise AuthError("계정을 찾을 수 없습니다.")
+        raise AuthError(lang.t("auth.noAccount"))
     row = store.identity(PROVIDER, user.email)
     if row is None or not passwords.verify(current, row["password_hash"] or ""):
-        raise AuthError("현재 비밀번호가 올바르지 않습니다.")
+        raise AuthError(lang.t("auth.wrongCurrent"))
     if issues := passwords.problems(new, user.email):
         raise AuthError(" ".join(issues))
     store.update_password_hash(user.id, passwords.hash_password(new))
@@ -241,10 +245,10 @@ def reset_password(token: str, new: str) -> store.User:
     if user_id is None:
         # 만료·사용됨·없음을 구분해 말하지 않는다. 구분해 주면 토큰을
         # 훑어보며 어떤 것이 살아 있는지 알아낼 수 있다.
-        raise AuthError("링크가 만료됐거나 이미 사용됐습니다. 다시 요청하세요.")
+        raise AuthError(lang.t("auth.deadLink"))
     user = store.user_by_id(user_id)
     if user is None or user.disabled:
-        raise AuthError("계정을 찾을 수 없습니다.")
+        raise AuthError(lang.t("auth.noAccount"))
     if issues := passwords.problems(new, user.email):
         raise AuthError(" ".join(issues))
 
@@ -261,7 +265,7 @@ def reset_password(token: str, new: str) -> store.User:
 def request_verification(user_id: str) -> mail.Delivery:
     user = store.user_by_id(user_id)
     if user is None:
-        raise AuthError("계정을 찾을 수 없습니다.")
+        raise AuthError(lang.t("auth.noAccount"))
     if user.email_verified:
         return mail.Delivery(True, "none", "이미 확인된 주소입니다")
     token = store.new_token(user.id, "verify", VERIFY_TTL)
@@ -271,9 +275,9 @@ def request_verification(user_id: str) -> mail.Delivery:
 def verify_email(token: str) -> store.User:
     user_id = store.use_token(token, "verify")
     if user_id is None:
-        raise AuthError("링크가 만료됐거나 이미 사용됐습니다. 다시 요청하세요.")
+        raise AuthError(lang.t("auth.deadLink"))
     user = store.user_by_id(user_id)
     if user is None:
-        raise AuthError("계정을 찾을 수 없습니다.")
+        raise AuthError(lang.t("auth.noAccount"))
     store.mark_email_verified(user.id)
     return store.user_by_id(user.id) or user

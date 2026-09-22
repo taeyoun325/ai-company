@@ -466,6 +466,14 @@ const S = {
   "log.polling": { ko: "· SSE 가 막혀 폴링으로 받는 중", en: "· SSE blocked, falling back to polling", ja: "· SSE が塞がれポーリングで受信中" },
   "log.lines": { ko: "{n}줄", en: "{n} lines", ja: "{n} 行" },
   "log.empty": { ko: "아직 기록이 없습니다.", en: "Nothing here yet.", ja: "まだ記録がありません。" },
+  // 끝난 프로젝트의 로그 칸. "아직 기록이 없습니다" 는 여기서 거짓말이
+  // 된다 — 기록은 있었고, 우리가 보관하지 않는다. 그 사실을 말하고,
+  // 남아 있는 곳(판본 이력)을 가리킨다.
+  "log.past": {
+    ko: "실행 중에 흐른 로그는 보관하지 않습니다. 누가 무엇을 왜 고쳤는지는 아래 산출물의 판본 이력에 남아 있습니다.",
+    en: "The live log is not kept after a run. Who changed what, and why, is recorded in each deliverable's version trail below.",
+    ja: "実行中のログは保存されません。誰が何をなぜ変更したかは、下の成果物の版履歴に残っています。",
+  },
   "log.unread": { ko: "새 소식 {n}개 ↓", en: "{n} new ↓", ja: "新着 {n} 件 ↓" },
   "log.done": { ko: "완료", en: "Done", ja: "完了" },
   "log.stopped": { ko: "중단", en: "Stopped", ja: "中断" },

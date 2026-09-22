@@ -1,8 +1,13 @@
-# 에이전트가 생성한 산출물 — 실행할 때마다 새로 쌓인다
-projects/
+# 에이전트가 생성한 산출물 — 실행할 때마다 새로 쌓인다.
+#
+# **앞에 슬래시가 있어야 한다.** `projects/` 로 쓰면 이름이 projects 인
+# 폴더를 **전부** 막는다 — 그래서 `frontend/src/app/projects/` 가 저장소에
+# 들어가 있지 않았다. 화면 소스 두 개가 커밋 없이 여기에만 있었다는 뜻이다.
+# 새로 받아 올린 사람은 그 화면 없이 빌드하게 된다.
+/projects/
 
 # 실행 로그
-logs/
+/logs/
 
 # 파이썬 부산물
 __pycache__/
@@ -31,13 +36,14 @@ secrets.json
 .idea/
 .DS_Store
 Thumbs.db
-attachments/
-schedules.json
+# 이것도 실행 중에 생기는 것이라 뿌리에서만 막는다(위 projects/ 와 같은 이유).
+/attachments/
+/schedules.json
 
 # 프론트엔드
 node_modules/
 .next/
-out/
+/frontend/out/
 next-env.d.ts
 
 # 데이터베이스 (개발용 SQLite)

@@ -23,10 +23,14 @@ from pathlib import Path
 APP = Path(__file__).resolve().parents[1] / "app"
 
 # SaaS 로 열리는 경로들. 이 파일들 안의 거절 문장은 사용자가 본다.
-GUARDED = ("main.py", "auth/deps.py", "api/auth.py", "api/projects.py")
+GUARDED = ("main.py", "auth/deps.py", "api/auth.py", "api/projects.py",
+           "auth/service.py", "auth/passwords.py")
 
 KOREAN = re.compile(r"[가-힣]")
-RAISE = re.compile(r"HTTPException\(")
+# 사용자가 읽는 거절이 만들어지는 자리들. HTTPException 뿐 아니라
+# 도메인 예외도 화면까지 그대로 올라간다 — 엔드포인트가 `str(e)` 를
+# 그대로 넘기기 때문이다.
+RAISE = re.compile(r"HTTPException\(|AuthError\(|out\.append\(")
 
 
 def _code(path: Path) -> list[str]:
@@ -71,3 +75,29 @@ def test_the_table_answers_in_every_language():
             with lang.bind(code):
                 out = lang.t(key)
             assert out and out != key, f"{key} 가 {code} 에서 비어 있습니다"
+
+
+def test_signup_rejections_follow_the_request_language():
+    """가입 화면은 제품에서 **제일 먼저** 보는 화면이다. 여기가 한국어면
+    영어로 쓰는 사람은 계정을 만들다 막히고, 막힌 이유도 못 읽는다."""
+    from app import lang
+    from app.auth import passwords, service
+
+    with lang.bind("en"):
+        try:
+            service.sign_up("not-an-email", "Str0ng-Passphrase-42")
+        except service.AuthError as e:
+            assert "valid email" in str(e), str(e)
+        else:
+            raise AssertionError("잘못된 이메일이 통과했습니다")
+
+        issues = passwords.problems("short", "someone@example.com")
+        assert issues and not any(_korean(i) for i in issues), issues
+        assert service.same_message() == "Email or password is incorrect."
+
+    with lang.bind("ja"):
+        assert "パスワード" in service.same_message()
+
+
+def _korean(s: str) -> bool:
+    return any("가" <= ch <= "힣" for ch in s)
