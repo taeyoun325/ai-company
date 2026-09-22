@@ -315,3 +315,43 @@ def test_sweeping_keeps_the_files(tmp_path, monkeypatch):
     store.save_meta(slug, {"beat": 0})
     engine.sweep_stale_runs()
     assert (store.dir_of(slug) / "src" / "calc.py").exists()
+
+
+def test_seats_are_counted_across_instances():
+    """동시 실행 한도를 **프로세스 안의 스레드 수**로 세고 있었다 (DAY 22).
+
+    두 대로 띄우면 한도가 인스턴스마다 따로 세진다 — 2좌석을 산 사람이
+    4개를 돌릴 수 있다. 요금제가 파는 것이 바로 그 좌석이므로 이건 돈이
+    새는 쪽이다.
+
+    여기서는 "다른 인스턴스가 돌리는 중"을 색인에 직접 써서 흉내 낸다.
+    이 프로세스의 `_runs` 는 비어 있지만, 색인에는 살아 있는 실행이 있다.
+    """
+    from app.database import index
+
+    owner = "seat-test"
+    seats = min(engine.MAX_CONCURRENT,
+                int(credits.plan(credits.wallet(owner).plan)
+                    .get("max_concurrent", engine.MAX_CONCURRENT)))
+    assert seats >= 1
+
+    # 다른 인스턴스가 좌석을 전부 쓰고 있다 — 방금 박자를 찍은 상태로.
+    now = time.time()
+    for i in range(seats):
+        slug = store.new_project(f"elsewhere {i}", owner=owner)
+        store.save_meta(slug, {"status": "running", "beat": now})
+
+    assert index.running_count(owner, now - engine.BEAT_STALE) >= seats
+
+    with pytest.raises(RuntimeError) as got:
+        engine.start("한 개 더", owner=owner)
+    assert str(got.value), "거절 문장이 비어 있습니다"
+
+    # 오래된 것은 세지 않는다 — 안 그러면 인스턴스 하나가 죽을 때마다
+    # 좌석이 영영 잠긴다. 살아 있음의 근거는 **마지막으로 쓴 시각**이다:
+    # 실행 중에는 20초마다 박자가 메타를 쓰고, 그때 색인도 갱신된다.
+    # 인스턴스가 죽으면 아무도 쓰지 않으므로 그 시각이 멈춘다.
+    #
+    # 여기서는 기준선을 미래로 올려 "전부 오래됐다"를 만든다. 메타에
+    # 옛 시각을 적는 것으로는 흉내 낼 수 없다 — 적는 행위 자체가 갱신이다.
+    assert index.running_count(owner, time.time() + 10) == 0

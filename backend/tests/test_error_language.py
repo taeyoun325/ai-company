@@ -56,6 +56,10 @@ RAISE = re.compile(r"HTTPException\(|Delivery\(|AuthError\(|out\.append\("
 # 그래서 SaaS 경로로 열리는 파일에서만 본다.
 SAY_FILES = ("orchestrator/engine.py", "orchestrator/manual.py",
              "providers/anthropic_client.py", "providers/base.py")
+# 프로젝트 화면의 "중단 사유"도 사용자가 읽는다. 그 자리는 `save_meta`
+# 로 들어간다 — DAY 22 에 한국어 한 줄이 거기 남아 있었다.
+META = re.compile(r"save_meta" + chr(92) + "(")
+META_FILES = ("orchestrator/engine.py", "orchestrator/manual.py")
 SAY = re.compile(r"bus" + chr(92) + ".say" + chr(92) + "(|bus" + chr(92) + ".phase" + chr(92) + "(")
 
 
@@ -92,13 +96,16 @@ def test_rejections_go_through_the_translation_table():
             continue
         lines = _code(path)
         for i, line in enumerate(lines):
+            meta_hit = rel in META_FILES and META.search(line)
             hit = RAISE.search(line) or (
                 rel in USER_VALUE_ERRORS and VALUE_ERROR.search(line)) or (
-                rel in SAY_FILES and SAY.search(line))
+                rel in SAY_FILES and SAY.search(line)) or meta_hit
             if not hit:
                 continue
             # 문장이 다음 줄로 넘어가는 경우가 있다. 세 줄까지 본다.
-            blob = " ".join(lines[i:i + 3])
+            # `save_meta` 는 여러 줄짜리 딕셔너리를 받으므로 더 본다 —
+            # 3줄로 두니 실제로 있던 한국어 한 줄을 놓쳤다.
+            blob = " ".join(lines[i:i + (10 if meta_hit else 3)])
             # "이 줄 어딘가에 lang.t 가 있으면 통과"로 하면 **섞인 줄**이
             # 빠져나간다 — 한쪽 분기만 번역돼 있어도 통과했다. 실제로 그런
             # 줄이 MANUAL 로그에 있었다. 그래서 한국어가 **문자열 리터럴

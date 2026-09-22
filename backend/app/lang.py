@@ -487,6 +487,14 @@ _M: dict[str, dict[str, str]] = {
     # 이 문장은 로그와 프로젝트 화면의 "중단 사유"에 남는다. 돈이 걸린
     # 거절이라 사용자가 제일 오래 들여다보는 줄이고, 여기가 한국어면
     # 무엇 때문에 멈췄는지 못 읽은 채 크레딧이 줄어 있다.
+    "stop.restarted": {
+        "ko": "서버가 다시 시작되어 중단됐습니다. 그때까지 만든 산출물은 "
+              "그대로 남아 있습니다.",
+        "en": "The server restarted, so this run was stopped. Everything it "
+              "made up to then is still here.",
+        "ja": "サーバーが再起動したため中断されました。それまでに作った成果物は"
+              "そのまま残っています。",
+    },
     "stop.byCeo": {"ko": "CEO 가 정지시켰습니다.", "en": "Stopped by the CEO.",
                    "ja": "CEO が停止しました。"},
     "stop.rounds": {

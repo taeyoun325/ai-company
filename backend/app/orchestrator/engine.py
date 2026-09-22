@@ -40,7 +40,7 @@ from app import bus, config, lang, tenant, usage
 from app.agents import employee, roles
 from app.agents.schemas import (Criterion, FinalReport, Plan, Routing, Task,
                                 TestSuite, Verdict, WorkResult)
-from app.database import store
+from app.database import index, store
 from app.usage import credits
 from app.orchestrator import prompts, runner
 from app.orchestrator.score import Score
@@ -148,8 +148,10 @@ def sweep_stale_runs() -> list[str]:
             continue          # 다른 인스턴스가 돌리는 중일 수 있다
         store.save_meta(slug, {
             "status": "stopped",
-            "stopped_reason": "서버가 다시 시작되어 중단됐습니다. "
-                              "그때까지 만든 산출물은 그대로 남아 있습니다.",
+            # 이 문장은 프로젝트 화면의 "중단 사유"에 그대로 뜬다.
+            # 기동 시에는 요청이 없어 언어를 알 수 없으므로 기본값으로
+            # 남는다 — 화면이 다시 번역할 수는 없다(기록이기 때문이다).
+            "stopped_reason": lang.t("stop.restarted"),
         })
         stopped.append(slug)
     return stopped
@@ -195,9 +197,17 @@ def start(requirement: str, attachment_ids: list[str] | None = None,
     seats = min(MAX_CONCURRENT,
                 int(credits.plan(credits.wallet(owner).plan)
                     .get("max_concurrent", MAX_CONCURRENT)))
+    # 좌석은 **인스턴스를 넘어** 센다 (DAY 22). 프로세스 안의 스레드 수로
+    # 세면 두 대로 띄우는 순간 한도가 인스턴스마다 따로 세져, 2좌석을 산
+    # 사람이 4개를 돌릴 수 있다. 색인은 인스턴스가 공유한다.
+    #
+    # 이 프로세스의 것도 함께 본다 — 방금 시작해 아직 박자를 못 찍은
+    # 실행이 색인에 'running' 으로 올라가기 전 찰나가 있기 때문이다.
     with _runs_lock:
-        if len(_runs) >= seats:
-            raise RuntimeError(lang.t("run.concurrent", n=seats))
+        here = len(_runs)
+    live = max(here, index.running_count(owner, time.time() - BEAT_STALE))
+    if live >= seats:
+        raise RuntimeError(lang.t("run.concurrent", n=seats))
 
     # 잔액을 **시작 전에** 본다 (§15). 0 이 된 다음에 막으면 이미 쓴 것이다.
     # 다만 프로젝트 상한 전액이 아니라 **한 번 부를 돈**만 요구한다.

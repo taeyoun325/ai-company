@@ -341,6 +341,33 @@ def project_costs(owner: str | None = None) -> dict:
     }
 
 
+def running_count(owner: str, fresh_since: float) -> int:
+    """지금 **정말로** 돌고 있는 이 소유자의 실행 수 (DAY 22).
+
+    동시 실행 한도를 프로세스 안의 스레드 수로 세고 있었다. 그러면 두
+    대로 띄우는 순간 한도가 인스턴스마다 따로 세져, 요금제가 2좌석인
+    사람이 4개를 돌릴 수 있다 — **돈이 새는 쪽**이다.
+
+    색인은 인스턴스가 공유하므로 여기서 세면 한 번에 맞는다. 살아 있는지는
+    `updated_at` 으로 본다: 실행 중에는 20초마다 박자가 메타를 쓰고
+    (`engine._beat_once`), 그때마다 이 값이 갱신된다. 죽은 인스턴스가
+    남긴 '진행 중'은 3분이 지나면 세지 않는다 — 그 줄은 기동 시
+    `sweep_stale_runs()` 가 중단으로 정리한다.
+
+    셀 수 없으면 **0 을 돌려준다.** 색인은 편의지 진실이 아니고(§12),
+    여기서 막아버리면 색인 하나 깨진 것으로 아무도 시작하지 못한다.
+    """
+    try:
+        with _lock, conn() as c:
+            row = c.execute(
+                "SELECT COUNT(*) FROM projects "
+                "WHERE owner = ? AND status = 'running' AND updated_at > ?",
+                (owner, fresh_since)).fetchone()
+        return int(row[0]) if row else 0
+    except sqlite3.Error:
+        return 0
+
+
 def stats(owner: str | None = None) -> dict:
     """대시보드 요약 (§12).
 
