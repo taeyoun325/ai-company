@@ -46,12 +46,13 @@ AUTO 는 결제하고 MANUAL 은 공짜인 제품이 되기 때문이다.
 from __future__ import annotations
 
 import json
+import os
 import threading
 
 from app import bus, config, lang, safeio, tenant, usage
 from app.agents import employee, roles
 from app.agents.schemas import Verdict, WorkResult
-from app.database import store
+from app.database import index, store
 from app.orchestrator import prompts, runner
 from app.providers.base import Message
 from app.tools import project_fs as pfs
@@ -62,8 +63,10 @@ MAX_HISTORY = 12          # 직원 한 명당 유지할 메시지 수(user+assis
 _lock = threading.RLock()
 # slug -> {직원 id -> 메시지 목록}. **메모리는 사본이고 파일이 진실이다.**
 _history: dict[str, dict[str, list[Message]]] = {}
-# slug -> 지금 이 프로젝트에서 누가 일하는 중인가
-_busy: dict[str, str] = {}
+# 한 번의 지시가 잡고 있는 시간의 상한 (초). 모델 호출이 길어질 수 있어
+# 넉넉히 두되, 잠근 인스턴스가 죽어도 이만큼 뒤에는 풀린다 — 영원히 잠긴
+# 프로젝트는 고장이지 안전이 아니다.
+LEASE = float(os.getenv("MANUAL_LEASE", "600"))
 
 
 class Busy(RuntimeError):
@@ -158,8 +161,8 @@ def forget_cached_history() -> None:
 
 
 def busy_employee(slug: str) -> str | None:
-    with _lock:
-        return _busy.get(slug)
+    """지금 이 프로젝트를 잡고 있는 직원. 인스턴스를 넘어 본다."""
+    return index.lock_holder(slug)
 
 
 def is_busy(slug: str) -> bool:
@@ -180,19 +183,22 @@ class _Session:
         self._before = 0.0
 
     def __enter__(self):
-        with _lock:
-            if self.slug in _busy:
-                raise Busy(lang.t("manual.busy",
-                                  name=roles.get(_busy[self.slug]).name))
-            _busy[self.slug] = self.employee_id
+        # 점유는 **인스턴스 밖**에 둔다 (DAY 22). 파이썬 딕셔너리로 표시하면
+        # 두 대로 띄웠을 때 같은 프로젝트에 두 지시가 동시에 들어가고,
+        # 파일 쓰기는 각자 원자적이지만 마지막에 쓴 쪽이 이긴다 — 앞 사람의
+        # 작업이 조용히 사라진다.
+        held_by = index.acquire_lock(self.slug, self.employee_id, LEASE)
+        if held_by is not None:
+            raise Busy(lang.t("manual.busy",
+                              name=roles.display_name(held_by)
+                              if roles.exists(held_by) else held_by))
         try:
             # 어느 키로 부를지 먼저 정한다 (DAY 19). BYOK 인데 키가 없으면
             # 여기서 멈춘다 — 운영자 키로 대신 부르지 않는다.
             tenant.require_runnable(self.owner)
             credits.reserve(self.owner, employee.worst_case_cost(self.employee_id))
         except BaseException:
-            with _lock:
-                _busy.pop(self.slug, None)
+            index.release_lock(self.slug, self.employee_id)
             raise
         self._tenant = tenant.bind(self.owner)
         self._tenant.__enter__()
@@ -215,8 +221,7 @@ class _Session:
             if self._tenant is not None:
                 self._tenant.__exit__(*exc)
                 self._tenant = None
-            with _lock:
-                _busy.pop(self.slug, None)
+            index.release_lock(self.slug, self.employee_id)
             pfs.release()
         return False
 

@@ -321,6 +321,9 @@ const S = {
     ja: "例）div に 0 除算の例外処理を入れてください",
   },
   "man.working": { ko: "작업 중…", en: "Working…", ja: "作業中…" },
+  // 누가 잡고 있는지 말한다. "작업 중"만으로는 기다릴지 말지 정할 수 없고,
+  // 인스턴스를 넘어 점유를 보게 된 뒤로는 **내가 아닌 사람**일 수도 있다.
+  "man.busyWho": { ko: "{who} 작업 중…", en: "{who} is working…", ja: "{who} が作業中…" },
   "man.instruct": { ko: "지시하기", en: "Send instruction", ja: "指示する" },
   "man.verdict": { ko: "검증 결과", en: "Review result", ja: "検証結果" },
   "man.pass": { ko: "통과", en: "Pass", ja: "合格" },

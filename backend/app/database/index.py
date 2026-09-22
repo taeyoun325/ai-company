@@ -57,6 +57,21 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS ix_projects_owner_created
     ON projects (owner, created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_projects_status ON projects (status);
+
+-- 프로젝트 하나를 **한 번에 한 사람만** 만지게 하는 임대 (DAY 22).
+--
+-- MANUAL 지시는 파이썬 딕셔너리로 점유를 표시했다. 그러면 두 대로 띄웠을
+-- 때 같은 프로젝트에 두 지시가 동시에 들어가고, 파일 쓰기는 각자
+-- 원자적이지만 **마지막에 쓴 쪽이 이긴다** — 앞 사람의 작업이 조용히
+-- 사라진다.
+--
+-- 만료 시각을 둔다. 잠근 인스턴스가 죽어도 그 시각이 지나면 풀린다 —
+-- 영원히 잠긴 프로젝트는 고장이지 안전이 아니다.
+CREATE TABLE IF NOT EXISTS project_locks (
+    slug       TEXT PRIMARY KEY,
+    holder     TEXT NOT NULL,
+    expires_at REAL NOT NULL
+);
 """
 
 
@@ -339,6 +354,51 @@ def project_costs(owner: str | None = None) -> dict:
         "max_usd": round(max(costs), 4) if costs else 0.0,
         "min_samples": MIN_SAMPLES,
     }
+
+
+def acquire_lock(slug: str, holder: str, ttl: float) -> str | None:
+    """프로젝트를 잠근다. 성공하면 None, 이미 잡혀 있으면 **잡은 사람**.
+
+    한 문장으로 잡는다. 읽고-판단하고-쓰면 그 사이에 다른 인스턴스가
+    끼어들 수 있고, 그게 바로 막으려는 일이다. `ON CONFLICT ... DO UPDATE
+    ... WHERE` 는 조건이 맞을 때만 덮어쓰므로, 만료된 임대는 가져오고
+    살아 있는 임대는 건드리지 않는다.
+
+    `INSERT OR REPLACE` 를 쓰지 않는 이유: SQLite 전용이라 PostgreSQL 로
+    옮길 때 또 막힌다(§12).
+    """
+    now = time.time()
+    with _lock, conn() as c:
+        c.execute(
+            "INSERT INTO project_locks (slug, holder, expires_at) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT (slug) DO UPDATE SET "
+            "  holder = excluded.holder, expires_at = excluded.expires_at "
+            "WHERE project_locks.expires_at < ?",
+            (slug, holder, now + ttl, now))
+        row = c.execute(
+            "SELECT holder, expires_at FROM project_locks WHERE slug = ?",
+            (slug,)).fetchone()
+    if row is None:                                    # pragma: no cover
+        return None
+    return None if row["holder"] == holder and row["expires_at"] > now         else str(row["holder"])
+
+
+def lock_holder(slug: str) -> str | None:
+    """지금 이 프로젝트를 잡고 있는 사람. 만료된 임대는 없는 것으로 본다."""
+    now = time.time()
+    with _lock, conn() as c:
+        row = c.execute(
+            "SELECT holder FROM project_locks "
+            "WHERE slug = ? AND expires_at > ?", (slug, now)).fetchone()
+    return str(row["holder"]) if row else None
+
+
+def release_lock(slug: str, holder: str) -> None:
+    """**내가 잡은 것만** 푼다. 남의 임대를 푸는 것은 잠그지 않은 것과 같다."""
+    with _lock, conn() as c:
+        c.execute("DELETE FROM project_locks WHERE slug = ? AND holder = ?",
+                  (slug, holder))
 
 
 def running_count(owner: str, fresh_since: float) -> int:

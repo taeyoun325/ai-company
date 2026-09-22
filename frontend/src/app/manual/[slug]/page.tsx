@@ -151,7 +151,9 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
         />
         <div className="mt-2 flex items-center gap-2">
           <Button tone="primary" onClick={send} disabled={!!busy || !message.trim() || !picked}>
-            {busy ? t("man.working") : t("man.instruct")}
+            {busy
+              ? t("man.busyWho", { who: stream.roster[busy]?.name ?? busy })
+              : t("man.instruct")}
           </Button>
           <span className="text-xs text-dim">
             {folded.phase && `${folded.phase} · ${folded.detail}`}

@@ -13,6 +13,7 @@ MANUAL 은 한 개도 깎지 않았고, 요금제를 붙이는 순간 그건 구
 "AUTO 는 결제, MANUAL 은 공짜"라는 제품이 된다.
 """
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -316,3 +317,42 @@ def test_two_employees_keep_separate_conversations(slug):
     manual.forget_cached_history()
     assert manual.history(slug, "analyst") == []
     assert manual.history(slug, "developer")
+
+
+# ── 인스턴스를 넘는 점유 (DAY 22) ──────────────────────────────────
+def test_another_instance_holding_the_project_blocks_this_one(slug):
+    """점유를 파이썬 딕셔너리로 표시하고 있었다.
+
+    두 대로 띄우면 같은 프로젝트에 두 지시가 동시에 들어간다. 파일 쓰기는
+    각자 원자적이지만 **마지막에 쓴 쪽이 이긴다** — 앞 사람의 작업이
+    조용히 사라진다. 여기서는 다른 인스턴스를 색인에 임대를 직접 써서
+    흉내 낸다. 이 프로세스의 메모리에는 아무 표시도 없다.
+    """
+    from app.database import index
+
+    assert index.acquire_lock(slug, "writer", 60) is None, "임대를 못 잡았다"
+    try:
+        assert manual.is_busy(slug), "다른 인스턴스의 점유가 안 보인다"
+        with pytest.raises(manual.Busy) as got:
+            manual.instruct(slug, "developer", "사칙연산을 구현해주세요")
+        # 누가 잡고 있는지 말해준다. "누군가 작업 중"만으로는 기다릴지
+        # 말지 정할 수 없다.
+        assert roles.display_name("writer") in str(got.value), str(got.value)
+    finally:
+        index.release_lock(slug, "writer")
+
+    # 풀리면 바로 된다.
+    assert not manual.is_busy(slug)
+    out = manual.instruct(slug, "developer", "사칙연산을 구현해주세요")
+    assert out["files"] == ["src/calc.py"]
+
+
+def test_a_dead_instance_does_not_lock_the_project_forever(slug):
+    """잠근 인스턴스가 죽어도 임대는 만료된다. 영원히 잠긴 프로젝트는
+    고장이지 안전이 아니다."""
+    from app.database import index
+
+    assert index.acquire_lock(slug, "writer", 0.05) is None
+    time.sleep(0.1)
+    assert not manual.is_busy(slug), "만료된 임대가 아직 잡고 있다"
+    assert manual.instruct(slug, "developer", "사칙연산")["files"]
