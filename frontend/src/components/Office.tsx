@@ -229,7 +229,10 @@ function Desk({
         : {})}
       ref={seat as React.Ref<HTMLDivElement>}
       style={{ ["--c" as string]: color }}
-      className={`desk rounded-xl border bg-panel p-3 text-left transition
+      // h-full + flex 로 한 줄 안의 카드 높이를 맞춘다. 내용 길이가 달라서
+      // 카드마다 아래 선이 다른 데 있으면, 격자가 아니라 흘린 것처럼 보인다.
+      className={`desk flex h-full flex-col rounded-xl border bg-panel p-3
+        text-left transition
         ${working ? "working" : ""}
         ${picked ? "border-accent" : "border-line"}
         ${onPick ? "hover:border-dim cursor-pointer" : ""}`}
@@ -407,7 +410,7 @@ function HireButton({
 
   if (e.can_fire === false) {
     return (
-      <p className="mt-2 border-t border-line pt-2 text-[11px] text-dim">
+      <p className="mt-auto border-t border-line pt-2 text-[11px] text-dim">
         {t("staff.locked")}
       </p>
     );

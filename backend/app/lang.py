@@ -307,6 +307,55 @@ _M: dict[str, dict[str, str]] = {
         "ja": "PROVIDER_MODE=real ですが {name} の鍵がありません。Mock で"
               "代用しません。",
     },
+    # ── 첨부 · 수동 지시 · 요금제 (DAY 22) ─────────────────────────
+    # 사용자가 직접 하는 행동이 막히는 자리다 — 파일을 올리고, 직원에게
+    # 지시하고, 요금제를 고른다. 막힌 이유가 읽히지 않으면 다시 시도할
+    # 방법도 모른다.
+    "att.tooBig": {
+        "ko": "파일이 너무 큽니다 ({mb}MB). 최대 {max}MB.",
+        "en": "That file is too big ({mb}MB). The limit is {max}MB.",
+        "ja": "ファイルが大きすぎます ({mb}MB)。最大 {max}MB です。",
+    },
+    "att.badType": {
+        "ko": "지원하지 않는 형식입니다: {type}. 이미지 / PDF / 텍스트만 받습니다.",
+        "en": "Unsupported format: {type}. Only images, PDF and text are accepted.",
+        "ja": "対応していない形式です: {type}。画像 / PDF / テキストのみ受け付けます。",
+    },
+    "att.tooMany": {
+        "ko": "첨부 총량이 너무 큽니다. 일부를 빼고 다시 시도하세요.",
+        "en": "The attachments are too large in total. Remove some and try again.",
+        "ja": "添付の合計が大きすぎます。いくつか外して再試行してください。",
+    },
+    "manual.busy": {
+        "ko": "{name}이(가) 아직 작업 중입니다. 끝난 뒤에 지시하세요.",
+        "en": "{name} is still working. Wait until they finish.",
+        "ja": "{name} はまだ作業中です。終わってから指示してください。",
+    },
+    "manual.empty": {
+        "ko": "지시 내용이 비어 있습니다",
+        "en": "The instruction is empty",
+        "ja": "指示の内容が空です",
+    },
+    "manual.cost": {
+        "ko": "비용 상한(${limit}) — 이 호출의 최악 비용까지 더하면 "
+              "${projected}가 되어 지시를 받지 않습니다.",
+        "en": "Cost cap (${limit}) — adding the worst case of this call would "
+              "reach ${projected}, so the instruction is refused.",
+        "ja": "コスト上限(${limit}) — この呼び出しの最悪コストを加えると "
+              "${projected} になるため指示を受け付けません。",
+    },
+    "plan.unknown": {"ko": "없는 요금제: {name}", "en": "No such plan: {name}",
+                     "ja": "存在しない料金プラン: {name}"},
+    "plan.notSelectable": {
+        "ko": "고를 수 없는 요금제: {name}",
+        "en": "That plan cannot be selected: {name}",
+        "ja": "選択できない料金プラン: {name}",
+    },
+    "plan.badTopup": {
+        "ko": "0 이하를 충전할 수 없습니다",
+        "en": "Cannot top up zero or less",
+        "ja": "0 以下をチャージすることはできません",
+    },
     # ── 실행이 멈춘 이유 (DAY 22) ──────────────────────────────────
     # 이 문장은 로그와 프로젝트 화면의 "중단 사유"에 남는다. 돈이 걸린
     # 거절이라 사용자가 제일 오래 들여다보는 줄이고, 여기가 한국어면

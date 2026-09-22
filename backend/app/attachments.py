@@ -19,7 +19,7 @@ import time
 import uuid
 from pathlib import Path
 
-from app import config
+from app import config, lang
 
 DIR = config.ROOT / "attachments"
 
@@ -46,15 +46,14 @@ def _kind(media_type: str, suffix: str) -> str:
 def save(filename: str, data: bytes, source: str = "upload") -> dict:
     """첨부를 저장하고 메타데이터를 돌려준다. source: upload | screen"""
     if len(data) > MAX_BYTES:
-        raise ValueError(f"파일이 너무 큽니다 ({len(data)//1024//1024}MB). "
-                         f"최대 {MAX_BYTES//1024//1024}MB.")
+        raise ValueError(lang.t("att.tooBig", mb=len(data) // 1024 // 1024,
+                                max=MAX_BYTES // 1024 // 1024))
     DIR.mkdir(parents=True, exist_ok=True)
     suffix = Path(filename).suffix or ".bin"
     media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     kind = _kind(media_type, suffix)
     if kind == "unsupported":
-        raise ValueError(f"지원하지 않는 형식입니다: {media_type or suffix}. "
-                         f"이미지 / PDF / 텍스트만 받습니다.")
+        raise ValueError(lang.t("att.badType", type=media_type or suffix))
 
     aid = uuid.uuid4().hex[:12]
     path = DIR / f"{aid}{suffix}"
@@ -110,7 +109,7 @@ def to_content_blocks(ids: list[str]) -> list[dict]:
     if not ids:
         return []
     if total_bytes(ids) > MAX_TOTAL_PER_RUN:
-        raise ValueError("첨부 총량이 너무 큽니다. 일부를 빼고 다시 시도하세요.")
+        raise ValueError(lang.t("att.tooMany"))
 
     blocks: list[dict] = [{
         "type": "text",

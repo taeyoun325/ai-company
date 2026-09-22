@@ -28,14 +28,23 @@ GUARDED = ("main.py", "auth/deps.py", "api/auth.py", "api/projects.py",
            "orchestrator/engine.py", "secrets_broker.py",
            "providers/base.py", "providers/registry.py",
            "providers/claude.py", "providers/gemini.py",
-           "providers/openai.py", "providers/anthropic_client.py")
+           "providers/openai.py", "providers/anthropic_client.py",
+           "attachments.py", "orchestrator/manual.py", "usage/credits.py")
 
 KOREAN = re.compile(r"[가-힣]")
 # 사용자가 읽는 거절이 만들어지는 자리들. HTTPException 뿐 아니라
 # 도메인 예외도 화면까지 그대로 올라간다 — 엔드포인트가 `str(e)` 를
 # 그대로 넘기기 때문이다.
 RAISE = re.compile(r"HTTPException\(|AuthError\(|out\.append\("
-                   r"|Stop\(|ProviderUnavailable\(|TransientError\(|RefusedError\(")
+                   r"|Stop\(|ProviderUnavailable\(|TransientError\(|RefusedError\(|Busy\(")
+
+
+# `ValueError` 는 두 가지로 쓰인다 — 사용자에게 보이는 거절과, 개발자만
+# 보는 불변식 위반("빈 비밀번호는 해싱하지 않습니다"). 뒤쪽은 번역할 것이
+# 아니라 애초에 사용자에게 갈 일이 없는 문장이므로, 앞쪽 파일에서만 본다.
+USER_VALUE_ERRORS = ("attachments.py", "orchestrator/manual.py",
+                     "usage/credits.py")
+VALUE_ERROR = re.compile(r"ValueError" + chr(92) + "(")
 
 
 def _code(path: Path) -> list[str]:
@@ -57,7 +66,9 @@ def test_rejections_go_through_the_translation_table():
             continue
         lines = _code(path)
         for i, line in enumerate(lines):
-            if not RAISE.search(line):
+            hit = RAISE.search(line) or (
+                rel in USER_VALUE_ERRORS and VALUE_ERROR.search(line))
+            if not hit:
                 continue
             # 문장이 다음 줄로 넘어가는 경우가 있다. 세 줄까지 본다.
             blob = " ".join(lines[i:i + 3])
@@ -74,7 +85,8 @@ def test_the_table_answers_in_every_language():
     from app import lang
 
     # 거절에 쓰는 앞자리 전부. 하나 늘릴 때마다 여기에 적는다.
-    prefixes = ("err.", "auth.", "pw.", "stop.", "prov.")
+    prefixes = ("err.", "auth.", "pw.", "stop.", "prov.",
+                "att.", "manual.", "plan.")
     keys = [k for k in lang._M if k.startswith(prefixes)]
     assert len(keys) > 20, f"거절 문장 키가 너무 적습니다: {len(keys)}"
     for key in keys:

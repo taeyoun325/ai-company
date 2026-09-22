@@ -80,8 +80,28 @@ def _log_send(to: str, subject: str, body: str) -> Delivery:
     return Delivery(False, "log", "SMTP_URL 이 설정되지 않아 로그로만 남겼습니다")
 
 
+# 같은 기계 안의 릴레이. 여기까지는 평문이 네트워크를 타지 않는다.
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+def _is_local(host: str) -> bool:
+    return host.lower() in LOCAL_HOSTS
+
+
 def _smtp_send(to: str, subject: str, body: str) -> Delivery:
-    """실제 발송. **한 번도 실제 서버에 붙여본 적이 없다.**"""
+    """실제 발송.
+
+    ## 암호화를 조용히 건너뛰지 않는다
+
+    예전에는 `starttls()` 를 무조건 불렀다. 서버가 STARTTLS 를 안 내밀면
+    smtplib 가 예외를 던지므로 결과적으로는 막혔지만, 예외 문장은
+    "SMTPNotSupportedError" 뿐이어서 운영자가 무엇을 해야 할지 알 수 없었다.
+
+    이제 서버가 내미는 것을 보고 판단한다. 내밀면 쓰고, **안 내밀면 같은
+    기계(localhost)일 때만** 평문으로 보낸다. 밖으로 나가는 평문은 거절한다
+    — 메일 본문에 비밀번호 재설정 링크가 들어 있고, 계정 정보를 곁들여
+    보내는 경우에는 로그인 정보까지 같이 흐른다.
+    """
     url = urlparse(smtp_url())
     msg = EmailMessage()
     msg["From"] = os.getenv("MAIL_FROM", "no-reply@ai-company.local")
@@ -96,7 +116,23 @@ def _smtp_send(to: str, subject: str, body: str) -> Delivery:
             server = smtplib.SMTP_SSL(host, port, timeout=10)
         else:
             server = smtplib.SMTP(host, port, timeout=10)
-            server.starttls()
+            server.ehlo()
+            if server.has_extn("starttls"):
+                server.starttls()
+                server.ehlo()          # TLS 뒤에는 능력 목록을 다시 받는다
+            elif not _is_local(host):
+                server.quit()
+                return Delivery(
+                    False, "smtp",
+                    f"{host} 가 STARTTLS 를 제공하지 않습니다 — 평문으로 "
+                    f"보내지 않습니다. smtps:// 를 쓰거나 TLS 를 켜세요.")
+            elif url.username:
+                # 같은 기계라도 **비밀번호는** 평문으로 흘리지 않는다.
+                server.quit()
+                return Delivery(
+                    False, "smtp",
+                    "TLS 없이 SMTP 로그인을 하지 않습니다. 계정이 필요 없는 "
+                    "로컬 릴레이라면 SMTP_URL 에서 계정을 빼세요.")
         with server:
             if url.username:
                 server.login(url.username, url.password or "")

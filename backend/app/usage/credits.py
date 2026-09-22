@@ -31,7 +31,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from app import config
+from app import config, lang
 from app.usage import wallet_store
 
 _lock = threading.RLock()
@@ -183,11 +183,11 @@ def set_plan(owner: str, name: str) -> Wallet:
     더한다. 요금제를 오가며 크레딧을 무한히 받는 길을 막는다.
     """
     if name not in config.PLANS:
-        raise ValueError(f"없는 요금제: {name}")
+        raise ValueError(lang.t("plan.unknown", name=name))
     if config.PLANS[name].get("hidden"):
         # 숨긴 요금제로 **바꾸는** 길을 열어두면, 로컬 기본값(크레딧 10만)이
         # SaaS 에서 한 번의 요청으로 얻어진다.
-        raise ValueError(f"고를 수 없는 요금제: {name}")
+        raise ValueError(lang.t("plan.notSelectable", name=name))
     wallet(owner)                       # 없으면 만든다
     wallet_store.add_plan(owner, name, float(plan(name).get("credits", 0)))
     return wallet(owner)
@@ -195,7 +195,7 @@ def set_plan(owner: str, name: str) -> Wallet:
 
 def top_up(owner: str, credits: float) -> Wallet:
     if credits <= 0:
-        raise ValueError("0 이하를 충전할 수 없습니다")
+        raise ValueError(lang.t("plan.badTopup"))
     wallet(owner)
     wallet_store.add_topup(owner, credits)
     return wallet(owner)

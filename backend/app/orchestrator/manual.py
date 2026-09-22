@@ -182,8 +182,8 @@ class _Session:
     def __enter__(self):
         with _lock:
             if self.slug in _busy:
-                raise Busy(f"{roles.get(_busy[self.slug]).name}이(가) 아직 "
-                           f"작업 중입니다. 끝난 뒤에 지시하세요.")
+                raise Busy(lang.t("manual.busy",
+                                  name=roles.get(_busy[self.slug]).name))
             _busy[self.slug] = self.employee_id
         try:
             # 어느 키로 부를지 먼저 정한다 (DAY 19). BYOK 인데 키가 없으면
@@ -234,8 +234,8 @@ def _guard(employee_id: str, slug: str, owner: str = "local") -> None:
     projected = usage.total_cost(slug) + employee.worst_case_cost(employee_id)
     if projected > limit:
         raise RuntimeError(
-            f"비용 상한(${limit}) — 이 호출의 최악 비용까지 "
-            f"더하면 ${projected:.2f}가 되어 지시를 받지 않습니다.")
+            lang.t("manual.cost", limit=limit,
+                   projected=f"{projected:.2f}"))
 
 
 def _persist(slug: str) -> None:
@@ -261,7 +261,7 @@ def instruct(slug: str, employee_id: str, message: str,
     e = roles.get(employee_id)
     message = message.strip()
     if not message:
-        raise ValueError("지시 내용이 비어 있습니다")
+        raise ValueError(lang.t("manual.empty"))
 
     with _Session(slug, employee_id, owner):
         _guard(employee_id, slug, owner)
