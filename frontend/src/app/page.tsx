@@ -387,6 +387,9 @@ export default function OfficePage() {
           )}
         </div>
 
+        {/* 실행이 없으면 이 칸은 "—" 두 줄이다. 아무것도 알려주지 않으면서
+            자리를 먹고, 그 위의 지난 결과까지 밀어낸다. */}
+        {(slug || stream.events.length > 0) && (
         <div className="shrink-0 space-y-3 border-t border-line p-3">
           <ScorePanel
             score={folded.score}
@@ -404,6 +407,7 @@ export default function OfficePage() {
             </Button>
           )}
         </div>
+        )}
       </aside>
     </div>
   );

@@ -499,7 +499,8 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
                     prompts.review(task, criteria, pfs.snapshot(roles.VERIFIER), report),
                     Verdict)
                 score.reviews += 1
-                icon = "통과" if verdict.verdict == "pass" else f"반려 ({verdict.severity})"
+                icon = (lang.t("verdict.pass") if verdict.verdict == "pass"
+                    else lang.t("verdict.fail", severity=verdict.severity))
                 bus.say(roles.VERIFIER, f"**{icon}** — {verdict.message_to_team}",
                         kind="verdict")
                 for f in verdict.findings:

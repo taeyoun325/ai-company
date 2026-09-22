@@ -10,6 +10,7 @@
 import json
 import queue
 import sys
+import time
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
@@ -901,12 +902,13 @@ def stream(request: Request, run: str | None = None, after: int = 0):
     except ValueError:
         pass
 
-    def gen():
+    def gen_memory():
+        """대시보드(§12)용. 이 인스턴스가 본 이벤트만 안다 — 아직 여러
+        인스턴스를 못 넘는다(`run=None` 은 id 가 프로세스마다 따로 세여서
+        파일들을 그냥 합칠 수 없다)."""
         sub = bus.subscribe(run, after)
         try:
             yield ": connected\n\n"
-            # 재연결 간격을 브라우저에 알려준다. 기본값(3초)보다 늘려서
-            # 서버가 잠깐 죽었을 때 재연결 폭주를 만들지 않는다.
             yield "retry: 5000\n\n"
             while True:
                 try:
@@ -914,14 +916,32 @@ def stream(request: Request, run: str | None = None, after: int = 0):
                 except queue.Empty:
                     yield ": keepalive\n\n"
                     continue
-                # id 를 함께 보내야 브라우저가 Last-Event-ID 를 채운다.
                 yield (f"id: {ev['id']}\n"
                        f"event: {ev['type']}\n"
                        f"data: {json.dumps(ev, ensure_ascii=False)}\n\n")
         finally:
             bus.unsubscribe(sub)
 
-    return StreamingResponse(gen(), media_type="text/event-stream",
+    def gen_file(run_id: str):
+        """프로젝트 하나(§12 상세)용. 트레이스 파일을 따라간다 — 실행을
+        맡은 인스턴스가 어디든, 보는 인스턴스가 어디든 같은 로그가 나온다
+        (DAY 23). 대가는 폴링 지연(`BUS_FILE_POLL_INTERVAL`, 기본 0.3초)뿐."""
+        yield ": connected\n\n"
+        yield "retry: 5000\n\n"
+        last_sent = time.time()
+        for ev in bus.tail_trace(run_id, after):
+            if ev is None:
+                if time.time() - last_sent >= 15:
+                    yield ": keepalive\n\n"
+                    last_sent = time.time()
+                continue
+            last_sent = time.time()
+            yield (f"id: {ev['id']}\n"
+                   f"event: {ev['type']}\n"
+                   f"data: {json.dumps(ev, ensure_ascii=False)}\n\n")
+
+    gen = gen_file(run) if run else gen_memory()
+    return StreamingResponse(gen, media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
                                       "Connection": "keep-alive",
                                       "X-Accel-Buffering": "no"})
@@ -932,8 +952,12 @@ def events(run: str | None = None, after: int = 0):
     """SSE 를 못 쓰는 상황(테스트·프록시·폴링)에서의 같은 이력.
 
     SSE 하나에만 기대면, 그 경로가 막힌 환경에서 화면이 통째로 빈다.
+
+    `run` 이 있으면 트레이스 파일에서 읽는다 — 실행을 맡은 인스턴스와
+    이 요청을 받은 인스턴스가 다를 수 있어서다(DAY 23). 없으면(대시보드)
+    이 인스턴스의 메모리만 본다.
     """
-    rows = bus.replay(run, after)
+    rows = bus.read_trace(run, after) if run else bus.replay(run, after)
     return {"events": rows, "last_id": rows[-1]["id"] if rows else after,
             "roster": bus.roster()}
 

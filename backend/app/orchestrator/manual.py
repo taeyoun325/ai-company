@@ -335,7 +335,8 @@ def verify(slug: str, owner: str = "local") -> dict:
             roles.VERIFIER,
             prompts.review(task, criteria, pfs.snapshot(roles.VERIFIER), report),
             Verdict)
-        icon = "통과" if v.verdict == "pass" else f"반려 ({v.severity})"
+        icon = (lang.t("verdict.pass") if v.verdict == "pass"
+                    else lang.t("verdict.fail", severity=v.severity))
         bus.say(roles.VERIFIER, f"**{icon}** — {v.message_to_team}", kind="verdict")
         for f in v.findings:
             bus.say(roles.VERIFIER, f"`{f.file}` · {f.issue}", kind="tool")

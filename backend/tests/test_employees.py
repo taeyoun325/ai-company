@@ -299,3 +299,74 @@ def test_status_marks_mock(project):
     for row in employee.status():
         assert row["mock"] is True, "Mock 여부가 화면에 전달되지 않는다"
         assert row["model"], "모델이 비어 있으면 화면이 무엇으로 일하는지 못 그린다"
+
+
+# ── 대본도 언어를 따른다 (DAY 22) ──────────────────────────────────
+def test_mock_script_speaks_the_users_language(project):
+    """실제 모델은 프롬프트로 언어를 정한다. **Mock 은 프롬프트를 읽지
+    않으므로** 그 길이 없고, 영어로 쓰는 사람이 데모를 돌리면 대사·문서·
+    명세가 전부 한국어로 나왔다. 무료 요금제가 없는 제품에서 Mock 은
+    사실상 데모이고, 데모가 읽히지 않으면 결제 버튼은 눌리지 않는다.
+    """
+    from app import lang
+
+    with lang.bind("en"):
+        plan = employee.ask("strategist", "# 의뢰인 요구사항\ncalculator", Plan)
+        assert "acceptance criteria" in plan.message_to_team, plan.message_to_team
+        assert not _has_korean(plan.message_to_team)
+        for c in plan.acceptance_criteria:
+            assert not _has_korean(c.text), c.text
+        for t in plan.tasks:
+            assert not _has_korean(t.title), t.title
+
+        work = employee.ask("writer", "# 할 일\ndocs/README.md", WorkResult)
+        assert not _has_korean(work.message_to_team), work.message_to_team
+        assert not _has_korean(work.files[0].content), work.files[0].content
+
+    with lang.bind("ja"):
+        plan = employee.ask("strategist", "# 의뢰인 요구사항\n電卓", Plan)
+        assert "受け入れ基準" in plan.message_to_team, plan.message_to_team
+
+    # 기본은 한국어 그대로.
+    plan = employee.ask("strategist", "# 의뢰인 요구사항\n계산기", Plan)
+    assert "인수기준" in plan.message_to_team
+
+
+def test_the_demo_still_rejects_and_then_fixes_in_english(project):
+    """대본을 번역하면서 데모의 **반려 → 수정** 루프가 깨질 수 있었다.
+
+    재작업 판단은 프롬프트의 `# 반려 사유` 헤더로 가른다 —
+    `orchestrator/prompts.py` 가 만드는 것이고 모델용이라 번역하지 않는다.
+    그래서 대본 언어와 무관하게 유지된다. 그 사실을 검사로 못 박는다.
+    """
+    from app import lang
+
+    with lang.bind("en"):
+        first = employee.ask("developer", "# 할 일\nsrc/calc.py", WorkResult)
+        assert "ValueError" not in first.files[0].content
+
+        fixed = employee.ask(
+            "developer",
+            "# 할 일\nsrc/calc.py\n\n# 반려 사유\n{\"required_fixes\": []}",
+            WorkResult)
+        assert "ValueError" in fixed.files[0].content
+        # 예외 문장도 언어를 따른다 — 산출물 안의 글자다.
+        assert "cannot divide by zero" in fixed.files[0].content
+
+
+def test_mock_routing_reads_english_and_japanese_requirements(project):
+    """요구사항은 사용자가 쓴 글이라 언어를 고를 수 없다. 영어로
+    "usage docs" 라고 쓴 사람이 개발자에게 배정되면 라우팅이 고장 난
+    것처럼 보인다."""
+    assert employee.ask("strategist", "write the usage docs",
+                        Routing).employee == "writer"
+    assert employee.ask("strategist", "spec the result screen layout",
+                        Routing).employee == "designer"
+    assert employee.ask("strategist", "ドキュメントを書いて",
+                        Routing).employee == "writer"
+    assert employee.ask("strategist", "implement the four operations",
+                        Routing).employee == "developer"
+
+
+def _has_korean(s: str) -> bool:
+    return any("가" <= ch <= "힣" for ch in s)
