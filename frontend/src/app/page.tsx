@@ -305,6 +305,29 @@ export default function OfficePage() {
                   </Button>
                 )}
               </div>
+              {/* 만들어진 파일은 로그를 읽어야만 알 수 있었다. 오른쪽
+                  레일의 버튼은 **개수**만 말한다 — 무엇이 생겼는지는
+                  한 줄이면 보여줄 수 있다. */}
+              {(folded.files?.length ?? 0) > 0 && (
+                <p className="mt-2 flex flex-wrap items-center gap-1.5
+                  text-[11px]">
+                  <span className="text-dim">{t("run.made")}</span>
+                  {folded.files!.slice(0, 6).map((f) => (
+                    <span key={f}
+                          className="rounded-md bg-panel2 px-1.5 py-0.5 font-mono">
+                      <span className="text-dim">
+                        {f.slice(0, f.lastIndexOf("/") + 1)}
+                      </span>
+                      {f.slice(f.lastIndexOf("/") + 1)}
+                    </span>
+                  ))}
+                  {folded.files!.length > 6 && (
+                    <span className="text-dim">
+                      +{folded.files!.length - 6}
+                    </span>
+                  )}
+                </p>
+              )}
               {routing && (
                 <p className="mt-2 text-xs text-muted">
                   {t("run.routing")}:{" "}

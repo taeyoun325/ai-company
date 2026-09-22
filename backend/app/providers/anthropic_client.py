@@ -85,7 +85,9 @@ def structured(agent: str, model: str, system: str, user: str, schema: type[T],
             last = e
             if attempt >= retries:
                 break
-            bus.say("SYSTEM", f"{agent} 응답 처리 실패 — 재시도 ({type(e).__name__})",
+            bus.say("SYSTEM",
+                    lang.t("log.badResponse", who=agent,
+                           why=type(e).__name__),
                     kind="error")
             time.sleep(1.5)
     raise RuntimeError(f"{agent} 호출이 {retries + 1}회 모두 실패했습니다: {last}") from last

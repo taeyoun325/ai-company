@@ -268,7 +268,7 @@ def request_verification(user_id: str) -> mail.Delivery:
     if user is None:
         raise AuthError(lang.t("auth.noAccount"))
     if user.email_verified:
-        return mail.Delivery(True, "none", "이미 확인된 주소입니다")
+        return mail.Delivery(True, "none", lang.t("mail.alreadyVerified"))
     token = store.new_token(user.id, "verify", VERIFY_TTL)
     return mail.send_verification(user.email, token)
 

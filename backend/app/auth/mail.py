@@ -77,7 +77,7 @@ def _log_send(to: str, subject: str, body: str) -> Delivery:
             lang.t("mail.notSent", to=masked, subject=subject)
             + "\n" + body,
             kind="error")
-    return Delivery(False, "log", "SMTP_URL 이 설정되지 않아 로그로만 남겼습니다")
+    return Delivery(False, "log", lang.t("mail.logOnly"))
 
 
 # 같은 기계 안의 릴레이. 여기까지는 평문이 네트워크를 타지 않는다.
@@ -124,15 +124,13 @@ def _smtp_send(to: str, subject: str, body: str) -> Delivery:
                 server.quit()
                 return Delivery(
                     False, "smtp",
-                    f"{host} 가 STARTTLS 를 제공하지 않습니다 — 평문으로 "
-                    f"보내지 않습니다. smtps:// 를 쓰거나 TLS 를 켜세요.")
+                    lang.t("mail.noTls", host=host))
             elif url.username:
                 # 같은 기계라도 **비밀번호는** 평문으로 흘리지 않는다.
                 server.quit()
                 return Delivery(
                     False, "smtp",
-                    "TLS 없이 SMTP 로그인을 하지 않습니다. 계정이 필요 없는 "
-                    "로컬 릴레이라면 SMTP_URL 에서 계정을 빼세요.")
+                    lang.t("mail.noPlainLogin"))
         with server:
             if url.username:
                 server.login(url.username, url.password or "")

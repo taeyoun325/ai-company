@@ -175,6 +175,11 @@ _M: dict[str, dict[str, str]] = {
         "en": "Could not parse {who}'s answer; asking again with the format corrected — {why}",
         "ja": "{who} の回答を読めなかったため、形式を直して再依頼します — {why}",
     },
+    "log.badResponse": {
+        "ko": "{who} 응답 처리 실패 — 재시도 ({why})",
+        "en": "Could not handle {who}'s response — retrying ({why})",
+        "ja": "{who} の応答処理に失敗 — 再試行（{why}）",
+    },
     "log.retry": {
         "ko": "{who} 호출 실패 — {delay}초 뒤 재시도 ({n}/{max}) · {why}",
         "en": "{who} call failed — retrying in {delay}s ({n}/{max}) · {why}",
@@ -189,6 +194,32 @@ _M: dict[str, dict[str, str]] = {
         "ko": "MANUAL 모드입니다. 직원을 골라 직접 지시하세요.",
         "en": "This is MANUAL mode. Pick an employee and instruct them directly.",
         "ja": "MANUAL モードです。社員を選んで直接指示してください。",
+    },
+    "mail.logOnly": {
+        "ko": "SMTP_URL 이 설정되지 않아 로그로만 남겼습니다",
+        "en": "No SMTP_URL is set, so this was only written to the log",
+        "ja": "SMTP_URL が設定されていないため、ログにのみ残しました",
+    },
+    "mail.noTls": {
+        "ko": "{host} 가 STARTTLS 를 제공하지 않습니다 — 평문으로 보내지 "
+              "않습니다. smtps:// 를 쓰거나 TLS 를 켜세요.",
+        "en": "{host} does not offer STARTTLS — we will not send in the "
+              "clear. Use smtps:// or turn TLS on.",
+        "ja": "{host} は STARTTLS を提供していません — 平文では送信しません。"
+              "smtps:// を使うか TLS を有効にしてください。",
+    },
+    "mail.noPlainLogin": {
+        "ko": "TLS 없이 SMTP 로그인을 하지 않습니다. 계정이 필요 없는 로컬 "
+              "릴레이라면 SMTP_URL 에서 계정을 빼세요.",
+        "en": "We do not log in to SMTP without TLS. If the local relay needs "
+              "no account, remove the credentials from SMTP_URL.",
+        "ja": "TLS なしで SMTP ログインは行いません。アカウント不要のローカル"
+              "リレーなら SMTP_URL から認証情報を外してください。",
+    },
+    "mail.alreadyVerified": {
+        "ko": "이미 확인된 주소입니다",
+        "en": "That address is already verified",
+        "ja": "すでに確認済みのアドレスです",
     },
     "mail.notSent": {
         "ko": "메일이 **발송되지 않았습니다** (SMTP_URL 이 없습니다). 받는 사람 {to} · 제목 {subject}",

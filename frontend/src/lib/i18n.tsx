@@ -740,6 +740,7 @@ const S = {
   // 로그 칸이 비어 있을 때 채우는 "지난 결과". 실행 전에는 이 칸이
   // 700px 짜리 빈 공간이었다.
   "recent.title": { ko: "지난 결과", en: "Recent results", ja: "これまでの結果" },
+  "run.made": { ko: "만든 것", en: "Made so far", ja: "作ったもの" },
   "recent.score": { ko: "완성도", en: "Done", ja: "完成度" },
   "recent.none": {
     ko: "끝난 프로젝트가 아직 없습니다.",

@@ -32,15 +32,31 @@ GUARDED = ("main.py", "auth/deps.py", "api/auth.py", "api/projects.py",
            "providers/claude.py", "providers/gemini.py",
            "providers/openai.py", "providers/anthropic_client.py",
            "attachments.py", "orchestrator/manual.py", "usage/credits.py",
+           "auth/mail.py",
            "tools/project_fs.py", "agents/json_io.py",
            "agents/employee.py")
 
 KOREAN = re.compile(r"[가-힣]")
+# 따옴표 안의 한국어. 주석은 위에서 지웠고, 번역된 호출의 인자는 키라
+# ASCII 다 — 그래서 여기 걸리는 것은 "손으로 쓴 문장"뿐이다.
+KOREAN_LITERAL = re.compile(
+    r'"[^"\n]*[가-힣][^"\n]*"'      # "…한국어…"
+    r"|'[^'\n]*[가-힣][^'\n]*'"     # '…한국어…'
+)
 # 사용자가 읽는 거절이 만들어지는 자리들. HTTPException 뿐 아니라
 # 도메인 예외도 화면까지 그대로 올라간다 — 엔드포인트가 `str(e)` 를
 # 그대로 넘기기 때문이다.
-RAISE = re.compile(r"HTTPException\(|AuthError\(|out\.append\("
+RAISE = re.compile(r"HTTPException\(|Delivery\(|AuthError\(|out\.append\("
                    r"|Stop\(|ProviderUnavailable\(|TransientError\(|RefusedError\(|Busy\(|Denied\(|super\(\).__init__\(|ParseFailed\(|EmployeeFailed\(")
+
+
+# 로그로 나가는 문장도 사용자가 읽는다. 다만 `bus.say` 는 **옛 제품의
+# 로컬 도구**(agents/core.py · approvals.py · tools/agent_tools.py)에서도
+# 잔뜩 쓰인다 — 거기는 DEPLOY_MODE=local 전용이라 번역 대상이 아니다.
+# 그래서 SaaS 경로로 열리는 파일에서만 본다.
+SAY_FILES = ("orchestrator/engine.py", "orchestrator/manual.py",
+             "providers/anthropic_client.py", "providers/base.py")
+SAY = re.compile(r"bus" + chr(92) + ".say" + chr(92) + "(|bus" + chr(92) + ".phase" + chr(92) + "(")
 
 
 # `ValueError` 는 두 가지로 쓰인다 — 사용자에게 보이는 거절과, 개발자만
@@ -52,9 +68,15 @@ VALUE_ERROR = re.compile(r"ValueError" + chr(92) + "(")
 
 
 def _code(path: Path) -> list[str]:
-    """주석과 독스트링을 뺀 줄들. 설명까지 잡으면 검사가 못 쓰게 된다."""
+    """주석과 독스트링을 뺀 줄들. 설명까지 잡으면 검사가 못 쓰게 된다.
+
+    독스트링은 **줄 수를 유지한 채** 지운다. 그냥 지우면 뒤쪽 줄 번호가
+    전부 밀려서 검사가 엉뚱한 줄을 가리킨다 — 실제로 그랬다. 잘못된
+    자리를 가리키는 검사는 고치는 사람을 한 번 더 헤매게 만든다.
+    """
     text = io.open(path, encoding="utf-8").read()
-    text = re.sub(r'"""(?:.|\n)*?"""', "", text)
+    text = re.sub(r'"""(?:.|\n)*?"""',
+                  lambda m: "\n" * m.group(0).count("\n"), text)
     out = []
     for line in text.splitlines():
         stripped = re.sub(r"#.*$", "", line)
@@ -71,12 +93,18 @@ def test_rejections_go_through_the_translation_table():
         lines = _code(path)
         for i, line in enumerate(lines):
             hit = RAISE.search(line) or (
-                rel in USER_VALUE_ERRORS and VALUE_ERROR.search(line))
+                rel in USER_VALUE_ERRORS and VALUE_ERROR.search(line)) or (
+                rel in SAY_FILES and SAY.search(line))
             if not hit:
                 continue
             # 문장이 다음 줄로 넘어가는 경우가 있다. 세 줄까지 본다.
             blob = " ".join(lines[i:i + 3])
-            if KOREAN.search(blob) and "lang.t(" not in blob:
+            # "이 줄 어딘가에 lang.t 가 있으면 통과"로 하면 **섞인 줄**이
+            # 빠져나간다 — 한쪽 분기만 번역돼 있어도 통과했다. 실제로 그런
+            # 줄이 MANUAL 로그에 있었다. 그래서 한국어가 **문자열 리터럴
+            # 안에** 있는지를 본다. 번역된 호출의 인자는 키(ASCII)라
+            # 한국어가 남을 수 없다.
+            if KOREAN_LITERAL.search(blob):
                 bad.append(f"{rel}:{i + 1}: {line.strip()[:70]}")
     assert not bad, (
         "거절 문장이 번역표를 거치지 않습니다. `app/lang.py` 에 키를 넣고 "
@@ -90,7 +118,7 @@ def test_the_table_answers_in_every_language():
 
     # 거절에 쓰는 앞자리 전부. 하나 늘릴 때마다 여기에 적는다.
     prefixes = ("err.", "auth.", "pw.", "stop.", "prov.",
-                "att.", "manual.", "plan.", "fs.", "json.")
+                "att.", "manual.", "plan.", "fs.", "json.", "mail.")
     keys = [k for k in lang._M if k.startswith(prefixes)]
     assert len(keys) > 20, f"거절 문장 키가 너무 적습니다: {len(keys)}"
     for key in keys:

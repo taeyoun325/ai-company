@@ -298,9 +298,12 @@ def instruct(slug: str, employee_id: str, message: str,
                         kind="error")
                 continue
             written.append(f.path)
+            # AUTO 쪽(`engine._apply`)과 **같은 문장**을 쓴다. 여기만 따로
+            # 적고 있어서 MANUAL 로그에서는 번역이 빠져 있었다.
             bus.say(employee_id,
-                    f"`{f.path}` " + ("새로 만듦" if info["created"]
-                                      else f"수정 ({info['new_lines']}줄)"),
+                    lang.t("log.created", path=f.path) if info["created"]
+                    else lang.t("log.updated", path=f.path,
+                                n=info["new_lines"]),
                     kind="tool")
 
         _remember(slug, employee_id, message,
