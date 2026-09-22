@@ -31,6 +31,9 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
   );
   const stream = useStream(slug);
   const folded = foldState(stream.events);
+  // 실제로 불린 직원만. 0 회는 "일하지 않았다"이지 "일했는데 0"이 아니다.
+  const used = Object.entries(project?.usage ?? {})
+    .filter(([, u]) => u.calls > 0);
 
   // 로그가 움직일 때만 다시 읽는다. 끝난 프로젝트에는 아무 요청도 안 간다.
   useEffect(() => {
@@ -172,10 +175,12 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
             </Panel>
           )}
           <Panel title={t("proj.usage")}>
+            {/* 아무도 안 불렸을 때 이 칸만 **글자 하나 없이** 비어 있었다.
+                옆 칸들은 "아직 계획이 없습니다" 처럼 말을 하는데 여기만
+                조용하면, 비어 있는 것인지 고장인지 구분이 안 된다. */}
+            {used.length === 0 && <Empty>{t("proj.usageNone")}</Empty>}
             <ul className="space-y-1 text-xs">
-              {Object.entries(project.usage ?? {})
-                .filter(([, u]) => u.calls > 0)
-                .map(([id, u]) => (
+              {used.map(([id, u]) => (
                   <li key={id} className="flex justify-between gap-2">
                     {/* id 를 그대로 보여주고 있었다("developer"). 사람이 읽는
                         이름은 로스터에 있고, 고객이 이름을 바꿔뒀을 수도

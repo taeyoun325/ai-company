@@ -525,6 +525,11 @@ const S = {
   "proj.tasks": { ko: "태스크", en: "Tasks", ja: "タスク" },
   "proj.criteria": { ko: "인수기준", en: "Acceptance criteria", ja: "受け入れ基準" },
   "proj.usage": { ko: "직원별 사용량", en: "Usage by employee", ja: "社員ごとの使用量" },
+  "proj.usageNone": {
+    ko: "아직 아무도 부르지 않았습니다.",
+    en: "No one has been called yet.",
+    ja: "まだ誰も呼ばれていません。",
+  },
   "proj.calls": { ko: "{n}회", en: "{n} calls", ja: "{n} 回" },
   // 영어에만 단수가 있다. "1 calls" 한 줄이 나머지 번역까지 기계가 쓴 것처럼
   // 보이게 만든다 — 레일의 "1 files" 와 같은 자리다.
