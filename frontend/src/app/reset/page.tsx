@@ -26,10 +26,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button, ErrorBox, Panel, Screen } from "@/components/ui";
 import { api } from "@/lib/api";
-import { useLang } from "@/lib/i18n";
+import { useErrorText, useLang } from "@/lib/i18n";
 
 export default function ResetPage() {
   const { t } = useLang();
+  const errText = useErrorText();
   const router = useRouter();
   const token = (useSearchParams().get("token") ?? "").trim();
 
@@ -47,7 +48,7 @@ export default function ResetPage() {
       const r = await api.forgot(email.trim());
       setSent({ delivered: r.delivered });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errText(e));
     } finally {
       setBusy(false);
     }
@@ -60,7 +61,7 @@ export default function ResetPage() {
       await api.resetPassword(token, password);
       setDone(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errText(e));
     } finally {
       setBusy(false);
     }

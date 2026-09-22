@@ -21,6 +21,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # backend/
 
+import dataclasses                                              # noqa: E402
 from app import lang, tenant                                    # noqa: E402
 from app.agents import employee, roles, staff                   # noqa: E402
 from app.usage import credits                                   # noqa: E402
@@ -203,3 +204,42 @@ def test_employee_names_are_not_translated_in_the_log():
     with lang.bind("en"):
         out = lang.t("log.reask", who="박도현(개발자)", why="bad json")
     assert "박도현" in out
+
+
+def test_employee_role_and_desc_follow_the_reader(monkeypatch):
+    """직원 소개는 **실행 기록이 아니라 살아 있는 데이터**다.
+
+    기록은 만들 때의 언어로 남기는 게 맞지만(만든 시점이 있다), 직원표는
+    만든 시점이 없다. 한국어로 박아두면 영어로 쓰는 사람의 사무실에만
+    설명 다섯 줄이 한국어로 남는다.
+    """
+    from app.agents import roles
+
+    dev = roles.EMPLOYEES["developer"]
+    with lang.bind("en"):
+        info = dev.info()
+    assert info["role"] == "Developer"
+    assert "src/" in info["desc"]
+    assert not _has_korean(info["desc"]), info["desc"]
+
+    with lang.bind("ja"):
+        assert dev.info()["role"] == "開発者"
+
+    # 이름은 번역하지 않는다.
+    with lang.bind("en"):
+        assert dev.info()["name"] == dev.name
+
+
+def test_an_employee_without_a_translation_keeps_its_own_words():
+    """사람이 직원을 추가하면 번역표에는 없다. 그때 빈칸이 되면 안 된다."""
+    from app.agents import roles
+
+    extra = dataclasses.replace(roles.EMPLOYEES["developer"],
+                                id="custom", role="영업", desc="영업을 한다.")
+    with lang.bind("en"):
+        info = extra.info()
+    assert info["role"] == "영업" and info["desc"] == "영업을 한다."
+
+
+def _has_korean(s: str) -> bool:
+    return any("가" <= ch <= "힣" for ch in s)

@@ -30,7 +30,7 @@
  * 하나로 충분하다 — 다만 **읽기가 실패할 수 있다**(사생활 보호 모드).
  * 실패하면 기본값으로 돌아갈 뿐 화면이 깨지지는 않는다.
  */
-import { setApiLanguage } from "@/lib/api";
+import { ApiError, LANG_STORE_KEY, setApiLanguage } from "@/lib/api";
 import {
   createContext, useCallback, useContext, useEffect, useMemo,
   useSyncExternalStore, type ReactNode,
@@ -45,7 +45,8 @@ export const LANG_LABEL: Record<Lang, string> = {
   ja: "日本語",
 };
 
-const STORE_KEY = "ai-company.lang";
+// 저장 자리는 `lib/api.ts` 가 먼저 쓴다 — 첫 요청이 effect 보다 빠르다.
+const STORE_KEY = LANG_STORE_KEY;
 
 type Entry = Record<Lang, string>;
 
@@ -715,6 +716,15 @@ const S = {
   "office.projects": { ko: "프로젝트", en: "Projects", ja: "プロジェクト" },
   "office.newProject": { ko: "새 프로젝트", en: "New project", ja: "新規プロジェクト" },
   "office.collapse": { ko: "목록 접기", en: "Collapse list", ja: "一覧を折りたたむ" },
+  // 레일의 묶음 제목. 같은 날짜가 줄마다 반복되던 것을 제목 하나로 접었다.
+  "rail.running": { ko: "진행 중", en: "Running", ja: "実行中" },
+  "rail.today": { ko: "오늘", en: "Today", ja: "今日" },
+  "rail.yesterday": { ko: "어제", en: "Yesterday", ja: "昨日" },
+  "rail.earlier": { ko: "그 이전", en: "Earlier", ja: "それ以前" },
+  "rail.files": { ko: "파일 {n}개", en: "{n} files", ja: "ファイル {n} 件" },
+  // 영어에만 단수가 있다. "1 files" 는 기계가 쓴 티가 나는 문장이고,
+  // 그런 줄이 하나 있으면 나머지 번역도 기계가 한 것처럼 읽힌다.
+  "rail.file1": { ko: "파일 1개", en: "1 file", ja: "ファイル 1 件" },
   "office.ask": {
     ko: "무엇을 만들까요?",
     en: "What should we build?",
@@ -861,6 +871,28 @@ export function useLang(): Ctx {
     };
   }
   return ctx;
+}
+
+/**
+ * 잡은 오류를 **화면에 쓸 문장**으로 바꾼다 (DAY 22).
+ *
+ * 화면 16곳이 `e instanceof Error ? e.message : String(e)` 를 각자 쓰고
+ * 있었다. 그 자체는 맞지만, 백엔드에 닿지 못한 경우에 문제가 된다 —
+ * 그 문장은 React 밖(`lib/api.ts`)에서 만들어지므로 사용자가 고른 언어를
+ * 모른다. 영어로 쓰는 사람에게 한국어 한 줄이 튀어나오던 마지막 자리였다.
+ *
+ * 그래서 문장은 여기서 고른다. 서버가 보낸 문장은 이미 `Accept-Language`
+ * 를 보고 온 것이므로 그대로 쓴다 — 두 번 번역하지 않는다.
+ */
+export function useErrorText(): (e: unknown) => string {
+  const { t } = useLang();
+  return useCallback(
+    (e: unknown) => {
+      if (e instanceof ApiError && e.isOffline) return t("auth.noBackend");
+      return e instanceof Error ? e.message : String(e);
+    },
+    [t],
+  );
 }
 
 // 요금제 이름은 **서버가 언어에 맞춰 보낸다**(backend/app/usage/credits.py

@@ -10,7 +10,7 @@
  * 믿는 수밖에 없다. 그건 검증이 아니다.
  */
 import type { FileVersion } from "@/lib/types";
-import { useLang } from "@/lib/i18n";
+import { useErrorText, useLang } from "@/lib/i18n";
 import { useState } from "react";
 
 import { api } from "@/lib/api";
@@ -76,6 +76,7 @@ function Trail({ versions }: { versions: FileVersion[] }) {
 
 export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
   const { t } = useLang();
+  const errText = useErrorText();
   // 고른 파일이 없거나 목록에서 사라졌으면 첫 번째를 본다. 상태로 들고
   // 있다가 effect 로 맞추면, 목록이 바뀔 때마다 렌더가 한 번 더 돈다.
   const [chosen, setChosen] = useState<string | null>(null);
@@ -106,7 +107,7 @@ export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
       setDiff(b.diff);
       setCompare(v);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errText(e));
     }
   };
 

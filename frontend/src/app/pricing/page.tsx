@@ -30,7 +30,7 @@ import {
   Warning, money,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { useLang, type Key } from "@/lib/i18n";
+import { type Key, useErrorText, useLang } from "@/lib/i18n";
 import type { PlanRow } from "@/lib/types";
 import { T, revealFrom, stagger, withScope } from "@/lib/motion";
 import { useLoader } from "@/lib/useLoader";
@@ -101,6 +101,7 @@ function SourceNote({ plan }: { plan: PlanRow }) {
 
 export default function PricingPage() {
   const { t } = useLang();
+  const errText = useErrorText();
   const { data, error, loading, reload } = useLoader("pricing", async () => {
     const [plans, credits] = await Promise.all([api.plans(), api.credits()]);
     return { plans, credits };
@@ -134,7 +135,7 @@ export default function PricingPage() {
       await fn();
       await reload();
     } catch (e) {
-      setFailure(e instanceof Error ? e.message : String(e));
+      setFailure(errText(e));
     } finally {
       setBusy(false);
     }

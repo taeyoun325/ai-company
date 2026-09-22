@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app import config
+from app import config, lang
 
 # 프로젝트 폴더 안의 구역. 역할별 권한은 이 이름들로 적는다.
 SRC, TESTS, DOCS, DESIGN = "src", "tests", "docs", "design"
@@ -65,10 +65,25 @@ class Employee:
         return _MODEL_OVERRIDE.get(self.id) or config.default_model(self.provider)
 
     def info(self) -> dict:
-        return {"id": self.id, "name": self.name, "role": self.role,
+        """화면에 나갈 모양.
+
+        직함과 설명은 **보는 사람의 언어로** 나간다(DAY 22). 이 표는 실행
+        기록과 달리 "만들어진 시점"이 없는 살아 있는 데이터라, 한국어로
+        박아두면 영어로 쓰는 사람의 사무실에만 한국어 다섯 줄이 남는다.
+        이름은 번역하지 않는다.
+
+        표에 없는 직원(사람이 나중에 추가한 경우)은 적어둔 값을 그대로
+        쓴다 — 번역이 없다고 빈칸이 되면 안 된다.
+        """
+        def _t(key: str, fallback: str) -> str:
+            out = lang.t(key)
+            return fallback if out == key else out
+
+        return {"id": self.id, "name": self.name,
+                "role": _t(f"role.{self.id}", self.role),
                 "provider": self.provider, "model": self.model, "kind": self.kind,
                 "effort": self.effort,
-                "desc": self.desc, "writes": list(self.writes),
+                "desc": _t(f"desc.{self.id}", self.desc), "writes": list(self.writes),
                 "reads": list(self.reads), "tools": list(self.tools)}
 
 

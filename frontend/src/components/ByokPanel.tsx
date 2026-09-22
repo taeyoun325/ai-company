@@ -22,7 +22,7 @@ import { useState } from "react";
 
 import { Button, Panel, Warning } from "@/components/ui";
 import { api } from "@/lib/api";
-import { useLang } from "@/lib/i18n";
+import { useErrorText, useLang } from "@/lib/i18n";
 import type { ByokStatus } from "@/lib/types";
 
 const LABEL: Record<string, string> = {
@@ -39,6 +39,7 @@ export function ByokPanel({
   reload: () => Promise<void> | void;
 }) {
   const { t } = useLang();
+  const errText = useErrorText();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [checks, setChecks] = useState<
     Record<string, { ok: boolean; detail: string }>
@@ -55,7 +56,7 @@ export function ByokPanel({
       await fn();
       await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errText(e));
     } finally {
       setBusy(false);
     }
@@ -82,7 +83,7 @@ export function ByokPanel({
         ...c,
         [provider]: {
           ok: false,
-          detail: e instanceof Error ? e.message : String(e),
+          detail: errText(e),
         },
       }));
     } finally {

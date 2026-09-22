@@ -236,6 +236,40 @@ _M: dict[str, dict[str, str]] = {
         "en": "Review requested by the CEO",
         "ja": "CEO の要請で検証",
     },
+    # ── 직원 소개 (DAY 22) ─────────────────────────────────────────
+    # 직함과 설명은 **지금 살아 있는 데이터**다. 실행 기록과 달리 만들어진
+    # 시점이 없으므로 보는 사람의 언어로 적는 것이 맞다. 이름은 번역하지
+    # 않는다 — 사람 이름은 옮기는 것이 아니라 부르는 것이다.
+    "role.strategist": {"ko": "전략가", "en": "Strategist", "ja": "ストラテジスト"},
+    "role.developer": {"ko": "개발자", "en": "Developer", "ja": "開発者"},
+    "role.analyst": {"ko": "분석가", "en": "Analyst", "ja": "アナリスト"},
+    "role.writer": {"ko": "작가", "en": "Writer", "ja": "ライター"},
+    "role.designer": {"ko": "디자이너", "en": "Designer", "ja": "デザイナー"},
+    "desc.strategist": {
+        "ko": "요구사항을 인수기준과 작업 그래프로 바꾼다. 파일은 쓰지 않는다.",
+        "en": "Turns the requirement into acceptance criteria and a task graph. Writes no files.",
+        "ja": "要件を受け入れ基準とタスクグラフに変換します。ファイルは書きません。",
+    },
+    "desc.developer": {
+        "ko": "코드를 쓴다. src/ 에만 쓸 수 있고 tests/ 는 읽지도 못한다.",
+        "en": "Writes code. Can only write to src/, and cannot even read tests/.",
+        "ja": "コードを書きます。src/ にのみ書き込め、tests/ は読むこともできません。",
+    },
+    "desc.analyst": {
+        "ko": "다른 회사 모델로 교차검증한다. tests/ 에만 쓰고 코드는 읽기만 한다.",
+        "en": "Cross-checks with a model from another company. Writes only to tests/, reads code.",
+        "ja": "別会社のモデルで交差検証します。tests/ にのみ書き、コードは読むだけです。",
+    },
+    "desc.writer": {
+        "ko": "문서·카피를 쓴다. docs/ 에만 쓴다.",
+        "en": "Writes documentation and copy. Writes only to docs/.",
+        "ja": "ドキュメントとコピーを書きます。docs/ にのみ書きます。",
+    },
+    "desc.designer": {
+        "ko": "화면과 비주얼을 명세한다. design/ 에만 쓴다.",
+        "en": "Specifies screens and visuals. Writes only to design/.",
+        "ja": "画面とビジュアルを仕様化します。design/ にのみ書きます。",
+    },
     "staff.fired": {
         "ko": "{name} 은(는) 지금 채용되어 있지 않습니다. 사무실에서 다시 채용하세요.",
         "en": "{name} is not currently hired. Hire them again from the office screen.",

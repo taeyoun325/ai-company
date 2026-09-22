@@ -31,7 +31,7 @@ import { ProjectRail } from "@/components/ProjectRail";
 import { ScorePanel, TaskBoard } from "@/components/TaskBoard";
 import { Button, ErrorBox, Panel, Skeleton, Warning } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { useLang } from "@/lib/i18n";
+import { useErrorText, useLang } from "@/lib/i18n";
 import { T, animate, stagger, withScope } from "@/lib/motion";
 import type { CreditStatus, Employee, ProviderStatus } from "@/lib/types";
 import { useLoader } from "@/lib/useLoader";
@@ -52,6 +52,7 @@ const PHASE_OWNER: Record<string, string[]> = {
 export default function OfficePage() {
   const router = useRouter();
   const { t } = useLang();
+  const errText = useErrorText();
   const [slug, setSlug] = useState<string | null>(null);
   // 실행 slug 를 같이 보낸다. 안 보내면 직원별 사용량이 전부 0 으로 와서,
   // 한창 일하는 중인데 사무실이 "아무도 일하지 않음"으로 보인다.
@@ -121,9 +122,7 @@ export default function OfficePage() {
           ? e.message
           : e instanceof ApiError && e.isBusy
             ? `${e.message} ${t("run.concurrentNote")}`
-            : e instanceof Error
-              ? e.message
-              : String(e),
+            : errText(e),
       );
     } finally {
       setBusy(false);
@@ -138,7 +137,7 @@ export default function OfficePage() {
     try {
       setRouting(await api.route(text));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errText(e));
     } finally {
       setBusy(false);
     }
@@ -152,7 +151,7 @@ export default function OfficePage() {
       const r = await api.openManual(text);
       router.push(`/manual/${r.slug}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errText(e));
       setBusy(false);
     }
   };
@@ -162,7 +161,7 @@ export default function OfficePage() {
     try {
       await api.cancelRun(slug);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errText(e));
     }
   };
 

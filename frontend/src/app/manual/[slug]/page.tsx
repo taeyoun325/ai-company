@@ -21,7 +21,7 @@ import {
   Button, ErrorBox, Panel, Screen, Skeleton, Warning,
 } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { useLang } from "@/lib/i18n";
+import { useErrorText, useLang } from "@/lib/i18n";
 import type { Employee, Verdict } from "@/lib/types";
 import { useLoader } from "@/lib/useLoader";
 import { useSlug } from "@/lib/useSlug";
@@ -29,6 +29,7 @@ import { foldState, useStream } from "@/lib/useStream";
 
 export default function ManualPage({ params }: { params: Promise<{ slug: string }> }) {
   const { t } = useLang();
+  const errText = useErrorText();
   const slug = useSlug(use(params));
   const { data, error: loadError, loading, reload } = useLoader(slug, () =>
     api.manualState(slug),
@@ -82,7 +83,7 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
       setVerdict(b.verdict);
       await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errText(e));
     } finally {
       setSending(null);
     }

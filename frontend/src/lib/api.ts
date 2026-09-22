@@ -45,6 +45,11 @@ export class ApiError extends Error {
   get isBusy() {
     return this.status === 409 || this.status === 429;
   }
+
+  /** 서버가 거절한 게 아니라 **닿지도 못했다**. 사용자가 할 일이 다르다. */
+  get isOffline() {
+    return this.status === 0;
+  }
 }
 
 /**
@@ -68,7 +73,31 @@ export function onUnauthorized(fn: Listener): () => void {
  * 모듈 변수인 이유: `api` 는 훅이 아니라 함수 모음이라 컨텍스트를 읽을 수
  * 없다. i18n 쪽에서 언어가 바뀔 때마다 여기 한 줄을 갱신한다.
  */
-let acceptLanguage = "ko";
+/**
+ * 고른 언어가 저장되는 자리. **값은 한 곳에만 산다** — `lib/i18n.tsx` 가
+ * 이 상수를 가져다 쓴다.
+ */
+export const LANG_STORE_KEY = "ai-company.lang";
+
+/**
+ * 서버에 보낼 언어 (DAY 22).
+ *
+ * 여기가 `"ko"` 로 시작하고 있었다. 언어는 `LangProvider` 의 effect 에서
+ * 들어오는데, **첫 요청들은 그 전에 나간다.** 영어로 쓰는 사람이 새로고침
+ * 하면 직원표·오류 문장이 한국어로 한 번 오고, 언어를 다시 고르기 전까지
+ * 그대로 남았다. 그래서 저장된 값을 처음 쓸 때 직접 읽는다.
+ */
+let acceptLanguage = "";
+
+function language(): string {
+  if (acceptLanguage) return acceptLanguage;
+  try {
+    acceptLanguage = window.localStorage.getItem(LANG_STORE_KEY) || "ko";
+  } catch {
+    acceptLanguage = "ko";    // 사생활 보호 모드에서는 읽기가 던진다
+  }
+  return acceptLanguage;
+}
 
 export function setApiLanguage(lang: string) {
   acceptLanguage = lang;
@@ -81,14 +110,18 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
       ...init,
       headers: {
         "Content-Type": "application/json",
-        "Accept-Language": acceptLanguage,
+        "Accept-Language": language(),
         ...init?.headers,
       },
     });
   } catch (e) {
     // 네트워크 자체가 끊긴 경우. 서버 오류와 구분해서 말해야 한다 —
     // "서버가 거절했다"와 "서버에 닿지 못했다"는 사용자의 대응이 다르다.
-    throw new ApiError(0, `백엔드에 닿지 못했습니다 (${String(e)})`);
+    //
+    // 여기서 문장을 만들지 않는다. 이 파일은 React 밖이라 사용자가 고른
+    // 언어를 모르고, 여기서 쓴 한국어는 **어떤 언어로 보든 그대로** 화면에
+    // 나온다. 상태 0 만 남기고 문장은 화면이 고른다(`useErrorText`).
+    throw new ApiError(0, String(e));
   }
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;

@@ -25,13 +25,14 @@ import { useState } from "react";
 import { ByokPanel } from "@/components/ByokPanel";
 import { Button, ErrorBox, MockBadge, Panel, Screen, Skeleton, Warning }
   from "@/components/ui";
-import { useLang } from "@/lib/i18n";
+import { useErrorText, useLang } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import type { ByokStatus, Employee, ProviderStatus, Settings } from "@/lib/types";
 import { useLoader } from "@/lib/useLoader";
 
 export default function SettingsPage() {
   const { t } = useLang();
+  const errText = useErrorText();
   const { data, error: loadError, loading, reload: load } = useLoader("settings", async () => {
     const [s, st, b] = await Promise.all([
       api.settings(),
@@ -63,7 +64,7 @@ export default function SettingsPage() {
       setDraft({});
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errText(e));
     } finally {
       setBusy(false);
     }
@@ -77,7 +78,7 @@ export default function SettingsPage() {
     } catch (e) {
       setChecks((c) => ({
         ...c,
-        [provider]: { ok: false, detail: e instanceof Error ? e.message : String(e) },
+        [provider]: { ok: false, detail: errText(e) },
       }));
     } finally {
       setBusy(false);
@@ -89,7 +90,7 @@ export default function SettingsPage() {
       await api.setEmployeeModel(id, model);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errText(e));
     }
   };
 

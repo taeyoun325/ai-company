@@ -265,11 +265,32 @@ export function money(n: number | undefined) {
   return n === 0 ? "$0" : `$${n.toFixed(n < 0.01 ? 4 : 2)}`;
 }
 
-export function when(ts: number | undefined) {
+/**
+ * 날짜·시각을 **보는 사람의 언어로** 적는다 (DAY 22).
+ *
+ * 여기가 `"ko-KR"` 로 고정돼 있었다. 화면 글자는 전부 번역해 놓고 날짜만
+ * `09. 22. 오전 08:23` 로 나오고 있었다 — 영어로 쓰는 사람에게는 읽히지
+ * 않는 한 줄이고, 번역이 끝났다는 우리 주장에 난 구멍이었다.
+ *
+ * 시간대는 브라우저의 것을 그대로 쓴다. 서버 시간으로 적으면 "방금 만든
+ * 것"이 몇 시간 전으로 보인다.
+ */
+const LOCALE: Record<string, string> = { ko: "ko-KR", en: "en-US", ja: "ja-JP" };
+
+export function when(ts: number | undefined, lang = "ko") {
   if (!ts) return "";
-  return new Date(ts * 1000).toLocaleString("ko-KR", {
+  return new Date(ts * 1000).toLocaleString(LOCALE[lang] ?? LOCALE.ko, {
     month: "2-digit",
     day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** 같은 날 안의 항목에는 시:분만 적는다. 날짜는 묶음 제목이 말한다. */
+export function clock(ts: number | undefined, lang = "ko") {
+  if (!ts) return "";
+  return new Date(ts * 1000).toLocaleTimeString(LOCALE[lang] ?? LOCALE.ko, {
     hour: "2-digit",
     minute: "2-digit",
   });

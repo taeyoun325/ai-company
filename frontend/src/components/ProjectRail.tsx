@@ -22,12 +22,12 @@
 import Link from "next/link";
 import { useEffect } from "react";
 
-import { useLang } from "@/lib/i18n";
+import { type Key, useLang } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { useLoader } from "@/lib/useLoader";
 import { useSticky } from "@/lib/sticky";
 import { Icon } from "./icons";
-import { Empty, MockBadge, Skeleton, StatusDot, when } from "./ui";
+import { Empty, MockBadge, Skeleton, StatusDot, clock, when } from "./ui";
 
 const STORE_KEY = "ai-company.rail";
 
@@ -39,7 +39,7 @@ export function ProjectRail({
   /** 실행이 끝나면 목록이 바뀐다. 이 값이 바뀌면 다시 읽는다. */
   refreshKey?: string | number;
 }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [open, setOpen] = useSticky(STORE_KEY, true);
   const { data, error, loading, reload } = useLoader("rail", () =>
     api.projects({ limit: 40, sort: "recent" }),
@@ -91,6 +91,25 @@ export function ProjectRail({
     return run(a) - run(b) || b.created_at - a.created_at;
   });
 
+  // 같은 날짜가 줄마다 반복되고 있었다 — 다섯 줄이 전부 "09. 22. 오전
+  // 08:23" 이면 그 줄은 아무것도 구분해주지 않으면서 자리만 먹는다.
+  // 날짜는 묶음 제목이 한 번 말하고, 줄에는 시:분과 파일 수만 남긴다.
+  const groups: { key: string; label: string; items: typeof rows }[] = [];
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const today = midnight.getTime() / 1000;
+  const bucket = (p: (typeof rows)[number]) =>
+    p.status === "running" ? "running"
+      : p.created_at >= today ? "today"
+        : p.created_at >= today - 86400 ? "yesterday"
+          : "earlier";
+  for (const p of rows) {
+    const key = bucket(p);
+    const last = groups[groups.length - 1];
+    if (last?.key === key) last.items.push(p);
+    else groups.push({ key, label: t(`rail.${key}` as Key), items: [p] });
+  }
+
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-line
       bg-[color:var(--panel)] backdrop-blur-xl">
@@ -136,8 +155,17 @@ export function ProjectRail({
         {!loading && !error && rows.length === 0 && (
           <Empty>{t("office.empty")}</Empty>
         )}
-        <ul className="space-y-0.5">
-          {rows.map((p) => {
+        {groups.map((g) => (
+        <ul key={g.key} className="space-y-0.5">
+          {/* 제목은 스크롤해도 붙어 있다. 긴 목록에서 지금 보고 있는 줄이
+              어느 날의 것인지 잃지 않게 한다. */}
+          <li className="sticky top-0 z-10 bg-[color:var(--panel)]/85 px-2.5
+            pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider
+            text-dim backdrop-blur-sm">
+            {g.label}
+            <span className="ml-1 tabular-nums opacity-70">{g.items.length}</span>
+          </li>
+          {g.items.map((p) => {
             const on = p.slug === activeSlug;
             return (
               <li key={p.slug}>
@@ -162,14 +190,20 @@ export function ProjectRail({
                   </span>
                   <span className="mt-0.5 block truncate text-[11px] text-dim"
                         aria-hidden>
-                    {when(p.created_at)}
-                    {typeof p.file_count === "number" && ` · ${p.file_count}`}
+                    {g.key === "earlier"
+                      ? when(p.created_at, lang)
+                      : clock(p.created_at, lang)}
+                    {typeof p.file_count === "number"
+                      && ` · ${p.file_count === 1
+                        ? t("rail.file1")
+                        : t("rail.files", { n: p.file_count })}`}
                   </span>
                 </Link>
               </li>
             );
           })}
         </ul>
+        ))}
       </div>
     </aside>
   );
