@@ -142,9 +142,12 @@ export default function ProjectsPage() {
             className="rounded-lg border border-line bg-panel2 px-2 py-1.5 text-sm"
           >
             <option value="">{t("list.allStatus")}</option>
+            {/* `v` 는 **번역표의 키**다. 그대로 그리면 목록 상태 칸에
+                "list.done" 이 보인다. 화면이 키를 보여주는 것은 번역이
+                빠진 것보다 나쁘다 — 사용자는 고장으로 읽는다. */}
             {Object.entries(LABEL).map(([k, v]) => (
               <option key={k} value={k}>
-                {v}
+                {t(v)}
               </option>
             ))}
           </select>
@@ -196,7 +199,15 @@ export default function ProjectsPage() {
                   <p className="text-sm font-semibold tabular-nums">
                     {p.status === "done" ? `${p.score}%` : "—"}
                   </p>
-                  <p className="text-[11px] text-dim">{money(p.cost)}</p>
+                  {/* 원가만으로는 그 프로젝트가 **무엇을 남겼는지** 알 수
+                      없다. 목록에서 다시 찾는 이유는 대개 산출물이다. */}
+                  <p className="text-[11px] text-dim">
+                    {money(p.cost)}
+                    {typeof p.file_count === "number" && p.file_count > 0
+                      && ` · ${p.file_count === 1
+                        ? t("rail.file1")
+                        : t("rail.files", { n: p.file_count })}`}
+                  </p>
                 </div>
                 <span className="hidden w-28 shrink-0 text-right text-[11px] text-dim md:block">
                   {when(p.created_at, lang)}
