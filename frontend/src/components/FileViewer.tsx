@@ -128,7 +128,11 @@ export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
                 ${f === path ? "bg-panel2 text-fg" : "text-muted hover:bg-panel2"}`}
               title={f}
             >
-              {f}
+              {/* 목록에서 눈이 찾는 것은 **파일 이름**이지 폴더가 아니다.
+                  `src/` `docs/` `design/` 가 같은 굵기로 반복되면 네 줄이
+                  같은 글자 뭉치로 보인다. 폴더는 흐리게 둔다. */}
+              <span className="text-dim">{f.slice(0, f.lastIndexOf("/") + 1)}</span>
+              {f.slice(f.lastIndexOf("/") + 1)}
             </button>
           </li>
         ))}
