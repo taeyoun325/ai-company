@@ -18,6 +18,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useErrorText } from "@/lib/i18n";
+
 export interface Loader<T> {
   data: T | null;
   error: string | null;
@@ -26,6 +28,7 @@ export interface Loader<T> {
 }
 
 export function useLoader<T>(key: string, fetcher: () => Promise<T>): Loader<T> {
+  const errText = useErrorText();
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,11 +58,14 @@ export function useLoader<T>(key: string, fetcher: () => Promise<T>): Loader<T> 
       setError(null);
     } catch (e) {
       if (!alive.current) return;
-      setError(e instanceof Error ? e.message : String(e));
+      // 문장은 화면의 언어로 고른다. 백엔드에 닿지 못한 경우 여기서
+      // `e.message` 를 그대로 쓰면 "TypeError: Failed to fetch" 가 목록
+      // 자리에 찍힌다 — 사용자가 할 수 있는 일이 없는 문장이다.
+      setError(errText(e));
     } finally {
       if (alive.current) setLoading(false);
     }
-  }, []);
+  }, [errText]);
 
   useEffect(() => {
     void reload();

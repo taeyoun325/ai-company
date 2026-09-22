@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from app import config, secrets_broker
+from app import config, lang, secrets_broker
 from app.providers.base import (AIProvider, AuthError, GenerateRequest,
                                 GenerateResult, ProviderError,
                                 ProviderUnavailable, RateLimited,
@@ -79,12 +79,13 @@ class ClaudeProvider(AIProvider):
         """키는 환경이 아니라 브로커에서 온다 — 기동 시 환경에서 지워졌다."""
         if not self.available():
             raise ProviderUnavailable(
-                "Anthropic API 키가 없습니다. 설정에서 등록하세요.", provider=self.name)
+                lang.t("prov.noKey", label="Anthropic"), provider=self.name)
         try:
             from app.providers import anthropic_client
         except ImportError as e:                       # pragma: no cover
             raise ProviderUnavailable(
-                f"anthropic 패키지가 없습니다: {e}", provider=self.name) from e
+                lang.t("prov.noPackage", package="anthropic", detail=e),
+                provider=self.name) from e
         return anthropic_client.client()
 
     # ── 호출 ────────────────────────────────────────────────────────
@@ -137,8 +138,10 @@ class ClaudeProvider(AIProvider):
             raise translate(e, self.name) from e
 
         if getattr(resp, "stop_reason", None) == "refusal":
-            raise RefusedError(f"모델이 요청을 거절했습니다: "
-                               f"{getattr(resp, 'stop_details', '')}", provider=self.name)
+            raise RefusedError(
+                lang.t("prov.refused",
+                       detail=getattr(resp, "stop_details", "")),
+                provider=self.name)
 
         text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
         return GenerateResult(

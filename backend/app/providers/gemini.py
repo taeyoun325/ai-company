@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from app import config, secrets_broker
+from app import config, lang, secrets_broker
 from app.providers.base import (AIProvider, AuthError, GenerateRequest,
                                 GenerateResult, ProviderError,
                                 ProviderUnavailable, RateLimited,
@@ -84,12 +84,13 @@ class GeminiProvider(AIProvider):
     def _client(self):
         if not self.available():
             raise ProviderUnavailable(
-                "Google (Gemini) API 키가 없습니다. 설정에서 등록하세요.", provider=self.name)
+                lang.t("prov.noKey", label="Google (Gemini)"), provider=self.name)
         try:
             from app.providers import gemini_client
         except ImportError as e:                       # pragma: no cover
             raise ProviderUnavailable(
-                f"google-genai 패키지가 없습니다: {e}", provider=self.name) from e
+                lang.t("prov.noPackage", package="google-genai", detail=e),
+                provider=self.name) from e
         return gemini_client.client()
 
     # ── 요청 ────────────────────────────────────────────────────────
@@ -139,12 +140,14 @@ class GeminiProvider(AIProvider):
 
         finish = self._finish(resp)
         if finish in _BLOCKED_FINISH:
-            raise RefusedError(f"모델이 응답을 차단했습니다: {finish}", provider=self.name)
+            raise RefusedError(lang.t("prov.blocked", detail=finish),
+                               provider=self.name)
 
         text = (getattr(resp, "text", None) or "").strip()
         if not text and finish not in (None, "STOP", "MAX_TOKENS"):
             # 빈 응답을 성공으로 올리면 위에서 "모델이 할 말이 없었다"로 읽는다.
-            raise TransientError(f"빈 응답 (finish_reason={finish})", provider=self.name)
+            raise TransientError(lang.t("prov.empty", detail=finish),
+                                 provider=self.name)
 
         return GenerateResult(
             text=text,

@@ -5,7 +5,7 @@ from typing import TypeVar
 
 import anthropic
 
-from app import bus
+from app import bus, lang
 from app import secrets_broker
 from app import usage
 
@@ -77,7 +77,8 @@ def structured(agent: str, model: str, system: str, user: str, schema: type[T],
             )
             _bill(agent, model, resp.usage)
             if resp.stop_reason == "refusal":
-                raise RuntimeError(f"모델이 요청을 거절했습니다: {resp.stop_details}")
+                raise RuntimeError(lang.t("prov.refused",
+                                          detail=resp.stop_details))
             return resp.parsed_output
         except (anthropic.APIStatusError, anthropic.APIConnectionError,
                 ValueError, TypeError) as e:

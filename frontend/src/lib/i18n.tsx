@@ -734,6 +734,15 @@ const S = {
   // 그런 줄이 하나 있으면 나머지 번역도 기계가 한 것처럼 읽힌다.
   "rail.file1": { ko: "파일 1개", en: "1 file", ja: "ファイル 1 件" },
   "rail.credits": { ko: "{n} 크레딧", en: "{n} cr", ja: "{n} クレジット" },
+  // 로그 칸이 비어 있을 때 채우는 "지난 결과". 실행 전에는 이 칸이
+  // 700px 짜리 빈 공간이었다.
+  "recent.title": { ko: "지난 결과", en: "Recent results", ja: "これまでの結果" },
+  "recent.score": { ko: "완성도", en: "Done", ja: "完成度" },
+  "recent.none": {
+    ko: "끝난 프로젝트가 아직 없습니다.",
+    en: "No finished projects yet.",
+    ja: "完了したプロジェクトはまだありません。",
+  },
   "office.ask": {
     ko: "무엇을 만들까요?",
     en: "What should we build?",

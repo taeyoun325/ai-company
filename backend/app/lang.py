@@ -236,6 +236,114 @@ _M: dict[str, dict[str, str]] = {
         "en": "Review requested by the CEO",
         "ja": "CEO の要請で検証",
     },
+    # ── 제공자·키 (DAY 22) ─────────────────────────────────────────
+    # 설정 화면이 이 문장을 그대로 보여준다. 키를 넣는 사람은 대개
+    # 막혀서 온 사람이고, 막힌 이유가 읽히지 않으면 거기서 끝난다.
+    "prov.noKey": {
+        "ko": "{label} API 키가 없습니다. 설정에서 등록하세요.",
+        "en": "No {label} API key. Add one in settings.",
+        "ja": "{label} の API キーがありません。設定で登録してください。",
+    },
+    "prov.noKeyEnv": {
+        "ko": "{label} API 키가 없습니다. 설정 화면에서 등록하거나 {env} "
+              "환경변수를 설정하세요.",
+        "en": "No {label} API key. Add one in settings, or set the {env} "
+              "environment variable.",
+        "ja": "{label} の API キーがありません。設定画面で登録するか、{env} "
+              "環境変数を設定してください。",
+    },
+    "prov.noPackage": {
+        "ko": "{package} 패키지가 없습니다: {detail}",
+        "en": "The {package} package is missing: {detail}",
+        "ja": "{package} パッケージがありません: {detail}",
+    },
+    "prov.none": {
+        "ko": "쓸 수 있는 제공자가 없습니다: {name}",
+        "en": "No usable provider: {name}",
+        "ja": "使用できるプロバイダーがありません: {name}",
+    },
+    # 모델이 답을 안 준 경우. 우리 잘못도 사용자 잘못도 아닐 수 있지만,
+    # 무엇이 일어났는지는 읽혀야 한다.
+    "prov.refused": {
+        "ko": "모델이 요청을 거절했습니다: {detail}",
+        "en": "The model refused the request: {detail}",
+        "ja": "モデルがリクエストを拒否しました: {detail}",
+    },
+    "prov.blocked": {
+        "ko": "모델이 응답을 차단했습니다: {detail}",
+        "en": "The model blocked its response: {detail}",
+        "ja": "モデルが応答をブロックしました: {detail}",
+    },
+    "prov.cutOff": {
+        "ko": "응답이 중단됐습니다: {detail}",
+        "en": "The response was cut off: {detail}",
+        "ja": "応答が中断されました: {detail}",
+    },
+    "prov.empty": {
+        "ko": "빈 응답 (finish_reason={detail})",
+        "en": "Empty response (finish_reason={detail})",
+        "ja": "空の応答 (finish_reason={detail})",
+    },
+    "prov.retries": {
+        "ko": "재시도 상한에 걸렸습니다.",
+        "en": "Retry limit reached.",
+        "ja": "再試行の上限に達しました。",
+    },
+    "prov.allFailed": {
+        "ko": "모든 제공자가 실패했습니다.",
+        "en": "Every provider failed.",
+        "ja": "すべてのプロバイダーが失敗しました。",
+    },
+    "prov.unknown": {
+        "ko": "알 수 없는 제공자: {name}",
+        "en": "Unknown provider: {name}",
+        "ja": "不明なプロバイダー: {name}",
+    },
+    "prov.realNoKey": {
+        "ko": "PROVIDER_MODE=real 인데 {name} 키가 없습니다. Mock 으로 "
+              "대신하지 않습니다.",
+        "en": "PROVIDER_MODE=real but there is no {name} key. We do not fall "
+              "back to Mock.",
+        "ja": "PROVIDER_MODE=real ですが {name} の鍵がありません。Mock で"
+              "代用しません。",
+    },
+    # ── 실행이 멈춘 이유 (DAY 22) ──────────────────────────────────
+    # 이 문장은 로그와 프로젝트 화면의 "중단 사유"에 남는다. 돈이 걸린
+    # 거절이라 사용자가 제일 오래 들여다보는 줄이고, 여기가 한국어면
+    # 무엇 때문에 멈췄는지 못 읽은 채 크레딧이 줄어 있다.
+    "stop.byCeo": {"ko": "CEO 가 정지시켰습니다.", "en": "Stopped by the CEO.",
+                   "ja": "CEO が停止しました。"},
+    "stop.rounds": {
+        "ko": "라운드 상한({n}) 도달 — 중단합니다.",
+        "en": "Round limit ({n}) reached — stopping.",
+        "ja": "ラウンド上限({n})に達しました — 停止します。",
+    },
+    "stop.cost": {
+        "ko": "비용 상한(${limit}) — 다음 호출의 최악 비용까지 더하면 "
+              "${projected}가 되어 중단합니다.",
+        "en": "Cost cap (${limit}) — adding the worst case of the next call "
+              "would reach ${projected}, so we stop here.",
+        "ja": "コスト上限(${limit}) — 次の呼び出しの最悪コストを加えると "
+              "${projected} になるため停止します。",
+    },
+    "stop.credits": {
+        "ko": "크레딧이 부족합니다 — 잔액 {left} 크레딧으로는 다음 작업을 "
+              "시작할 수 없습니다.",
+        "en": "Not enough credits — {left} left is not enough to start the "
+              "next step.",
+        "ja": "クレジットが不足しています — 残高 {left} では次の作業を"
+              "開始できません。",
+    },
+    "stop.noTasks": {
+        "ko": "계획에 태스크가 하나도 없습니다 — 진행할 수 없습니다.",
+        "en": "The plan has no tasks — cannot continue.",
+        "ja": "計画にタスクが一つもありません — 続行できません。",
+    },
+    "stop.replans": {
+        "ko": "재기획 상한({n}) 도달 — '{task}' 에서 진전이 없습니다.",
+        "en": "Replan limit ({n}) reached — no progress on '{task}'.",
+        "ja": "再計画の上限({n})に達しました — '{task}' で進展がありません。",
+    },
     # ── 가입·로그인 (DAY 22) ───────────────────────────────────────
     # 제품에서 **제일 먼저** 보는 화면이다. 여기가 한국어면 영어로 쓰는
     # 사람은 계정을 만들다 막히고, 막힌 이유도 못 읽는다.

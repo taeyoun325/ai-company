@@ -173,7 +173,7 @@ def cancel(slug: str) -> bool:
 def _check_cancelled(slug: str) -> None:
     with _runs_lock:
         if slug in _cancelled:
-            raise Stop("CEO 가 정지시켰습니다.")
+            raise Stop(lang.t("stop.byCeo"))
 
 
 def start(requirement: str, attachment_ids: list[str] | None = None,
@@ -231,7 +231,7 @@ def _spend_guard(rounds: int, about_to_spend: float = 0.0,
     막는 장치이고 크레딧은 **사용자가 산 만큼**이라서 둘이 다르기 때문이다.
     """
     if rounds > config.MAX_ROUNDS:
-        raise Stop(f"라운드 상한({config.MAX_ROUNDS}) 도달 — 중단합니다.")
+        raise Stop(lang.t("stop.rounds", n=config.MAX_ROUNDS))
     spent = usage.total_cost()
     projected = spent + about_to_spend
     # 요금제 상한과 전역 하드 상한 중 **작은 쪽**. 전역 상한은 요금제를
@@ -241,12 +241,11 @@ def _spend_guard(rounds: int, about_to_spend: float = 0.0,
                 float(credits.plan(credits.wallet(owner).plan)
                       .get("max_project_cost", config.MAX_PROJECT_COST)))
     if projected > limit:
-        raise Stop(f"비용 상한(${limit}) — 다음 호출의 최악 비용까지 "
-                   f"더하면 ${projected:.2f}가 되어 중단합니다.")
+        raise Stop(lang.t("stop.cost", limit=limit,
+                          projected=f"{projected:.2f}"))
     if credits.usd_to_credits(about_to_spend) > credits.balance(owner):
-        raise Stop(f"크레딧이 부족합니다 — 잔액 "
-                   f"{credits.balance(owner):.1f} 크레딧으로는 다음 작업을 "
-                   f"시작할 수 없습니다.")
+        raise Stop(lang.t("stop.credits",
+                          left=f"{credits.balance(owner):.1f}"))
 
 
 def _topo(tasks: list[Task]) -> list[Task]:
@@ -417,7 +416,7 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
         employee.say(roles.get(roles.PLANNER), plan.message_to_team)
         criteria: list[Criterion] = plan.acceptance_criteria
         if not plan.tasks:
-            raise Stop("계획에 태스크가 하나도 없습니다 — 진행할 수 없습니다.")
+            raise Stop(lang.t("stop.noTasks"))
         score.total_tasks = len(plan.tasks)
         score.ac_total = len(criteria)
         store.save_meta(slug, {"name": plan.project_name,
@@ -522,8 +521,8 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
                 if rework >= config.MAX_REWORK:
                     score.replans += 1
                     if score.replans > config.MAX_REPLANS:
-                        raise Stop(f"재기획 상한({config.MAX_REPLANS}) 도달 — "
-                                   f"'{task.title}' 에서 진전이 없습니다.")
+                        raise Stop(lang.t("stop.replans", n=config.MAX_REPLANS,
+                                              task=task.title))
                     bus.phase("REPLAN", task.title)
                     _spend_guard(rounds := rounds + 1,
                                  employee.worst_case_cost(roles.PLANNER), owner)

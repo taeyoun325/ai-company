@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from app import config, secrets_broker
+from app import config, lang, secrets_broker
 from app.providers.base import (AIProvider, AuthError, GenerateRequest,
                                 GenerateResult, ProviderError,
                                 ProviderUnavailable, RateLimited,
@@ -73,12 +73,13 @@ class OpenAIProvider(AIProvider):
     def _client(self):
         if not self.available():
             raise ProviderUnavailable(
-                "OpenAI API 키가 없습니다. 설정에서 등록하세요.", provider=self.name)
+                lang.t("prov.noKey", label="OpenAI"), provider=self.name)
         try:
             from app.providers import openai_client
         except ImportError as e:                       # pragma: no cover
             raise ProviderUnavailable(
-                f"openai 패키지가 없습니다: {e}", provider=self.name) from e
+                lang.t("prov.noPackage", package="openai", detail=e),
+                provider=self.name) from e
         return openai_client.client()
 
     # ── 요청 ────────────────────────────────────────────────────────
@@ -129,11 +130,13 @@ class OpenAIProvider(AIProvider):
         if status == "incomplete":
             reason = getattr(getattr(resp, "incomplete_details", None), "reason", "")
             if reason and reason != "max_output_tokens":
-                raise RefusedError(f"응답이 중단됐습니다: {reason}", provider=self.name)
+                raise RefusedError(lang.t("prov.cutOff", detail=reason),
+                                   provider=self.name)
 
         for item in getattr(resp, "output", None) or []:
             if getattr(item, "type", "") == "refusal":
-                raise RefusedError("모델이 요청을 거절했습니다.", provider=self.name)
+                raise RefusedError(lang.t("prov.refused", detail=""),
+                                   provider=self.name)
 
         return GenerateResult(
             text=self._text_of(resp).strip(),

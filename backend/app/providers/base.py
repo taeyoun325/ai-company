@@ -216,7 +216,7 @@ class AIProvider(abc.ABC):
             result = replace(result, attempts=attempt + 1)
             self._bill(req, result)
             return result
-        raise last or TransientError("재시도 상한", provider=self.name)
+        raise last or TransientError(lang.t("prov.retries"), provider=self.name)
 
     def stream(self, req: GenerateRequest) -> Iterator[str]:
         """스트리밍은 재시도하지 않는다.
@@ -279,7 +279,7 @@ class FallbackProvider(AIProvider):
         usable = self._usable()
         if not usable:
             raise ProviderUnavailable(
-                f"쓸 수 있는 제공자가 없습니다: {self.name}", provider=self.name)
+                lang.t("prov.none", name=self.name), provider=self.name)
         last: ProviderError | None = None
         for p in usable:
             try:
@@ -289,13 +289,14 @@ class FallbackProvider(AIProvider):
                 bus.say("SYSTEM",
                         lang.t("log.fallback", who=p.name,
                                why=type(e).__name__), kind="error")
-        raise last or ProviderUnavailable("모든 제공자 실패", provider=self.name)
+        raise last or ProviderUnavailable(lang.t("prov.allFailed"),
+                                          provider=self.name)
 
     def stream(self, req: GenerateRequest) -> Iterator[str]:
         usable = self._usable()
         if not usable:
             raise ProviderUnavailable(
-                f"쓸 수 있는 제공자가 없습니다: {self.name}", provider=self.name)
+                lang.t("prov.none", name=self.name), provider=self.name)
         return usable[0].stream(req)
 
     # 추상 메서드 충족용 — 이 클래스는 위임만 하므로 직접 호출되지 않는다.

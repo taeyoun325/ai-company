@@ -25,6 +25,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ChatLog } from "@/components/ChatLog";
+import { RecentResults } from "@/components/RecentResults";
 import { Office } from "@/components/Office";
 import { PixelOffice } from "@/components/PixelOffice";
 import { ProjectRail } from "@/components/ProjectRail";
@@ -360,11 +361,17 @@ export default function OfficePage() {
           )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-hidden border-t border-line">
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-line">
           {stream.events.length === 0 ? (
-            <p className="px-4 py-6 text-center text-xs text-dim">
-              {t("office.logEmpty")}
-            </p>
+            <>
+              <p className="px-4 py-6 text-center text-xs text-dim">
+                {t("office.logEmpty")}
+              </p>
+              {/* 실행 전에는 이 칸이 통째로 비어 있었다. 지난 결과로
+                  채운다 — 왼쪽 레일이 "무엇을 시켰나"를 보여주므로
+                  여기는 "어떻게 끝났나"만 보여준다. */}
+              <RecentResults />
+            </>
           ) : (
             <ChatLog
               events={stream.events}

@@ -24,13 +24,18 @@ APP = Path(__file__).resolve().parents[1] / "app"
 
 # SaaS 로 열리는 경로들. 이 파일들 안의 거절 문장은 사용자가 본다.
 GUARDED = ("main.py", "auth/deps.py", "api/auth.py", "api/projects.py",
-           "auth/service.py", "auth/passwords.py")
+           "auth/service.py", "auth/passwords.py",
+           "orchestrator/engine.py", "secrets_broker.py",
+           "providers/base.py", "providers/registry.py",
+           "providers/claude.py", "providers/gemini.py",
+           "providers/openai.py", "providers/anthropic_client.py")
 
 KOREAN = re.compile(r"[가-힣]")
 # 사용자가 읽는 거절이 만들어지는 자리들. HTTPException 뿐 아니라
 # 도메인 예외도 화면까지 그대로 올라간다 — 엔드포인트가 `str(e)` 를
 # 그대로 넘기기 때문이다.
-RAISE = re.compile(r"HTTPException\(|AuthError\(|out\.append\(")
+RAISE = re.compile(r"HTTPException\(|AuthError\(|out\.append\("
+                   r"|Stop\(|ProviderUnavailable\(|TransientError\(|RefusedError\(")
 
 
 def _code(path: Path) -> list[str]:
@@ -68,8 +73,10 @@ def test_the_table_answers_in_every_language():
     화면에 `err.noProject` 가 찍힌다. 그건 번역이 아니라 고장이다."""
     from app import lang
 
-    keys = [k for k in lang._M if k.startswith("err.")]
-    assert keys, "거절 문장 키가 하나도 없습니다"
+    # 거절에 쓰는 앞자리 전부. 하나 늘릴 때마다 여기에 적는다.
+    prefixes = ("err.", "auth.", "pw.", "stop.", "prov.")
+    keys = [k for k in lang._M if k.startswith(prefixes)]
+    assert len(keys) > 20, f"거절 문장 키가 너무 적습니다: {len(keys)}"
     for key in keys:
         for code in lang.LANGS:
             with lang.bind(code):

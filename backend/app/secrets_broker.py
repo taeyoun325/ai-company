@@ -23,7 +23,7 @@ import os
 import stat
 from pathlib import Path
 
-from app import config, safeio
+from app import config, lang, safeio
 
 # 브로커가 관리하는 키 목록. (이름, 환경변수, 사람이 읽는 이름)
 KEYS = {
@@ -107,8 +107,7 @@ def require(name: str) -> str:
     if not key:
         label = KEYS.get(name, (None, name))[1]
         raise RuntimeError(
-            f"{label} API 키가 없습니다. 설정 화면에서 등록하거나 "
-            f"{KEYS[name][0]} 환경변수를 설정하세요.")
+            lang.t("prov.noKeyEnv", label=label, env=KEYS[name][0]))
     return key
 
 

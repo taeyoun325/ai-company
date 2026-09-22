@@ -28,7 +28,7 @@ from __future__ import annotations
 import os
 import threading
 
-from app import config
+from app import config, lang
 
 from app.providers.base import AIProvider, FallbackProvider, ProviderUnavailable
 from app.providers.claude import ClaudeProvider
@@ -100,7 +100,7 @@ def _real_provider(name: str) -> AIProvider:
     with _lock:
         if name not in _real:
             if name not in _FACTORIES:
-                raise ProviderUnavailable(f"알 수 없는 제공자: {name}", provider=name)
+                raise ProviderUnavailable(lang.t("prov.unknown", name=name), provider=name)
             _real[name] = _FACTORIES[name]()
         return _real[name]
 
@@ -147,7 +147,7 @@ def get(name: str) -> AIProvider:
     if name == "mock":
         return _mock_provider("claude")
     if name not in _FACTORIES:
-        raise ProviderUnavailable(f"알 수 없는 제공자: {name}", provider=name)
+        raise ProviderUnavailable(lang.t("prov.unknown", name=name), provider=name)
     if m == "mock":
         return _mock_provider(name)
 
@@ -155,8 +155,7 @@ def get(name: str) -> AIProvider:
     if m == "real":
         if not primary.available():
             raise ProviderUnavailable(
-                f"PROVIDER_MODE=real 인데 {name} 키가 없습니다. "
-                f"Mock 으로 대신하지 않습니다.", provider=name)
+                lang.t("prov.realNoKey", name=name), provider=name)
         return _chain(name, primary)
 
     # auto
