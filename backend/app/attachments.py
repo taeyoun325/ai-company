@@ -19,7 +19,7 @@ import time
 import uuid
 from pathlib import Path
 
-from app import config, lang
+from app import config, fencing, lang
 
 DIR = config.ROOT / "attachments"
 
@@ -140,7 +140,9 @@ def to_content_blocks(ids: list[str]) -> list[dict]:
             text = raw.decode("utf-8", errors="replace")
             if len(text) > 40_000:
                 text = text[:20_000] + "\n\n… (중략) …\n\n" + text[-20_000:]
-            blocks.append({"type": "text", "text": f"```\n{text}\n```"})
+            # 산출물과 같은 구멍이 여기에도 있었다 — 자료 안에 백틱 세 개가
+            # 있으면 울타리가 닫히고, 그 뒤의 글이 프롬프트의 평문이 된다.
+            blocks.append({"type": "text", "text": fencing.wrap(text)})
 
     return blocks
 

@@ -277,6 +277,14 @@ export function money(n: number | undefined) {
  */
 const LOCALE: Record<string, string> = { ko: "ko-KR", en: "en-US", ja: "ja-JP" };
 
+/** 자릿수 구분이 있는 숫자. `98696` 은 한눈에 안 읽힌다. */
+export function num(n: number, lang = "ko", digits = 0) {
+  return n.toLocaleString(LOCALE[lang] ?? LOCALE.ko, {
+    maximumFractionDigits: digits,
+  });
+}
+
+
 export function when(ts: number | undefined, lang = "ko") {
   if (!ts) return "";
   return new Date(ts * 1000).toLocaleString(LOCALE[lang] ?? LOCALE.ko, {

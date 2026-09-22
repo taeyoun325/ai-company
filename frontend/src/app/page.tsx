@@ -30,7 +30,7 @@ import { Office } from "@/components/Office";
 import { PixelOffice } from "@/components/PixelOffice";
 import { ProjectRail } from "@/components/ProjectRail";
 import { ScorePanel, TaskBoard } from "@/components/TaskBoard";
-import { Button, ErrorBox, Panel, Skeleton, Warning } from "@/components/ui";
+import { Button, ErrorBox, Panel, Skeleton, Warning, num } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { useErrorText, useLang } from "@/lib/i18n";
 import { T, animate, stagger, withScope } from "@/lib/motion";
@@ -52,7 +52,7 @@ const PHASE_OWNER: Record<string, string[]> = {
 
 export default function OfficePage() {
   const router = useRouter();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const errText = useErrorText();
   const [slug, setSlug] = useState<string | null>(null);
   // 실행 slug 를 같이 보낸다. 안 보내면 직원별 사용량이 전부 0 으로 와서,
@@ -368,7 +368,7 @@ export default function OfficePage() {
           </span>
           {wallet && (
             <a href="/pricing" className="text-[11px] text-dim hover:text-fg">
-              {wallet.balance.toFixed(0)} · {wallet.plan_label}
+              {num(wallet.balance, lang)} · {wallet.plan_label}
             </a>
           )}
         </div>
