@@ -32,6 +32,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+# 윈도우 기본 콘솔은 cp949 다. 여기서 쓰는 ✓ 하나에 스크립트가 통째로
+# 죽는다(UnicodeEncodeError) — 하필 **키를 꽂은 날 제일 먼저 돌리는 것**이
+# 그렇게 된다. 출력만 utf-8 로 돌려놓는다. 실패해도 넘어간다.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:                                              # noqa: BLE001
+    pass
+
+
+
 from app import config, secrets_broker, usage           # noqa: E402
 from app.providers import registry                      # noqa: E402
 from app.providers.base import GenerateRequest, ProviderError  # noqa: E402

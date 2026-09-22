@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 
@@ -14,10 +15,30 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
-export const metadata: Metadata = {
-  title: "AI COMPANY",
-  description: "AI 직원들이 실제 회사처럼 협업합니다. 당신은 CEO 입니다.",
+// 링크 미리보기와 검색 결과에 나가는 한 줄. 화면 글자는 전부 번역해놓고
+// **이 줄만** 한국어였다 — 영어권에서 링크를 공유하면 그 줄만 읽히지 않는다.
+//
+// 화면의 언어 선택은 브라우저 저장소에 있어서 서버가 모른다. 크롤러와 링크
+// 미리보기는 `Accept-Language` 만 보내므로, 여기서는 그 헤더로 정한다.
+const DESCRIPTION: Record<string, string> = {
+  ko: "AI 직원들이 실제 회사처럼 협업합니다. 당신은 CEO 입니다.",
+  en: "AI employees that collaborate like a real company. You are the CEO.",
+  ja: "AI 社員が実際の会社のように協働します。あなたは CEO です。",
 };
+
+export async function generateMetadata(): Promise<Metadata> {
+  const header = (await headers()).get("accept-language") ?? "";
+  // q 값은 보지 않는다. 브라우저는 선호 순으로 보내므로 처음 맞는 것이면
+  // 충분하다 — 서버의 `app/lang.py` 와 같은 규칙이다.
+  const code = header
+    .split(",")
+    .map((part) => part.split(";")[0].trim().slice(0, 2).toLowerCase())
+    .find((c) => c in DESCRIPTION);
+  return {
+    title: "AI COMPANY",
+    description: DESCRIPTION[code ?? "ko"],
+  };
+}
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
