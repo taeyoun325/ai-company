@@ -69,6 +69,8 @@ export default function OfficePage() {
   const [picked, setPicked] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  // 가운데 칸(사무실·입력·직원 카드)의 스크롤 상자.
+  const work = useRef<HTMLElement>(null);
 
   const stream = useStream(slug ?? undefined);
   const folded = foldState(stream.events);
@@ -115,6 +117,12 @@ export default function OfficePage() {
     try {
       const r = await api.startRun(text);
       setSlug(r.slug);
+      // 시작 버튼은 사무실 **아래**에 있다. 누르는 순간 화면은 입력칸에
+      // 맞춰져 있고, 정작 일이 벌어지는 사무실은 위로 밀려 잘려 있다.
+      // 일을 맡겼으면 일하는 곳이 보여야 한다.
+      // 부드럽게 올리면 실행이 시작되며 일어나는 다시 그리기에 끊긴다
+      // (400 → 311 에서 멈췄다). 애니메이션 없이 즉시 올린다.
+      work.current?.scrollTo({ top: 0 });
     } catch (e) {
       setError(
         // 402 는 두 가지다 — 요금제를 아직 안 골랐거나, 크레딧이 모자라거나.
@@ -185,7 +193,7 @@ export default function OfficePage() {
       />
 
       {/* 가운데 — 사무실과 입력창 */}
-      <section className="min-w-0 flex-1 overflow-y-auto px-4 py-4">
+      <section ref={work} className="min-w-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto max-w-[640px] space-y-3">
           {allMock && (
             <div data-enter>

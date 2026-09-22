@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 
@@ -15,30 +14,25 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
-// 링크 미리보기와 검색 결과에 나가는 한 줄. 화면 글자는 전부 번역해놓고
-// **이 줄만** 한국어였다 — 영어권에서 링크를 공유하면 그 줄만 읽히지 않는다.
+// 링크 미리보기와 검색 결과에 나가는 한 줄.
 //
-// 화면의 언어 선택은 브라우저 저장소에 있어서 서버가 모른다. 크롤러와 링크
-// 미리보기는 `Accept-Language` 만 보내므로, 여기서는 그 헤더로 정한다.
-const DESCRIPTION: Record<string, string> = {
-  ko: "AI 직원들이 실제 회사처럼 협업합니다. 당신은 CEO 입니다.",
-  en: "AI employees that collaborate like a real company. You are the CEO.",
-  ja: "AI 社員が実際の会社のように協働します。あなたは CEO です。",
+// **한 번 동적으로 만들어 봤다가 되돌렸다** (DAY 22). `headers()` 로
+// `Accept-Language` 를 읽어 세 언어로 나눠 보냈는데, 그러면 루트 레이아웃이
+// 동적이 되어 **앱 전체의 정적 프리렌더가 사라진다.** 재보고 안 결과다:
+//
+//   before: ○ / · /pricing · /projects · /settings · /reset · /verify · 404
+//   after:  ƒ 전부 (server-rendered on demand)
+//
+// 랜딩(`/`)은 이 제품의 **유일한 공개 페이지**이자 판매 창구다. 그걸 CDN 에
+// 못 얹는 대가로 얻는 것은, 링크를 공유했을 때의 설명 한 줄뿐이다. 게다가
+// 링크 미리보기 봇(Slack·Twitter 등)은 대개 `Accept-Language` 를 보내지
+// 않으므로 어차피 기본값이 나간다 — 값에 비해 대가가 크다.
+//
+// 화면 글자는 전부 번역돼 있고, 이 한 줄만 한국어로 고정이다.
+export const metadata: Metadata = {
+  title: "AI COMPANY",
+  description: "AI 직원들이 실제 회사처럼 협업합니다. 당신은 CEO 입니다.",
 };
-
-export async function generateMetadata(): Promise<Metadata> {
-  const header = (await headers()).get("accept-language") ?? "";
-  // q 값은 보지 않는다. 브라우저는 선호 순으로 보내므로 처음 맞는 것이면
-  // 충분하다 — 서버의 `app/lang.py` 와 같은 규칙이다.
-  const code = header
-    .split(",")
-    .map((part) => part.split(";")[0].trim().slice(0, 2).toLowerCase())
-    .find((c) => c in DESCRIPTION);
-  return {
-    title: "AI COMPANY",
-    description: DESCRIPTION[code ?? "ko"],
-  };
-}
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

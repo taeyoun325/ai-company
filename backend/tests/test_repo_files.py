@@ -11,6 +11,8 @@
 이런 종류의 고장은 "여기서는 되는데"로만 나타나서, 배포하는 날에야 보인다.
 그래서 기계가 본다: **소스 폴더의 파일이 하나라도 무시되면 실패한다.**
 """
+import io
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -68,3 +70,39 @@ def test_runtime_data_stays_ignored():
     got = set(r.stdout.decode("utf-8", "replace").split())
     for name in ("projects", "logs", ".venv"):
         assert name in got, f"{name} 이(가) 더 이상 무시되지 않습니다"
+
+
+# ── 랜딩이 정적으로 남아 있는가 (DAY 22) ───────────────────────────
+LAYOUT = ROOT / "frontend" / "src" / "app" / "layout.tsx"
+
+# 루트 레이아웃에서 이것들을 부르면 **앱 전체**가 요청마다 서버 렌더가 된다.
+DYNAMIC_APIS = ("headers(", "cookies(", "connection(")
+
+
+def test_the_root_layout_stays_statically_renderable():
+    """DAY 22 에 실제로 저질렀다가 되돌린 일이다.
+
+    링크 미리보기 문구를 언어별로 내보내려고 루트 레이아웃에서
+    `headers()` 로 `Accept-Language` 를 읽었다. 그러자 `next build` 의
+    프리렌더가 이렇게 바뀌었다:
+
+        before: ○ / · /pricing · /projects · /settings · /reset · /verify
+        after:  ƒ 전부 (server-rendered on demand)
+
+    랜딩은 이 제품의 **유일한 공개 페이지**이고 판매 창구다. 얻는 것은
+    설명 한 줄, 잃는 것은 그 페이지를 CDN 에 얹는 것이었다.
+
+    빌드를 돌려 확인하는 것이 제일 정확하지만 그건 1분이 든다. 여기서는
+    **원인**을 막는다 — 루트 레이아웃에서 요청을 읽지 않는가.
+    """
+    if not LAYOUT.exists():                                    # pragma: no cover
+        pytest.skip("layout.tsx 가 없다")
+    src = io.open(LAYOUT, encoding="utf-8").read()
+    # 주석 속 설명("headers() 로 ...")까지 잡으면 검사가 못 쓰게 된다.
+    code = re.sub(r"//.*$", "", src, flags=re.M)
+    code = re.sub(r"/\*(?:.|\n)*?\*/", "", code)
+    used = [api for api in DYNAMIC_APIS if api in code]
+    assert not used, (
+        f"루트 레이아웃이 {used} 를 부릅니다. 그러면 앱 전체가 요청마다 "
+        f"서버 렌더가 되고, 랜딩을 CDN 에 얹을 수 없습니다. "
+        f"정말 필요하면 그 라우트에서만 부르세요.")
