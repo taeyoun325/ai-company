@@ -391,8 +391,21 @@ export default function OfficePage() {
         data-enter
       >
         <div className="flex items-center justify-between px-3 py-3">
-          <span className="text-[13px] font-semibold tracking-tight">
+          <span className="flex min-w-0 items-center gap-1.5 text-[13px]
+            font-semibold tracking-tight">
             {t("office.log")}
+            {/* 단계는 사무실 그림 안에만 있었다. 로그를 읽는 동안에는
+                그림이 위로 밀려 안 보이는데, 정작 "지금 어디쯤인가"가
+                제일 궁금한 순간이 그때다. */}
+            {running && folded.phase && (
+              <span className="flex min-w-0 items-center gap-1 rounded-md
+                px-1.5 py-0.5 text-[10px] font-medium"
+                style={{ background: "var(--panel-2)", color: "var(--accent)" }}>
+                <span className="size-1 animate-pulse rounded-full"
+                      style={{ background: "var(--accent)" }} aria-hidden />
+                <span className="truncate">{folded.phase}</span>
+              </span>
+            )}
           </span>
           {wallet && (
             <a href="/pricing" className="text-[11px] text-dim hover:text-fg">

@@ -135,3 +135,37 @@ def test_the_deploy_doc_does_not_claim_mail_is_missing():
     않았다". 지금은 `SMTP_URL` 한 줄이면 나간다."""
     text = io.open(DEPLOY_DOC, encoding="utf-8").read()
     assert "발송 경로(SMTP 등)를 붙이지 않았다" not in text
+
+
+STATUS_DOC = ROOT / "STATUS.md"
+
+
+def test_the_key_day_commands_point_at_files_that_exist():
+    """`STATUS.md` 의 "키를 받으면 (순서대로)" 블록은 **그날 그대로 치는
+    명령**이다. 거기 적힌 스크립트가 없으면 그날 처음 알게 된다.
+
+    파일 이름은 바뀌고 문서는 안 바뀐다 — 오늘 이미 두 번 그랬다
+    (원가 비율 50% · "메일 발송 경로를 안 붙였다").
+    """
+    text = io.open(STATUS_DOC, encoding="utf-8").read()
+    block = text.split("### 키를 받으면", 1)
+    assert len(block) == 2, "키 받는 날 순서 블록이 없습니다"
+    commands = re.findall(r"python (scripts/[\w./-]+\.py)", block[1][:1200])
+    assert commands, "그 블록에 스크립트 명령이 없습니다"
+    missing = [c for c in commands if not (ROOT / c).exists()]
+    assert not missing, f"문서가 없는 스크립트를 가리킵니다: {missing}"
+
+
+def test_the_open_list_does_not_hide_finished_work():
+    """"아직 안 한 것"에 끝난 일이 섞이면, 목록이 길어질수록 무엇이
+    남았는지 읽히지 않는다. DAY 22 에 26개 중 13개가 이미 끝난 일이었다.
+
+    여기서는 **이름으로** 가른다 — 고친 항목에는 날짜를 붙이고, 그 항목은
+    아래 "찾아서 고친 것"으로 옮긴다.
+    """
+    text = io.open(STATUS_DOC, encoding="utf-8").read()
+    open_part = text.split("## 아직 안 한 것", 1)[1].split("## DAY 22 에 찾아서", 1)[0]
+    stale = [line.strip() for line in open_part.splitlines()
+             if line.startswith("### ") and "(DAY " in line]
+    assert not stale, (
+        "끝난 항목이 '아직 안 한 것'에 남아 있습니다:\n" + "\n".join(stale))
