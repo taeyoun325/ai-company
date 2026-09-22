@@ -62,6 +62,15 @@ def bind(lang: str):
     return _cm()
 
 
+def from_query(value: str | None) -> str | None:
+    """주소에 적힌 언어. 아는 언어가 아니면 None — 헤더로 넘어간다.
+
+    EventSource 가 헤더를 못 보내기 때문에 필요하다(app/main.py 의 미들웨어).
+    """
+    code = (value or "").strip().lower()[:2]
+    return code if code in LANGS else None
+
+
 def from_header(header: str | None) -> str:
     """`Accept-Language: ja,en-US;q=0.9` → "ja".
 
@@ -306,6 +315,40 @@ _M: dict[str, dict[str, str]] = {
               "back to Mock.",
         "ja": "PROVIDER_MODE=real ですが {name} の鍵がありません。Mock で"
               "代用しません。",
+    },
+    # ── 모델 응답을 읽지 못했을 때 (DAY 22) ────────────────────────
+    # 이 문장도 로그에 뜬다 — `log.reask` 의 {why} 자리이고, 세 번 실패하면
+    # 화면의 실패 사유가 된다. 모델에게 되돌려주는 수정 요청에도 같은
+    # 문장이 들어가므로, 사용자와 모델이 같은 말을 보게 된다.
+    "json.noObject": {
+        "ko": "응답에 JSON 객체가 없습니다. 객체 하나만 내보내세요.",
+        "en": "The response contains no JSON object. Emit exactly one object.",
+        "ja": "応答に JSON オブジェクトがありません。オブジェクト一つだけを出力してください。",
+    },
+    "json.unclosed": {
+        "ko": "JSON 객체의 괄호가 닫히지 않았습니다.",
+        "en": "The JSON object is not closed.",
+        "ja": "JSON オブジェクトの括弧が閉じられていません。",
+    },
+    "json.syntax": {
+        "ko": "JSON 문법 오류: {msg} (줄 {line}, 열 {col})",
+        "en": "JSON syntax error: {msg} (line {line}, column {col})",
+        "ja": "JSON 構文エラー: {msg} (行 {line}, 列 {col})",
+    },
+    "json.notObject": {
+        "ko": "최상위가 객체가 아닙니다.",
+        "en": "The top level is not an object.",
+        "ja": "最上位がオブジェクトではありません。",
+    },
+    "json.schema": {
+        "ko": "스키마 위반:\n{errors}",
+        "en": "Schema violation:\n{errors}",
+        "ja": "スキーマ違反:\n{errors}",
+    },
+    "json.gaveUp": {
+        "ko": "응답을 스키마로 읽지 못했습니다.\n{last}",
+        "en": "Could not read the response into the schema.\n{last}",
+        "ja": "応答をスキーマとして読み取れませんでした。\n{last}",
     },
     # ── 권한 거절 (DAY 22) ─────────────────────────────────────────
     # 이 문장은 **작업 로그 안으로 들어간다** — `log.denied` 의 {why} 자리다.

@@ -169,10 +169,16 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
               {Object.entries(project.usage ?? {})
                 .filter(([, u]) => u.calls > 0)
                 .map(([id, u]) => (
-                  <li key={id} className="flex justify-between">
-                    <span style={{ color: `var(--${id}, var(--muted))` }}>{id}</span>
-                    <span className="tabular-nums text-muted">
-                      {t("proj.calls", { n: u.calls })} · {money(u.cost)}
+                  <li key={id} className="flex justify-between gap-2">
+                    {/* id 를 그대로 보여주고 있었다("developer"). 사람이 읽는
+                        이름은 로스터에 있고, 고객이 이름을 바꿔뒀을 수도
+                        있다 — 그 이름으로 불러야 같은 사람으로 읽힌다. */}
+                    <span className="min-w-0 truncate"
+                          style={{ color: `var(--${id}, var(--muted))` }}>
+                      {stream.roster[id]?.name ?? id}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted">
+                      {u.calls === 1 ? t("proj.calls1") : t("proj.calls", { n: u.calls })} · {money(u.cost)}
                     </span>
                   </li>
                 ))}

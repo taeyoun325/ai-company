@@ -66,8 +66,17 @@ async def _language(request: Request, call_next):
 
     라우트마다 헤더를 읽지 않는 이유는 늘 같다 — 하나를 빠뜨리면 그
     화면만 한국어로 돌아가고, 사용자는 번역이 깨졌다고 생각한다.
+
+    ## `?lang=` 이 헤더보다 먼저다 (DAY 22)
+
+    **EventSource 는 헤더를 보낼 수 없다.** 그래서 실시간 로그(SSE)만
+    `Accept-Language` 없이 들어오고, 그 요청에서 만들어지는 것들(직원
+    로스터의 직함 등)이 기본값인 한국어로 나갔다 — 영어 화면의 모든
+    말풍선에 "(전략가)" 가 붙어 있었다. 화면이 주소에 언어를 적어 보내고,
+    여기서 그것을 먼저 본다.
     """
-    lang.set(lang.from_header(request.headers.get("accept-language")))
+    lang.set(lang.from_query(request.query_params.get("lang"))
+             or lang.from_header(request.headers.get("accept-language")))
     return await call_next(request)
 app.include_router(auth_api.router)
 # 이전 제품(로컬 개발도구)의 라우트. DEPLOY_MODE=saas 에서는 전부 403.

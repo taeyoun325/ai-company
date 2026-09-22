@@ -32,14 +32,15 @@ GUARDED = ("main.py", "auth/deps.py", "api/auth.py", "api/projects.py",
            "providers/claude.py", "providers/gemini.py",
            "providers/openai.py", "providers/anthropic_client.py",
            "attachments.py", "orchestrator/manual.py", "usage/credits.py",
-           "tools/project_fs.py")
+           "tools/project_fs.py", "agents/json_io.py",
+           "agents/employee.py")
 
 KOREAN = re.compile(r"[가-힣]")
 # 사용자가 읽는 거절이 만들어지는 자리들. HTTPException 뿐 아니라
 # 도메인 예외도 화면까지 그대로 올라간다 — 엔드포인트가 `str(e)` 를
 # 그대로 넘기기 때문이다.
 RAISE = re.compile(r"HTTPException\(|AuthError\(|out\.append\("
-                   r"|Stop\(|ProviderUnavailable\(|TransientError\(|RefusedError\(|Busy\(|Denied\(")
+                   r"|Stop\(|ProviderUnavailable\(|TransientError\(|RefusedError\(|Busy\(|Denied\(|ParseFailed\(|EmployeeFailed\(")
 
 
 # `ValueError` 는 두 가지로 쓰인다 — 사용자에게 보이는 거절과, 개발자만
@@ -89,7 +90,7 @@ def test_the_table_answers_in_every_language():
 
     # 거절에 쓰는 앞자리 전부. 하나 늘릴 때마다 여기에 적는다.
     prefixes = ("err.", "auth.", "pw.", "stop.", "prov.",
-                "att.", "manual.", "plan.", "fs.")
+                "att.", "manual.", "plan.", "fs.", "json.")
     keys = [k for k in lang._M if k.startswith(prefixes)]
     assert len(keys) > 20, f"거절 문장 키가 너무 적습니다: {len(keys)}"
     for key in keys:
@@ -162,3 +163,42 @@ def test_permission_refusals_read_in_the_users_language(tmp_path, monkeypatch):
             assert "書き込み権限" in str(got.value)
     finally:
         pfs.release()
+
+
+def test_the_log_speaker_labels_follow_the_language():
+    """로그의 **말하는 이** 표시가 `bus.roster()` 에서 나온다.
+
+    이 한 줄이 한국어면 영어 로그의 모든 말풍선에 한국어 직함이 붙는다.
+    이름은 번역하지 않는다(테넌트가 바꿀 수 있다), 직함 글자만 따라간다.
+    """
+    from app import bus, lang
+
+    with lang.bind("en"):
+        roster = bus.roster()
+    assert "(Developer)" in roster["developer"]["name"], roster["developer"]
+    assert "(개발자)" not in roster["developer"]["name"]
+
+    with lang.bind("ja"):
+        assert "(開発者)" in bus.roster()["developer"]["name"]
+
+
+def test_unreadable_model_answers_are_reported_in_the_users_language():
+    """모델이 스키마를 어긴 사실은 로그에 뜨고, 세 번 실패하면 화면의
+    실패 사유가 된다. 같은 문장이 모델에게 되돌아가는 수정 요청에도 들어간다."""
+    from app import lang
+    from app.agents import json_io
+    from app.agents.schemas import Plan
+
+    with lang.bind("en"):
+        with pytest.raises(json_io.ParseFailed) as got:
+            json_io.parse("여기에는 객체가 없습니다", Plan)
+        assert "no JSON object" in str(got.value), str(got.value)
+
+        with pytest.raises(json_io.ParseFailed) as got:
+            json_io.parse('{"project_name": 1}', Plan)
+        assert "Schema violation" in str(got.value), str(got.value)
+
+    with lang.bind("ja"):
+        with pytest.raises(json_io.ParseFailed) as got:
+            json_io.parse("オブジェクトがありません", Plan)
+        assert "オブジェクト" in str(got.value)

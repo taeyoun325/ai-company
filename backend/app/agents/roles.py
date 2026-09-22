@@ -240,6 +240,19 @@ def assignable() -> list[str]:
         return everyone
 
 
+def display(employee_id: str) -> str:
+    """로그와 거절 문장에 쓰는 "이름(직함)".
+
+    직함은 **보는 사람의 언어로** 나와야 한다(`info()` 와 같은 표). 예전에는
+    두 군데서 `e.role` 을 직접 붙여서, 영어 로그에 "이서준(작가)" 이 찍혔다.
+    이름은 번역하지 않는다 — 고객이 바꿔둔 이름일 수도 있다.
+    """
+    if not exists(employee_id):
+        return employee_id
+    row = get(employee_id).info()
+    return f"{display_name(employee_id)}({row['role']})"
+
+
 def display_name(employee_id: str) -> str:
     """화면과 말풍선에 나갈 이름. 테넌트가 바꿨으면 그 이름이다."""
     try:

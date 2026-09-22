@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "./api";
+import { useLang } from "./i18n";
 import type { BusEvent, Roster } from "./types";
 
 const KEEP = 600;
@@ -40,6 +41,7 @@ export interface StreamState {
 }
 
 export function useStream(run?: string): StreamState {
+  const { lang } = useLang();
   const [events, setEvents] = useState<BusEvent[]>([]);
   const [roster, setRoster] = useState<Roster>({});
   const [connected, setConnected] = useState(false);
@@ -95,7 +97,11 @@ export function useStream(run?: string): StreamState {
       setPolling(true);
       return;
     }
-    const url = `/api/stream?after=${lastId.current}${
+    // 언어를 **주소에** 싣는다. EventSource 는 헤더를 보낼 수 없어서
+    // `Accept-Language` 가 이 요청에만 빠지고, 서버가 이 요청에서 만드는
+    // 것들(직원 로스터의 직함)이 기본값인 한국어로 내려왔다 — 영어 화면의
+    // 모든 말풍선에 "(전략가)" 가 붙어 있었다.
+    const url = `/api/stream?after=${lastId.current}&lang=${lang}${
       run ? `&run=${encodeURIComponent(run)}` : ""
     }`;
     const es = new EventSource(url);
@@ -140,7 +146,7 @@ export function useStream(run?: string): StreamState {
       types.forEach((t) => es.removeEventListener(t, onMessage as EventListener));
       es.close();
     };
-  }, [run, push]);
+  }, [run, push, lang]);
 
   useEffect(() => {
     if (!polling) return;

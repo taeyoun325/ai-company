@@ -136,7 +136,10 @@ def roster() -> dict:
         for e in roles.EMPLOYEES.values():
             # 이름은 테넌트가 바꿀 수 있다 (DAY 21). 직함은 자리의 것이라
             # 바뀌지 않는다 — 개발자를 뭐라 부르든 src/ 밖에는 못 쓴다.
-            out[e.id] = {"name": f"{roles.display_name(e.id)} ({e.role})",
+            # 다만 직함 **글자**는 보는 사람의 언어로 나간다(DAY 22):
+            # 로그의 말하는 이 표시가 여기서 나오므로, 이 한 줄이 한국어면
+            # 영어 로그의 모든 말풍선에 한국어 직함이 붙는다.
+            out[e.id] = {"name": roles.display(e.id),
                          "icon": ICONS.get(e.id, "👤")}
     except Exception:                           # noqa: BLE001
         pass

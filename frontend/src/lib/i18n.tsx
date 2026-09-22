@@ -523,6 +523,9 @@ const S = {
   "proj.criteria": { ko: "인수기준", en: "Acceptance criteria", ja: "受け入れ基準" },
   "proj.usage": { ko: "직원별 사용량", en: "Usage by employee", ja: "社員ごとの使用量" },
   "proj.calls": { ko: "{n}회", en: "{n} calls", ja: "{n} 回" },
+  // 영어에만 단수가 있다. "1 calls" 한 줄이 나머지 번역까지 기계가 쓴 것처럼
+  // 보이게 만든다 — 레일의 "1 files" 와 같은 자리다.
+  "proj.calls1": { ko: "1회", en: "1 call", ja: "1 回" },
   "proj.back": { ko: "사무실로", en: "To the office", ja: "オフィスへ" },
 
   // ── 내 API 키 (BYOK · DAY 22) ─────────────────────────────────

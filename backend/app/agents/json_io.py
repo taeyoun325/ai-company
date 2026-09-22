@@ -25,6 +25,8 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from app import lang
+
 T = TypeVar("T", bound=BaseModel)
 
 _FENCE_OPEN = re.compile(r"```[a-zA-Z]*[ \t]*\r?\n")
@@ -52,7 +54,7 @@ def extract_json(text: str) -> str:
     if start == -1:
         start = text.find("{")
     if start == -1:
-        raise ParseFailed("응답에 JSON 객체가 없습니다. 객체 하나만 내보내세요.")
+        raise ParseFailed(lang.t("json.noObject"))
 
     depth = 0
     in_str = False
@@ -75,7 +77,7 @@ def extract_json(text: str) -> str:
             depth -= 1
             if depth == 0:
                 return text[start:i + 1]
-    raise ParseFailed("JSON 객체의 괄호가 닫히지 않았습니다.")
+    raise ParseFailed(lang.t("json.unclosed"))
 
 
 def parse(text: str, schema: type[T]) -> T:
@@ -83,13 +85,14 @@ def parse(text: str, schema: type[T]) -> T:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
-        raise ParseFailed(f"JSON 문법 오류: {e.msg} (줄 {e.lineno}, 열 {e.colno})") from e
+        raise ParseFailed(lang.t("json.syntax", msg=e.msg, line=e.lineno,
+                                 col=e.colno)) from e
     if not isinstance(data, dict):
-        raise ParseFailed("최상위가 객체가 아닙니다.")
+        raise ParseFailed(lang.t("json.notObject"))
     try:
         return schema.model_validate(data)
     except ValidationError as e:
-        raise ParseFailed(f"스키마 위반:\n{_errors(e)}") from e
+        raise ParseFailed(lang.t("json.schema", errors=_errors(e))) from e
 
 
 def _errors(e: ValidationError) -> str:

@@ -243,3 +243,30 @@ def test_an_employee_without_a_translation_keeps_its_own_words():
 
 def _has_korean(s: str) -> bool:
     return any("가" <= ch <= "힣" for ch in s)
+
+
+def test_the_url_can_carry_the_language_when_headers_cannot():
+    """`?lang=` 이 `Accept-Language` 보다 먼저다 (DAY 22).
+
+    **EventSource 는 헤더를 보낼 수 없다.** 그래서 실시간 로그(SSE)만
+    언어 없이 들어오고, 그 요청에서 만들어지는 직원 로스터의 직함이 기본값
+    한국어로 내려왔다 — 영어 화면의 모든 말풍선에 "(전략가)" 가 붙어 있었다.
+
+    헤더가 있어도 주소가 이긴다. SSE 재연결은 브라우저가 알아서 하므로,
+    주소에 적힌 것이 그 연결의 유일한 단서다.
+    """
+    from fastapi.testclient import TestClient
+
+    from app import main
+
+    client = TestClient(main.app)
+    r = client.get("/api/employees?lang=en",
+                   headers={"Accept-Language": "ko"})
+    assert r.status_code == 200, r.text
+    roles_seen = [e["role"] for e in r.json()["employees"]]
+    assert "Developer" in roles_seen, roles_seen
+    assert "개발자" not in roles_seen
+
+    # 모르는 언어는 무시하고 헤더로 돌아간다 — 주소는 아무나 붙일 수 있다.
+    r = client.get("/api/employees?lang=zz", headers={"Accept-Language": "ja"})
+    assert "開発者" in [e["role"] for e in r.json()["employees"]]

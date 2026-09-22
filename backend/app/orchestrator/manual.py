@@ -265,7 +265,7 @@ def instruct(slug: str, employee_id: str, message: str,
 
     with _Session(slug, employee_id, owner):
         _guard(employee_id, slug, owner)
-        bus.say("USER", f"@{e.name}({e.role}) {message}")
+        bus.say("USER", f"@{roles.display(e.id)} {message}")
         bus.phase("MANUAL", lang.t("phase.manual", who=roles.display_name(e.id)))
         hist = history(slug, employee_id)
 

@@ -110,10 +110,10 @@ def ask(employee_id: str, user: str, schema: type[T],
                 break
             bus.say("SYSTEM",
                     lang.t("log.reask",
-                           who=f"{roles.display_name(e.id)}({e.role})",
+                           who=roles.display(e.id),
                            why=last_error.splitlines()[0]), kind="error")
 
-    raise EmployeeFailed(e.id, f"응답을 스키마로 읽지 못했습니다.\n{last_error}")
+    raise EmployeeFailed(e.id, lang.t("json.gaveUp", last=last_error))
 
 
 def ask_text(employee_id: str, user: str,
