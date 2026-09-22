@@ -79,7 +79,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 <span className="text-sm font-bold tracking-tight">AI COMPANY</span>
               </Link>
               <Nav />
-              <span className="ml-auto flex items-center gap-1">
+              {/* 가장자리에 **붙여둔다** (DAY 22).
+                  헤더는 넘치면 옆으로 밀리는데(위 주석), 폰에서는 그
+                  사실을 알 길이 없다. 375px 에서 재보니 이 묶음이 화면
+                  밖 173px 에 있었다 — 즉 폰에서는 언어를 바꿀 수도,
+                  사용자 메뉴를 열 수도 없었다. 붙여두면 밀려도 보인다.
+                  배경을 주는 이유는 밑으로 지나가는 메뉴가 비쳐 보이지
+                  않게 하려는 것이다. */}
+              <span className="sticky right-0 -my-2.5 ml-auto flex items-center
+                gap-1 bg-[color:var(--bg)] py-2.5 pl-3">
                 <UserMenu />
                 <LangSwitch compact />
               </span>

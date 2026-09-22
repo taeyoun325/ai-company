@@ -20,12 +20,14 @@
  * 쓸 때 어느 쪽이었는지 알 방법이 없다.
  */
 import Link from "next/link";
+import { useState } from "react";
 
 
 import { type Key, useLang } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { useLoader, useReloadOn } from "@/lib/useLoader";
 import { useSticky } from "@/lib/sticky";
+import { useWide } from "@/lib/media";
 import { Icon } from "./icons";
 import { Empty, MockBadge, Skeleton, StatusDot, clock, when } from "./ui";
 
@@ -43,7 +45,15 @@ export function ProjectRail({
   refreshKey?: string | number;
 }) {
   const { t, lang } = useLang();
-  const [open, setOpen] = useSticky(STORE_KEY, true);
+  // 넓은 화면에서는 옆에 붙어 있고, 좁은 화면에서는 **위에 겹쳐** 뜬다.
+  // 폭에 따라 보이는 것만 다른 게 아니라 동작이 다르다 — 폰에서 옆에
+  // 붙이면 240px 을 먹어 작업 칸이 한 단어씩 줄바꿈된다(실제로 그랬다).
+  const wide = useWide();
+  const [stuck, setStuck] = useSticky(STORE_KEY, true);
+  // 좁은 화면의 열림은 기억하지 않는다. 넓은 화면의 "펼쳐둠"을 폰에서
+  // 그대로 쓰면 첫 화면이 목록으로 덮인다.
+  const [drawer, setDrawer] = useState(false);
+  const open = wide ? stuck : drawer;
   const { data, error, loading, reload } = useLoader("rail", () =>
     api.projects({ limit: 40, sort: "recent" }),
   );
@@ -52,9 +62,9 @@ export function ProjectRail({
   // 두 번 가져온다 — 프로덕션 빌드로 확인한 실제 중복이었다.
   useReloadOn(refreshKey, reload);
 
-  // 접어둔 상태는 기억한다(lib/sticky.ts). 좁은 화면에서 매번 접는 것은
-  // 일이고, 기억이 실패해도 화면은 그대로 돈다.
-  const toggle = () => setOpen(!open);
+  // 접어둔 상태는 기억한다(lib/sticky.ts). 매번 접는 것은 일이고,
+  // 기억이 실패해도 화면은 그대로 돈다.
+  const toggle = () => (wide ? setStuck(!stuck) : setDrawer(!drawer));
 
   if (!open) {
     // 접었을 때도 **여는 길이 보여야 한다.** 완전히 숨기면 사용자는
@@ -114,8 +124,20 @@ export function ProjectRail({
   }
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-line
-      bg-[color:var(--panel)] backdrop-blur-xl">
+    <>
+    {/* 겹쳐 뜬 동안 뒤를 누르면 닫힌다. 좁은 화면에서 목록이 화면을
+        덮고 있는데 닫는 길이 상단 버튼 하나뿐이면 갇힌 느낌이 든다. */}
+    {!wide && (
+      <div
+        onClick={toggle}
+        aria-hidden
+        className="fixed inset-0 z-30 bg-black/40 backdrop-blur-[1px]"
+      />
+    )}
+    <aside className={`flex h-full w-60 shrink-0 flex-col border-r border-line
+      bg-[color:var(--panel)] backdrop-blur-xl ${
+        wide ? "" : "fixed inset-y-0 left-0 z-40 shadow-2xl"
+      }`}>
       <div className="flex items-center gap-1 px-3 py-3">
         <button
           type="button"
@@ -237,5 +259,6 @@ export function ProjectRail({
         ))}
       </div>
     </aside>
+    </>
   );
 }
