@@ -167,6 +167,11 @@ export function ProjectRail({
           </li>
           {g.items.map((p) => {
             const on = p.slug === activeSlug;
+            // 이름이 요구사항에서 만들어진 경우에는 같은 말을 두 번 쓰지
+            // 않는다. 줄이 늘어나기만 하고 알려주는 것은 없다.
+            const name = p.name || p.slug;
+            const req = (p.requirement ?? "").trim();
+            const same = !req || name.replace(/-/g, " ") === req;
             return (
               <li key={p.slug}>
                 <Link
@@ -188,6 +193,15 @@ export function ProjectRail({
                     </span>
                     {p.mock && <MockBadge title={t("mock.badge")} />}
                   </span>
+                  {/* 이름만으로는 구분이 안 된다 — 자동으로 붙는 이름은
+                      "mock-project" 처럼 겹치고, 다섯 줄이 같은 글자가
+                      된다. 무엇을 시켰는지가 그 줄의 진짜 이름이다. */}
+                  {!same && (
+                    <span className="mt-0.5 block truncate text-[11px]
+                      text-muted" aria-hidden>
+                      {req}
+                    </span>
+                  )}
                   <span className="mt-0.5 block truncate text-[11px] text-dim"
                         aria-hidden>
                     {g.key === "earlier"
@@ -197,6 +211,8 @@ export function ProjectRail({
                       && ` · ${p.file_count === 1
                         ? t("rail.file1")
                         : t("rail.files", { n: p.file_count })}`}
+                    {!p.mock && typeof p.credits === "number" && p.credits > 0
+                      && ` · ${t("rail.credits", { n: p.credits })}`}
                   </span>
                 </Link>
               </li>

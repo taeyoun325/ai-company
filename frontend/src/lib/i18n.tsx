@@ -725,6 +725,7 @@ const S = {
   // 영어에만 단수가 있다. "1 files" 는 기계가 쓴 티가 나는 문장이고,
   // 그런 줄이 하나 있으면 나머지 번역도 기계가 한 것처럼 읽힌다.
   "rail.file1": { ko: "파일 1개", en: "1 file", ja: "ファイル 1 件" },
+  "rail.credits": { ko: "{n} 크레딧", en: "{n} cr", ja: "{n} クレジット" },
   "office.ask": {
     ko: "무엇을 만들까요?",
     en: "What should we build?",

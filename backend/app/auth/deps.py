@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request, Response
 
-from app import deploy
+from app import deploy, lang
 from app.auth import service, store
 
 COOKIE = "ai_company_session"
@@ -108,7 +108,7 @@ def require_user(request: Request) -> store.User:
     """로그인 필수인 라우트가 쓴다. 401 은 화면이 로그인으로 보내는 신호다."""
     user = current_user(request)
     if user is None:
-        raise HTTPException(401, "로그인이 필요합니다.")
+        raise HTTPException(401, lang.t("err.loginRequired"))
     return user
 
 
@@ -134,4 +134,4 @@ def require_owner(request: Request, record_owner: str | None) -> None:
     없는 것과 남의 것을 같은 말로 답한다.
     """
     if not owns(request, record_owner):
-        raise HTTPException(404, "없는 프로젝트")
+        raise HTTPException(404, lang.t("err.noProject"))

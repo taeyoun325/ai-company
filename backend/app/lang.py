@@ -236,6 +236,58 @@ _M: dict[str, dict[str, str]] = {
         "en": "Review requested by the CEO",
         "ja": "CEO の要請で検証",
     },
+    # ── 거절 문장 (DAY 22) ─────────────────────────────────────────
+    # 화면은 서버가 준 문장을 **그대로** 찍는다(`useErrorText`). 그래서
+    # 여기서 한국어로 쓰면, 화면을 전부 번역해도 무언가 잘못됐을 때만
+    # 한국어가 튀어나온다. 하필 사용자가 제일 주의 깊게 읽는 순간이다.
+    "err.noProject": {"ko": "없는 프로젝트", "en": "No such project",
+                      "ja": "存在しないプロジェクト"},
+    "err.noEmployee": {"ko": "없는 직원: {id}", "en": "No such employee: {id}",
+                       "ja": "存在しない社員: {id}"},
+    "err.emptyRequirement": {
+        "ko": "요구사항이 비어 있습니다",
+        "en": "The requirement is empty",
+        "ja": "要件が空です",
+    },
+    "err.autoRunning": {
+        "ko": "AUTO 실행이 진행 중입니다",
+        "en": "An AUTO run is in progress",
+        "ja": "AUTO 実行が進行中です",
+    },
+    "err.runningDelete": {
+        "ko": "진행 중인 프로젝트는 지울 수 없습니다",
+        "en": "A running project cannot be deleted",
+        "ja": "実行中のプロジェクトは削除できません",
+    },
+    "err.notRunning": {"ko": "진행 중이 아닙니다", "en": "Not running",
+                       "ja": "実行中ではありません"},
+    "err.unknownProvider": {
+        "ko": "알 수 없는 제공자: {name}",
+        "en": "Unknown provider: {name}",
+        "ja": "不明なプロバイダー: {name}",
+    },
+    "err.modelNotPriced": {
+        "ko": "단가표에 없는 모델입니다: {model}. pricing.json 에 단가를 먼저 "
+              "등록하세요 — 단가를 모르면 비용 상한이 걸리지 않습니다.",
+        "en": "This model is not in the price table: {model}. Add its price to "
+              "pricing.json first — without a price, the cost cap cannot hold.",
+        "ja": "単価表にないモデルです: {model}。pricing.json に単価を先に登録して"
+              "ください — 単価が分からないとコスト上限が効きません。",
+    },
+    "err.noKey": {"ko": "등록된 키가 없습니다", "en": "No key is registered",
+                  "ja": "登録された鍵がありません"},
+    "err.loginRequired": {"ko": "로그인이 필요합니다.", "en": "Sign in first.",
+                          "ja": "ログインが必要です。"},
+    "err.localNoPassword": {
+        "ko": "로컬 사용자는 비밀번호가 없습니다.",
+        "en": "Local users do not have a password.",
+        "ja": "ローカルユーザーにはパスワードがありません。",
+    },
+    "err.noAttachment": {"ko": "없는 첨부", "en": "No such attachment",
+                         "ja": "存在しない添付"},
+    "err.noPreview": {"ko": "미리볼 수 없는 첨부",
+                      "en": "This attachment cannot be previewed",
+                      "ja": "プレビューできない添付"},
     # ── 직원 소개 (DAY 22) ─────────────────────────────────────────
     # 직함과 설명은 **지금 살아 있는 데이터**다. 실행 기록과 달리 만들어진
     # 시점이 없으므로 보는 사람의 언어로 적는 것이 맞다. 이름은 번역하지

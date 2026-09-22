@@ -328,7 +328,7 @@ def verify_key(provider: str):
             models = openai_client.list_models()
             return {"ok": True, "detail": f"모델 {len(models)}개 조회됨",
                     "models": models[:60]}
-        raise HTTPException(400, "알 수 없는 제공자")
+        raise HTTPException(400, lang.t("err.unknownProvider", name=""))
     except HTTPException:
         raise
     except ImportError as e:
@@ -362,12 +362,9 @@ def set_provider_model(req: ProviderModelReq):
     """
     _operator_only()
     if req.provider not in registry.names():
-        raise HTTPException(400, f"알 수 없는 제공자: {req.provider}")
+        raise HTTPException(400, lang.t("err.unknownProvider", name=req.provider))
     if req.model not in config.PRICES:
-        raise HTTPException(
-            400, f"단가표에 없는 모델입니다: {req.model}. "
-                 f"pricing.json 에 단가를 먼저 등록하세요 — "
-                 f"단가를 모르면 비용 상한이 걸리지 않습니다.")
+        raise HTTPException(400, lang.t("err.modelNotPriced", model=req.model))
     config.CATALOG.setdefault(req.provider, {"models": []})["default"] = req.model
     registry.reset()
     return {"ok": True, "provider": req.provider, "model": req.model,
@@ -395,7 +392,7 @@ def start_run(req: RunReq, request: Request):
     """
     requirement = req.requirement.strip()
     if not requirement:
-        raise HTTPException(400, "요구사항이 비어 있습니다")
+        raise HTTPException(400, lang.t("err.emptyRequirement"))
     owner = auth.owner_of(request)
     try:
         slug = orchestrator.start(requirement, req.attachments, owner=owner)
@@ -435,7 +432,7 @@ def list_runs(request: Request):
 def get_run(slug: str, request: Request):
     m = store.meta(slug)
     if not m:
-        raise HTTPException(404, "없는 프로젝트")
+        raise HTTPException(404, lang.t("err.noProject"))
     auth.require_owner(request, m.get("owner"))
     m["running"] = orchestrator.is_running(slug)
     m["events"] = bus.history(slug)
@@ -451,7 +448,7 @@ def cancel_run(slug: str, request: Request):
     """
     auth.require_owner(request, store.meta(slug).get("owner"))
     if not orchestrator.cancel(slug):
-        raise HTTPException(404, "진행 중이 아닙니다")
+        raise HTTPException(404, lang.t("err.notRunning"))
     return {"ok": True}
 
 
@@ -459,7 +456,7 @@ def cancel_run(slug: str, request: Request):
 def route_work(req: RunReq):
     """이 일을 누구에게 맡길지만 물어본다 (§10). 화면이 미리 보여줄 수 있어야 한다."""
     if not req.requirement.strip():
-        raise HTTPException(400, "요구사항이 비어 있습니다")
+        raise HTTPException(400, lang.t("err.emptyRequirement"))
     try:
         r = orchestrator.route(req.requirement.strip())
     except Exception as e:                       # noqa: BLE001
@@ -569,7 +566,7 @@ def set_byok(req: ByokReq, request: Request):
 def clear_byok(request: Request, provider: str | None = None):
     owner = auth.owner_of(request)
     if provider is not None and provider not in byok.PROVIDERS:
-        raise HTTPException(400, f"알 수 없는 제공자: {provider}")
+        raise HTTPException(400, lang.t("err.unknownProvider", name=provider))
     byok.clear(owner, provider)
     return {"ok": True, **byok.status(owner), **tenant.describe(owner)}
 
@@ -583,9 +580,9 @@ def verify_byok(provider: str, request: Request):
     """
     owner = auth.owner_of(request)
     if provider not in byok.PROVIDERS:
-        raise HTTPException(400, f"알 수 없는 제공자: {provider}")
+        raise HTTPException(400, lang.t("err.unknownProvider", name=provider))
     if not byok.has(owner, provider):
-        raise HTTPException(400, "등록된 키가 없습니다")
+        raise HTTPException(400, lang.t("err.noKey"))
     # 자세를 강제로 byok 로 세운다 — 요금제를 바꾸기 *전에* 키부터
     # 확인하고 싶은 것이 정상적인 순서다.
     posture = tenant.Posture(owner=owner, plan="byok", source="byok",
@@ -621,7 +618,7 @@ def margin():
 def open_manual(req: RunReq, request: Request):
     """계획 단계 없이 바로 지시할 수 있는 빈 프로젝트를 연다."""
     if not req.requirement.strip():
-        raise HTTPException(400, "요구사항이 비어 있습니다")
+        raise HTTPException(400, lang.t("err.emptyRequirement"))
     slug = manual.open_project(req.requirement.strip(),
                                owner=auth.owner_of(request))
     return {"slug": slug, "mode": "manual"}
@@ -635,12 +632,12 @@ def manual_instruct(slug: str, req: InstructReq, request: Request):
     근거가 아니다 — 두 경로가 다른 규칙을 가지면 그 차이가 곧 구멍이 된다.
     """
     if not roles.exists(req.employee):
-        raise HTTPException(404, f"없는 직원: {req.employee}")
+        raise HTTPException(404, lang.t("err.noEmployee", id=req.employee))
     if not store.exists(slug):
-        raise HTTPException(404, "없는 프로젝트")
+        raise HTTPException(404, lang.t("err.noProject"))
     auth.require_owner(request, store.meta(slug).get("owner"))
     if orchestrator.is_running(slug):
-        raise HTTPException(409, "AUTO 실행이 진행 중입니다")
+        raise HTTPException(409, lang.t("err.autoRunning"))
     try:
         return manual.instruct(slug, req.employee, req.message,
                                owner=auth.owner_of(request))
@@ -664,10 +661,10 @@ def manual_instruct(slug: str, req: InstructReq, request: Request):
 def manual_verify(slug: str, request: Request):
     """CEO 가 누를 때만 도는 검증. 검증 기준은 AUTO 와 같다."""
     if not store.exists(slug):
-        raise HTTPException(404, "없는 프로젝트")
+        raise HTTPException(404, lang.t("err.noProject"))
     auth.require_owner(request, store.meta(slug).get("owner"))
     if orchestrator.is_running(slug):
-        raise HTTPException(409, "AUTO 실행이 진행 중입니다")
+        raise HTTPException(409, lang.t("err.autoRunning"))
     try:
         return manual.verify(slug, owner=auth.owner_of(request))
     except tenant.NoPlan as e:
@@ -687,7 +684,7 @@ def manual_verify(slug: str, request: Request):
 @app.get("/api/manual/{slug}")
 def manual_state(slug: str, request: Request):
     if not store.exists(slug):
-        raise HTTPException(404, "없는 프로젝트")
+        raise HTTPException(404, lang.t("err.noProject"))
     auth.require_owner(request, store.meta(slug).get("owner"))
     return {
         "slug": slug,
@@ -744,7 +741,7 @@ def reindex():
 @app.get("/api/projects/{slug}/files")
 def project_files(slug: str, request: Request):
     if not store.exists(slug):
-        raise HTTPException(404, "없는 프로젝트")
+        raise HTTPException(404, lang.t("err.noProject"))
     auth.require_owner(request, store.meta(slug).get("owner"))
     return {"files": store.files_of(slug)}
 
@@ -754,7 +751,7 @@ def project_file(slug: str, path: str, request: Request):
     # 목록만 거르고 파일 접근을 빼먹으면, "목록에는 안 보이는데 주소를
     # 알면 열리는" 상태가 된다. 막은 것처럼 보여서 더 위험하다.
     if not store.exists(slug):
-        raise HTTPException(404, "없는 프로젝트")
+        raise HTTPException(404, lang.t("err.noProject"))
     auth.require_owner(request, store.meta(slug).get("owner"))
     try:
         return {"path": path, "content": store.read_file(slug, path),
@@ -766,7 +763,7 @@ def project_file(slug: str, path: str, request: Request):
 @app.get("/api/projects/{slug}/diff")
 def project_diff(slug: str, path: str, a: int, request: Request, b: int = 0):
     if not store.exists(slug):
-        raise HTTPException(404, "없는 프로젝트")
+        raise HTTPException(404, lang.t("err.noProject"))
     auth.require_owner(request, store.meta(slug).get("owner"))
     try:
         return {"path": path, "a": a, "b": b, "diff": store.diff(slug, path, a, b)}
@@ -779,9 +776,9 @@ def delete_project(slug: str, request: Request):
     if store.exists(slug):
         auth.require_owner(request, store.meta(slug).get("owner"))
     if orchestrator.is_running(slug):
-        raise HTTPException(409, "진행 중인 프로젝트는 지울 수 없습니다")
+        raise HTTPException(409, lang.t("err.runningDelete"))
     if not store.delete_project(slug):
-        raise HTTPException(404, "없는 프로젝트")
+        raise HTTPException(404, lang.t("err.noProject"))
     return {"ok": True}
 
 
@@ -804,7 +801,7 @@ def update_employee(employee_id: str, req: StaffReq, request: Request):
     것**이다 — 개발자를 '수석 아키텍트'라고 불러도 src/ 밖에는 못 쓴다.
     """
     if not roles.exists(employee_id):
-        raise HTTPException(404, f"없는 직원: {employee_id}")
+        raise HTTPException(404, lang.t("err.noEmployee", id=employee_id))
     owner = auth.owner_of(request)
     try:
         if req.name is not None:
@@ -823,7 +820,7 @@ def update_employee(employee_id: str, req: StaffReq, request: Request):
 @app.get("/api/employees/{employee_id}")
 def get_employee(employee_id: str):
     if not roles.exists(employee_id):
-        raise HTTPException(404, f"없는 직원: {employee_id}")
+        raise HTTPException(404, lang.t("err.noEmployee", id=employee_id))
     e = roles.get(employee_id)
     row = e.info()
     row["mock"] = employees.is_mock(e)
@@ -840,9 +837,9 @@ def set_employee_model(employee_id: str, req: ModelReq2):
     그 직원에게는 걸리지 않는다.
     """
     if not roles.exists(employee_id):
-        raise HTTPException(404, f"없는 직원: {employee_id}")
+        raise HTTPException(404, lang.t("err.noEmployee", id=employee_id))
     if req.model not in config.PRICES:
-        raise HTTPException(400, f"단가표에 없는 모델입니다: {req.model}")
+        raise HTTPException(400, lang.t("err.modelNotPriced", model=req.model))
     roles.set_model(employee_id, req.model)
     return {"ok": True, "employee": roles.get(employee_id).info()}
 
@@ -866,14 +863,14 @@ async def upload_attachment(file: UploadFile = File(...)):
 def attachment_preview(aid: str):
     url = attachments.data_url(aid)
     if not url:
-        raise HTTPException(404, "미리볼 수 없는 첨부")
+        raise HTTPException(404, lang.t("err.noPreview"))
     return {"id": aid, "data_url": url}
 
 
 @app.delete("/api/attachments/{aid}")
 def delete_attachment(aid: str):
     if not attachments.delete(aid):
-        raise HTTPException(404, "없는 첨부")
+        raise HTTPException(404, lang.t("err.noAttachment"))
     return {"ok": True}
 
 

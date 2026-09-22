@@ -1,0 +1,73 @@
+"""거절 문장도 번역표를 거친다 (DAY 22).
+
+## 왜 이 검사가 있나
+
+화면은 서버가 준 문장을 **그대로** 찍는다(`frontend/src/lib/i18n.tsx` 의
+`useErrorText`). 그래서 `HTTPException(404, "없는 프로젝트")` 처럼 여기서
+한국어를 쓰면, 화면 글자를 전부 번역해놓고도 **무언가 잘못됐을 때만**
+한국어가 튀어나온다. 하필 사용자가 제일 주의 깊게 읽는 순간이다.
+
+DAY 22 에 세어보니 그런 자리가 40군데였다. 손으로 고쳤지만, 손으로 고친
+것은 다음 주에 다시 늘어난다 — 새 엔드포인트를 쓰면서 문장을 바로 적는
+것이 제일 자연스럽기 때문이다. 그래서 기계가 지키게 한다.
+
+## 무엇을 검사하지 않나
+
+`app/api/local_tools.py` 는 `DEPLOY_MODE=local` 에서만 열린다(§배포 자세).
+혼자 쓰는 도구라 화면도 한국어 하나뿐이고, 번역할 대상이 아니다.
+"""
+import io
+import re
+from pathlib import Path
+
+APP = Path(__file__).resolve().parents[1] / "app"
+
+# SaaS 로 열리는 경로들. 이 파일들 안의 거절 문장은 사용자가 본다.
+GUARDED = ("main.py", "auth/deps.py", "api/auth.py", "api/projects.py")
+
+KOREAN = re.compile(r"[가-힣]")
+RAISE = re.compile(r"HTTPException\(")
+
+
+def _code(path: Path) -> list[str]:
+    """주석과 독스트링을 뺀 줄들. 설명까지 잡으면 검사가 못 쓰게 된다."""
+    text = io.open(path, encoding="utf-8").read()
+    text = re.sub(r'"""(?:.|\n)*?"""', "", text)
+    out = []
+    for line in text.splitlines():
+        stripped = re.sub(r"#.*$", "", line)
+        out.append(stripped)
+    return out
+
+
+def test_rejections_go_through_the_translation_table():
+    bad = []
+    for rel in GUARDED:
+        path = APP / rel
+        if not path.exists():
+            continue
+        lines = _code(path)
+        for i, line in enumerate(lines):
+            if not RAISE.search(line):
+                continue
+            # 문장이 다음 줄로 넘어가는 경우가 있다. 세 줄까지 본다.
+            blob = " ".join(lines[i:i + 3])
+            if KOREAN.search(blob) and "lang.t(" not in blob:
+                bad.append(f"{rel}:{i + 1}: {line.strip()[:70]}")
+    assert not bad, (
+        "거절 문장이 번역표를 거치지 않습니다. `app/lang.py` 에 키를 넣고 "
+        "`lang.t(...)` 로 바꾸세요:\n" + "\n".join(bad))
+
+
+def test_the_table_answers_in_every_language():
+    """키만 넣고 번역을 안 채우면 `t()` 가 키를 그대로 돌려준다 —
+    화면에 `err.noProject` 가 찍힌다. 그건 번역이 아니라 고장이다."""
+    from app import lang
+
+    keys = [k for k in lang._M if k.startswith("err.")]
+    assert keys, "거절 문장 키가 하나도 없습니다"
+    for key in keys:
+        for code in lang.LANGS:
+            with lang.bind(code):
+                out = lang.t(key)
+            assert out and out != key, f"{key} 가 {code} 에서 비어 있습니다"

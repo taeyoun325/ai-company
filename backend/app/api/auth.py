@@ -14,7 +14,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from app import deploy
+from app import deploy, lang
 from app.auth import deps, service, store
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -107,7 +107,7 @@ def log_out(request: Request, response: Response):
 def change_password(req: ChangePasswordReq, request: Request, response: Response):
     user = deps.require_user(request)
     if user.id == deps.LOCAL_OWNER:
-        raise HTTPException(400, "로컬 사용자는 비밀번호가 없습니다.")
+        raise HTTPException(400, lang.t("err.localNoPassword"))
     try:
         service.change_password(user.id, req.current, req.new)
     except service.AuthError as e:
@@ -186,7 +186,7 @@ def reset(req: ResetReq, response: Response, request: Request):
 def send_verification(request: Request):
     user = deps.current_user(request)
     if user is None:
-        raise HTTPException(401, "로그인이 필요합니다.")
+        raise HTTPException(401, lang.t("err.loginRequired"))
     d = service.request_verification(user.id)
     return {"ok": True, "delivered": d.delivered, "how": d.how,
             "detail": d.detail}
