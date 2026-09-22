@@ -10,6 +10,7 @@
 3. **로그인 실패의 이유를 알려주지 않는다.** "없는 이메일"과 "틀린 비밀번호"를
    구분해 답하면 그 차이가 곧 가입자 명단 조회 도구가 된다.
 """
+import importlib
 import sys
 import time
 from pathlib import Path
@@ -406,3 +407,33 @@ def test_duplicate_signup_reports_a_domain_error_not_a_db_one():
         assert not isinstance(e, sqlite3.Error)
     else:
         raise AssertionError("같은 이메일로 두 번 가입됐다")
+
+
+def test_the_lockout_survives_a_restart_and_a_second_instance():
+    """잠금 기록이 **프로세스 밖**에 있는가 (DAY 22).
+
+    예전에는 파이썬 딕셔너리에 있었다. 그러면 두 가지가 무너진다:
+
+      - 서버를 다시 켜면 잠금이 풀린다
+      - 두 대로 띄우면 인스턴스마다 따로 세져 **실질 한도가 N 배**가 된다
+
+    무차별 대입을 막는 장치인데, 하필 규모를 키울 때 가장 무력해진다.
+    여기서는 '다시 켜기'를 모듈 상태를 버리는 것으로 흉내 낸다 — 기록이
+    DB 에 있다면 새 프로세스도 같은 것을 본다.
+    """
+    _signed_up("a@example.com")
+    c = _client()
+    for _ in range(service.MAX_ATTEMPTS + 1):
+        c.post("/api/auth/login",
+               json={"email": "a@example.com", "password": PW2})
+
+    # "다시 켰다" — 메모리에만 있었다면 여기서 잠금이 사라진다.
+    importlib.reload(service)
+
+    r = c.post("/api/auth/login", json={"email": "a@example.com", "password": PW})
+    assert r.status_code == 429, "다시 켜니 잠금이 풀렸습니다"
+    assert r.headers.get("Retry-After"), "언제 다시 하라는 말이 없습니다"
+
+    # 올바른 비밀번호로도 막힌다 — 잠긴 동안은 잠긴 것이다.
+    times, locked_until = store.attempts("email:a@example.com")
+    assert locked_until > 0, (times, locked_until)

@@ -23,7 +23,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import { useLoader } from "@/lib/useLoader";
-import { clock, money, when } from "./ui";
+import { clock, money, took, when } from "./ui";
 
 export function RecentResults() {
   const { t, lang } = useLang();
@@ -70,6 +70,10 @@ export function RecentResults() {
                   ? clock(p.created_at, lang)
                   : when(p.created_at, lang)}
                 {p.mock ? " · Mock" : ` · ${money(p.cost)}`}
+                {/* 얼마나 걸렸는지는 상세 화면에만 있었다. 지난 결과를
+                    훑는 이유 중 하나가 "이런 일은 보통 얼마나 걸리나"다. */}
+                {took(p.created_at, p.updated_at)
+                  && ` · ${took(p.created_at, p.updated_at)}`}
               </span>
             </Link>
           </li>

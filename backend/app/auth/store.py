@@ -102,6 +102,21 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
 CREATE INDEX IF NOT EXISTS ix_tokens_user ON auth_tokens (user_id, kind);
 CREATE INDEX IF NOT EXISTS ix_tokens_expiry ON auth_tokens (expires_at);
 
+-- 로그인 실패 횟수 (DAY 22).
+--
+-- 프로세스 메모리에 들고 있었다. 그러면 **두 대로 띄우는 순간 잠금이
+-- 인스턴스마다 따로 세져 실질 한도가 N 배가 된다** — 무차별 대입을 막는
+-- 장치인데 인스턴스를 늘릴수록 헐거워진다. 서버를 다시 켜도 초기화됐다.
+--
+-- key 는 "무엇을 세는가"다: `login:<이메일>` · `login-ip:<주소>` ·
+-- `reset:<이메일>` 처럼 부르는 쪽이 정한다.
+CREATE TABLE IF NOT EXISTS login_attempts (
+    key          TEXT PRIMARY KEY,
+    failures     TEXT NOT NULL DEFAULT '',   -- 실패 시각들, 쉼표로 이음
+    locked_until REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS ix_attempts_locked ON login_attempts (locked_until);
+
 CREATE INDEX IF NOT EXISTS ix_sessions_user ON sessions (user_id);
 CREATE INDEX IF NOT EXISTS ix_sessions_expiry ON sessions (expires_at);
 CREATE INDEX IF NOT EXISTS ix_identities_user ON identities (user_id);
@@ -340,6 +355,48 @@ def drop_all_sessions(user_id: str) -> int:
     with _lock, conn() as c:
         cur = c.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
     return cur.rowcount
+
+
+# ── 로그인 실패 횟수 ────────────────────────────────────────────────
+def attempts(key: str) -> tuple[list[float], float]:
+    """(실패 시각들, 잠금 해제 시각). 없으면 빈 목록과 0."""
+    with _lock, conn() as c:
+        row = c.execute(
+            "SELECT failures, locked_until FROM login_attempts WHERE key = ?",
+            (key,)).fetchone()
+    if row is None:
+        return [], 0.0
+    raw = (row["failures"] or "").strip()
+    times = [float(t) for t in raw.split(",") if t]
+    return times, float(row["locked_until"])
+
+
+def save_attempts(key: str, times: list[float], locked_until: float) -> None:
+    """실패 기록을 덮어쓴다.
+
+    `ON CONFLICT ... DO UPDATE` 를 쓴다. `INSERT OR REPLACE` 는 SQLite
+    전용이고, 이 파일은 PostgreSQL 로 옮길 때 고쳐야 하는 두 곳 중
+    하나다(§12) — 옮길 때 이 한 줄 때문에 막히지 않게 한다.
+    """
+    with _lock, conn() as c:
+        c.execute(
+            "INSERT INTO login_attempts (key, failures, locked_until) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT (key) DO UPDATE SET "
+            "  failures = excluded.failures, "
+            "  locked_until = excluded.locked_until",
+            (key, ",".join(f"{t:.3f}" for t in times), locked_until))
+
+
+def clear_attempts(key: str) -> None:
+    with _lock, conn() as c:
+        c.execute("DELETE FROM login_attempts WHERE key = ?", (key,))
+
+
+def clear_all_attempts() -> None:
+    """테스트용."""
+    with _lock, conn() as c:
+        c.execute("DELETE FROM login_attempts")
 
 
 def purge_expired() -> int:

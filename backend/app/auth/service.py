@@ -28,9 +28,7 @@ scrypt 가 한 번의 비용을 올리고, 여기서 횟수를 제한한다.
 from __future__ import annotations
 
 import re
-import threading
 import time
-from dataclasses import dataclass, field
 
 from app import lang
 from app.auth import passwords, store
@@ -64,47 +62,45 @@ class RateLimited(AuthError):
         self.retry_after = seconds
 
 
-@dataclass
-class _Bucket:
-    failures: list[float] = field(default_factory=list)
-    locked_until: float = 0.0
-
-
-_lock = threading.RLock()
-_buckets: dict[str, _Bucket] = {}
-
-
 def _check_rate(key: str) -> None:
+    """잠겨 있으면 거절한다.
+
+    기록은 **프로세스 밖**(auth DB)에 있다. 메모리에 들고 있었을 때는
+    두 대로 띄우는 순간 잠금이 인스턴스마다 따로 세져 실질 한도가 N 배가
+    됐고, 서버를 다시 켜면 초기화됐다 — 무차별 대입을 막는 장치인데
+    가장 무력해지는 순간이 하필 규모를 키울 때였다.
+    """
     now = time.time()
-    with _lock:
-        b = _buckets.get(key)
-        if b is None:
-            return
-        if b.locked_until > now:
-            raise RateLimited(int(b.locked_until - now))
-        b.failures = [t for t in b.failures if now - t < WINDOW]
+    times, locked_until = store.attempts(key)
+    if locked_until > now:
+        raise RateLimited(int(locked_until - now))
+    fresh = [t for t in times if now - t < WINDOW]
+    if len(fresh) != len(times) or (locked_until and locked_until <= now):
+        # 지난 것은 지워둔다. 안 그러면 표가 영원히 자란다.
+        if fresh:
+            store.save_attempts(key, fresh, 0.0)
+        else:
+            store.clear_attempts(key)
 
 
 def _record_failure(key: str) -> None:
     now = time.time()
-    with _lock:
-        b = _buckets.setdefault(key, _Bucket())
-        b.failures = [t for t in b.failures if now - t < WINDOW]
-        b.failures.append(now)
-        if len(b.failures) >= MAX_ATTEMPTS:
-            b.locked_until = now + LOCKOUT
-            b.failures.clear()
+    times, _ = store.attempts(key)
+    fresh = [t for t in times if now - t < WINDOW]
+    fresh.append(now)
+    if len(fresh) >= MAX_ATTEMPTS:
+        store.save_attempts(key, [], now + LOCKOUT)
+    else:
+        store.save_attempts(key, fresh, 0.0)
 
 
 def _clear_failures(key: str) -> None:
-    with _lock:
-        _buckets.pop(key, None)
+    store.clear_attempts(key)
 
 
 def reset_rate_limits() -> None:
     """테스트용."""
-    with _lock:
-        _buckets.clear()
+    store.clear_all_attempts()
 
 
 # ── 가입 ────────────────────────────────────────────────────────────
