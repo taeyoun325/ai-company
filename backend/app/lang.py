@@ -427,6 +427,21 @@ _M: dict[str, dict[str, str]] = {
         "en": "{who} cannot read {top}/. Allowed: {allowed}",
         "ja": "{who} は {top}/ の読み取り権限がありません。許可: {allowed}",
     },
+    # 크기는 KB 로 적는다. MB 로 반올림하면 상한이 작을 때 "0.0MB 인데
+    # 0.0MB 까지입니다" 같은 말이 된다 — 실제로 그렇게 나왔다.
+    "fs.tooBig": {
+        "ko": "파일이 너무 큽니다 ({kb}KB). 한 파일은 {max}KB 까지입니다.",
+        "en": "That file is too big ({kb}KB). One file may be up to {max}KB.",
+        "ja": "ファイルが大きすぎます ({kb}KB)。1 ファイルは {max}KB までです。",
+    },
+    "fs.projectFull": {
+        "ko": "이 프로젝트의 산출물이 상한({max}KB)에 닿았습니다. 더 쓸 수 "
+              "없습니다.",
+        "en": "This project's deliverables hit the cap ({max}KB). Nothing more "
+              "can be written.",
+        "ja": "このプロジェクトの成果物が上限({max}KB)に達しました。これ以上は"
+              "書き込めません。",
+    },
     "fs.forbiddenName": {
         "ko": "{name} 은(는) 테스트 실행 환경을 바꿀 수 있어 금지된 파일명입니다",
         "en": "{name} is a forbidden filename — it could change the test "

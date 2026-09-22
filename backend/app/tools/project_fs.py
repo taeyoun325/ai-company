@@ -21,6 +21,7 @@
 """
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 
@@ -118,6 +119,51 @@ def read(path: str, employee_id: str = "SYSTEM") -> str:
     return p.read_text(encoding="utf-8", errors="replace")
 
 
+# 산출물 크기 상한 (DAY 22).
+#
+# 여기에 상한이 하나도 없었다. 모델이 한 번에 쓰는 양은 `max_tokens` 로
+# 묶여 있지만, 라운드를 돌며 같은 파일을 계속 불리면 디스크는 계속 찬다 —
+# 게다가 덮어쓸 때마다 **직전 판본을 스냅숏**으로 남기므로 한 번 커진
+# 파일은 판본마다 그만큼을 더 먹는다.
+#
+# 이걸로 "자원 고갈"이 끝나지는 않는다. 막는 것은 **직원이 쓰는 파일**이고,
+# 실행된 코드가 디스크를 채우는 것은 여전히 컨테이너의 몫이다
+# (docs/security.md §3).
+MAX_FILE_BYTES = int(os.getenv("MAX_FILE_BYTES", str(1 * 1024 * 1024)))
+MAX_PROJECT_BYTES = int(os.getenv("MAX_PROJECT_BYTES", str(50 * 1024 * 1024)))
+
+
+def _deliverable_bytes() -> int:
+    """**산출물 구역만** 센다 (src/ tests/ docs/ design/).
+
+    메타데이터와 판본 스냅숏은 빼는 이유: 상한이 말하는 것이 "이 프로젝트가
+    만든 것"이어야 사용자가 예측할 수 있기 때문이다. 스냅숏은 산출물에서
+    파생되고 라운드 수로 묶여 있다.
+    """
+    base = root()
+    total = 0
+    for area in store.AREAS:
+        for f in (base / area).rglob("*"):
+            try:
+                if f.is_file():
+                    total += f.stat().st_size
+            except OSError:                                    # pragma: no cover
+                continue
+    return total
+
+
+def _check_size(target: Path, content: str) -> None:
+    size = len(content.encode("utf-8"))
+    if size > MAX_FILE_BYTES:
+        raise Denied(lang.t("fs.tooBig", kb=size // 1024,
+                            max=MAX_FILE_BYTES // 1024))
+    # 이미 있는 파일을 덮어쓰는 경우, 늘어나는 만큼만 센다 — 아니면 상한에
+    # 닿은 프로젝트는 고칠 수조차 없다.
+    existing = target.stat().st_size if target.exists() else 0
+    if _deliverable_bytes() - existing + size > MAX_PROJECT_BYTES:
+        raise Denied(lang.t("fs.projectFull", max=MAX_PROJECT_BYTES // 1024))
+
+
 def write(path: str, content: str, employee_id: str = "SYSTEM",
           *, round: int = 0, reason: str = "") -> dict:
     """파일을 쓴다. 덮어쓰는 경우 **직전 내용과 경위**를 함께 남긴다.
@@ -126,6 +172,7 @@ def write(path: str, content: str, employee_id: str = "SYSTEM",
     라운드에서, 어떤 지적을 받고 고쳤나"를 따라갈 수 있어야 한다.
     """
     p = _resolve(path, employee_id, write=True)
+    _check_size(p, content)
     p.parent.mkdir(parents=True, exist_ok=True)
     before = p.read_text(encoding="utf-8", errors="replace") if p.exists() else None
     if before is not None and before != content:

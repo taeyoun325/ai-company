@@ -458,3 +458,53 @@ def test_both_untrusted_paths_use_the_same_fencing():
     for rel in ("orchestrator/prompts.py", "attachments.py"):
         src = _io.open(root / rel, encoding="utf-8").read()
         assert "fencing." in src, f"{rel} 이 공용 울타리를 쓰지 않습니다"
+
+
+# ── 산출물 크기 상한 (DAY 22) ──────────────────────────────────────
+def test_one_deliverable_cannot_fill_the_disk(tmp_path, monkeypatch):
+    """산출물 쓰기에 상한이 하나도 없었다.
+
+    한 번에 쓰는 양은 `max_tokens` 로 묶여 있지만, 라운드를 돌며 같은
+    파일을 계속 불리면 디스크는 계속 찬다 — 덮어쓸 때마다 **직전 판본을
+    스냅숏**으로 남기므로 커진 파일은 판본마다 그만큼을 더 먹는다.
+    """
+    from app import config
+    from app.database import store
+    from app.tools import project_fs as pfs
+
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    monkeypatch.setattr(pfs, "MAX_FILE_BYTES", 1000)
+    slug = store.new_project("size cap")
+    pfs.use(slug)
+    try:
+        with pytest.raises(pfs.Denied) as got:
+            pfs.write("src/big.py", "x" * 2000, "developer")
+        assert "KB" in str(got.value), str(got.value)
+        # 상한 아래는 그대로 써진다.
+        assert pfs.write("src/ok.py", "x" * 900, "developer")["created"]
+    finally:
+        pfs.release()
+
+
+def test_a_project_cannot_grow_without_end(tmp_path, monkeypatch):
+    """파일 하나가 작아도 여러 개면 같은 일이 된다."""
+    from app import config
+    from app.database import store
+    from app.tools import project_fs as pfs
+
+    monkeypatch.setattr(config, "PROJECTS", tmp_path / "projects")
+    monkeypatch.setattr(pfs, "MAX_FILE_BYTES", 1000)
+    monkeypatch.setattr(pfs, "MAX_PROJECT_BYTES", 2000)  # 산출물만 센다
+    slug = store.new_project("project cap")
+    pfs.use(slug)
+    try:
+        pfs.write("src/a.py", "a" * 900, "developer")
+        pfs.write("src/b.py", "b" * 900, "developer")
+        with pytest.raises(pfs.Denied) as got:
+            pfs.write("src/c.py", "c" * 900, "developer")
+        assert str(got.value)
+        # 같은 파일을 **덮어쓰는** 것은 늘어나는 만큼만 센다 — 아니면
+        # 상한에 닿은 프로젝트는 고칠 수조차 없게 된다.
+        assert pfs.write("src/a.py", "a" * 800, "developer")["created"] is False
+    finally:
+        pfs.release()
