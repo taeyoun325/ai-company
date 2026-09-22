@@ -20,11 +20,11 @@
  * 쓸 때 어느 쪽이었는지 알 방법이 없다.
  */
 import Link from "next/link";
-import { useEffect } from "react";
+
 
 import { type Key, useLang } from "@/lib/i18n";
 import { api } from "@/lib/api";
-import { useLoader } from "@/lib/useLoader";
+import { useLoader, useReloadOn } from "@/lib/useLoader";
 import { useSticky } from "@/lib/sticky";
 import { Icon } from "./icons";
 import { Empty, MockBadge, Skeleton, StatusDot, clock, when } from "./ui";
@@ -48,9 +48,9 @@ export function ProjectRail({
     api.projects({ limit: 40, sort: "recent" }),
   );
 
-  useEffect(() => {
-    void reload();
-  }, [refreshKey, reload]);
+  // 마운트 때는 `useLoader` 가 이미 읽었다. 여기서 또 읽으면 목록을
+  // 두 번 가져온다 — 프로덕션 빌드로 확인한 실제 중복이었다.
+  useReloadOn(refreshKey, reload);
 
   // 접어둔 상태는 기억한다(lib/sticky.ts). 좁은 화면에서 매번 접는 것은
   // 일이고, 기억이 실패해도 화면은 그대로 돈다.

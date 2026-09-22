@@ -18,7 +18,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useErrorText } from "@/lib/i18n";
+import { useErrorText, useLang } from "@/lib/i18n";
 
 export interface Loader<T> {
   data: T | null;
@@ -27,8 +27,49 @@ export interface Loader<T> {
   reload: () => Promise<void>;
 }
 
+/**
+ * 값이 **바뀔 때만** 다시 읽는다 (DAY 22).
+ *
+ * 이게 없으면 화면마다 이렇게 쓰게 된다:
+ *
+ *     const { reload } = useLoader("rail", fetch);
+ *     useEffect(() => { void reload(); }, [refreshKey, reload]);
+ *
+ * 그러면 **마운트 때 두 번** 읽는다 — `useLoader` 가 한 번, 이 effect 가
+ * 한 번. 개발 모드의 StrictMode 중복과 섞여서 안 보였는데, 프로덕션
+ * 빌드로 확인하니 `/api/projects` 만 두 번씩 나가고 있었다.
+ *
+ * 첫 실행을 건너뛰면 "처음 한 번"은 `useLoader` 가, "바뀔 때마다"는
+ * 여기가 맡는다.
+ */
+export function useReloadOn(value: unknown, reload: () => Promise<void>) {
+  const seen = useRef<unknown>(undefined);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      seen.current = value;
+      return;
+    }
+    if (seen.current === value) return;
+    seen.current = value;
+    void reload();
+  }, [value, reload]);
+}
+
+
 export function useLoader<T>(key: string, fetcher: () => Promise<T>): Loader<T> {
+  const { lang } = useLang();
   const errText = useErrorText();
+  // `errText` 는 언어가 정해지는 순간 신원이 바뀐다. 그걸 `reload` 의
+  // 의존성에 그대로 두면 **마운트 직후 한 번 더 읽는다** — 화면이 뜰 때
+  // 언어가 서버 기본값에서 저장된 값으로 한 번 바뀌기 때문이다.
+  // 프로덕션 빌드로 재보니 `/api/projects` 가 그렇게 두 번씩 나가고
+  // 있었다(개발 모드의 StrictMode 중복에 가려 안 보였다).
+  const say = useRef(errText);
+  useEffect(() => {
+    say.current = errText;
+  }, [errText]);
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,16 +102,21 @@ export function useLoader<T>(key: string, fetcher: () => Promise<T>): Loader<T> 
       // 문장은 화면의 언어로 고른다. 백엔드에 닿지 못한 경우 여기서
       // `e.message` 를 그대로 쓰면 "TypeError: Failed to fetch" 가 목록
       // 자리에 찍힌다 — 사용자가 할 수 있는 일이 없는 문장이다.
-      setError(errText(e));
+      setError(say.current(e));
     } finally {
       if (alive.current) setLoading(false);
     }
-  }, [errText]);
+  }, []);
 
   useEffect(() => {
     void reload();
     // key 가 바뀌면 다시 불러온다 (예: 다른 프로젝트로 이동).
   }, [key, reload]);
+
+  // 언어가 **바뀌면** 다시 읽는다. 응답에는 서버가 언어에 맞춰 보낸 글이
+  // 섞여 있다(직원 직함·요금제 이름). 첫 실행은 건너뛴다 — 위에서 이미
+  // 읽었고, 그걸 안 건너뛰면 방금 고친 중복이 그대로 돌아온다.
+  useReloadOn(lang, reload);
 
   return { data, error, loading, reload };
 }

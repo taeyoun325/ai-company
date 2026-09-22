@@ -42,6 +42,25 @@ export interface StreamState {
 
 export function useStream(run?: string): StreamState {
   const { lang } = useLang();
+  // 탭이 보일 때만 연결한다 (DAY 22).
+  //
+  // EventSource 는 **오리진당 연결 하나**를 계속 물고 있는다. HTTP/1.1 에서
+  // 브라우저는 오리진당 6개까지만 열 수 있으므로, 같은 앱을 탭 여러 개로
+  // 열어두면 남은 자리가 빠르게 없어지고 **새 요청이 줄을 선 채 끝나지
+  // 않는다.** 실제로 그 상태를 만들었다: 탭 넷을 띄워두니 "AUTO 로 맡기기"
+  // 가 눌러도 아무 일이 없었고, POST /api/runs 가 응답 없이 매달렸다.
+  // 같은 요청을 curl 로는 47ms 에 받았다 — 서버가 아니라 연결이 문제였다.
+  //
+  // 숨은 탭은 어차피 아무도 안 본다. 끊었다가 돌아올 때 다시 붙고,
+  // `after`/`Last-Event-ID` 로 그동안의 이벤트를 받아오므로 잃는 것이 없다.
+  const [awake, setAwake] = useState(
+    typeof document === "undefined" || !document.hidden,
+  );
+  useEffect(() => {
+    const onVisible = () => setAwake(!document.hidden);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
   const [events, setEvents] = useState<BusEvent[]>([]);
   const [roster, setRoster] = useState<Roster>({});
   const [connected, setConnected] = useState(false);
@@ -101,6 +120,11 @@ export function useStream(run?: string): StreamState {
     // `Accept-Language` 가 이 요청에만 빠지고, 서버가 이 요청에서 만드는
     // 것들(직원 로스터의 직함)이 기본값인 한국어로 내려왔다 — 영어 화면의
     // 모든 말풍선에 "(전략가)" 가 붙어 있었다.
+    if (!awake) {
+      // 숨어 있는 동안에는 연결을 잡고 있지 않는다. 돌아오면 이 effect 가
+      // 다시 돌아 새로 붙는다.
+      return;
+    }
     const url = `/api/stream?after=${lastId.current}&lang=${lang}${
       run ? `&run=${encodeURIComponent(run)}` : ""
     }`;
@@ -146,7 +170,7 @@ export function useStream(run?: string): StreamState {
       types.forEach((t) => es.removeEventListener(t, onMessage as EventListener));
       es.close();
     };
-  }, [run, push, lang]);
+  }, [run, push, lang, awake]);
 
   useEffect(() => {
     if (!polling) return;

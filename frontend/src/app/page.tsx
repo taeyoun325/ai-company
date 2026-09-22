@@ -35,7 +35,7 @@ import { ApiError, api } from "@/lib/api";
 import { useErrorText, useLang } from "@/lib/i18n";
 import { T, animate, stagger, withScope } from "@/lib/motion";
 import type { CreditStatus, Employee, ProviderStatus } from "@/lib/types";
-import { useLoader } from "@/lib/useLoader";
+import { useLoader, useReloadOn } from "@/lib/useLoader";
 import { foldState, useStream } from "@/lib/useStream";
 
 /** AUTO 에서 지금 일하는 직원. 단계 이름이 자리를 가리킨다. */
@@ -80,9 +80,9 @@ export default function OfficePage() {
 
   // 실행 중에는 직원별 사용량이 계속 바뀐다. 단계가 넘어갈 때만 다시
   // 읽는다 — 고정 간격 폴링은 아무 일도 없을 때까지 서버를 두드린다.
-  useEffect(() => {
-    if (slug) void reload();
-  }, [slug, folded.phase, folded.done, reload]);
+  // slug 가 바뀌는 순간은 `useLoader` 가 이미 읽는다(key 가 slug 다).
+  // 여기서는 **단계가 넘어갈 때만** 읽는다.
+  useReloadOn(slug ? `${folded.phase}-${folded.done}` : null, reload);
 
   // 화면이 들어올 때 한 번. 작업 중에는 아무것도 움직이지 않는다 —
   // 도구에서 움직임은 소음이고, 소음이 늘면 진짜 신호(맥박)가 묻힌다.
@@ -184,7 +184,12 @@ export default function OfficePage() {
         // 단계가 바뀔 때마다 목록을 다시 읽는다. 시작할 때만 읽으면
         // 돌고 있는 줄이 목록에 "진행 중"으로 잡히는 창이 너무 짧고,
         // 끝난 뒤의 파일 수·크레딧도 늦게 반영된다.
-        refreshKey={`${slug}-${folded.done}-${folded.phase ?? ""}`}
+        //
+        // 다만 **실행 중이 아닐 때는 움직이지 않는다.** 새로고침하면
+        // 버스가 지난 이벤트를 재생하면서 `folded.phase` 가 채워지는데,
+        // 그때마다 키가 바뀌어 목록을 한 번 더 읽고 있었다(프로덕션
+        // 빌드에서 `/api/projects` 가 두 번씩 나갔다).
+        refreshKey={slug ? `${slug}-${folded.done}-${folded.phase ?? ""}` : "idle"}
         onNew={() => {
           setSlug(null);
           setRequirement("");
