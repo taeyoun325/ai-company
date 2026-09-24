@@ -417,10 +417,12 @@ def _verdict(req: GenerateRequest) -> dict:
             "findings": [{"file": "src/calc.py", "issue": _s("verdict.issue"),
                           "why": _s("verdict.why")}],
             "required_fixes": [_s("verdict.fix")],
+            "confidence": 0.8,
         }
     return {
         "message_to_team": _s("verdict.passMsg"),
         "verdict": "pass", "severity": "none", "findings": [], "required_fixes": [],
+        "confidence": 0.95,
     }
 
 

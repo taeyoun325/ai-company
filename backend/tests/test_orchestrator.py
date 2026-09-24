@@ -206,7 +206,8 @@ def test_replan_limit_stops_the_run(monkeypatch):
     def always_fail(employee_id, user, schema, history=None, model=None):
         if schema is Verdict:
             return Verdict(message_to_team="안 됩니다", verdict="fail",
-                           severity="major", findings=[], required_fixes=["고치세요"])
+                           severity="major", findings=[], required_fixes=["고치세요"],
+                           confidence=0.9)
         return real(employee_id, user, schema, history, model=model)
 
     monkeypatch.setattr(employee, "ask", always_fail)
@@ -229,7 +230,8 @@ def test_giving_up_on_a_task_rolls_its_files_back(monkeypatch):
     def always_fail(employee_id, user, schema, history=None, model=None):
         if schema is Verdict:
             return Verdict(message_to_team="안 됩니다", verdict="fail",
-                           severity="major", findings=[], required_fixes=["고치세요"])
+                           severity="major", findings=[], required_fixes=["고치세요"],
+                           confidence=0.9)
         return real(employee_id, user, schema, history, model=model)
 
     monkeypatch.setattr(employee, "ask", always_fail)

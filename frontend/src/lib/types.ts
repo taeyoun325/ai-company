@@ -121,6 +121,8 @@ export interface BusEvent {
   required_fixes?: string[];
   verdict?: "pass" | "fail";
   severity?: "none" | "minor" | "major" | "blocker";
+  /** 판정 확신도(0~1) — Verdict.confidence 와 같은 값. */
+  confidence?: number;
   met?: string[];
 }
 
@@ -181,6 +183,9 @@ export interface Verdict {
   severity: "none" | "minor" | "major" | "blocker";
   findings: { file: string; issue: string; why: string }[];
   required_fixes: string[];
+  /** 이 판정 자체에 대한 확신도(0~1). 통과율이 아니라 근거가 얼마나
+   *  단단한가다 — app/agents/schemas.py 의 Verdict.confidence. */
+  confidence: number;
 }
 
 export interface Roster {

@@ -213,6 +213,33 @@ def test_mock_verdict_passes_on_clean_report(project):
     assert v.verdict == "pass"
 
 
+def test_verdict_always_carries_a_confidence_value(project):
+    """대본이 이 필드를 빠뜨리면 스키마 검증에서 바로 터진다 — 여기서
+    한 번 더 명시적으로 본다, 나중에 대본을 고칠 사람에게 신호가
+    되도록."""
+    v = employee.ask("analyst", '테스트 리포트: {"ok": true}', Verdict)
+    assert 0.0 <= v.confidence <= 1.0
+
+
+def test_verdict_confidence_is_bounded_to_zero_one():
+    import pydantic
+
+    with pytest.raises(pydantic.ValidationError):
+        Verdict(message_to_team="x", verdict="pass", severity="none",
+                findings=[], required_fixes=[], confidence=1.5)
+    with pytest.raises(pydantic.ValidationError):
+        Verdict(message_to_team="x", verdict="pass", severity="none",
+                findings=[], required_fixes=[], confidence=-0.1)
+
+
+def test_verdict_confidence_is_required():
+    import pydantic
+
+    with pytest.raises(pydantic.ValidationError):
+        Verdict(message_to_team="x", verdict="pass", severity="none",
+                findings=[], required_fixes=[])
+
+
 def test_mock_developer_fixes_after_rejection(project):
     """반려 사유가 들어오면 고친 버전을 낸다. 난수가 아니라 입력으로 가른다."""
     first = employee.ask("developer", "태스크: 사칙연산 구현", WorkResult)

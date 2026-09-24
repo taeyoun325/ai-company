@@ -33,6 +33,7 @@ class Score:
         self.ac_total = 0
         self.ac_covered = 0                # 테스트가 붙은 인수기준 수
         self.ac_met: int | None = None     # 최종 검수 결과
+        self.confidence_total = 0.0        # 판정마다의 확신도(0~1) 합
 
     def value(self) -> int:
         if self.ac_met is not None and self.ac_total:
@@ -50,6 +51,11 @@ class Score:
             "ac_coverage": f"{self.ac_covered}/{self.ac_total}" if self.ac_total else "—",
             "review_pass_rate": (round(100 * self.passes / self.reviews)
                                  if self.reviews else 0),
+            # 통과율과 다른 질문이다 — "얼마나 통과했나" 가 아니라 "검증자가
+            # 자기 판정을 얼마나 확신했나"다. 둘이 같이 낮으면 검증
+            # 자체가 흔들리고 있다는 뜻이다(§18 신뢰도).
+            "confidence": (round(100 * self.confidence_total / self.reviews)
+                          if self.reviews else "—"),
             "reworks": self.reworks,
             "replans": self.replans,
             "criteria": (f"{self.ac_met}/{self.ac_total}"

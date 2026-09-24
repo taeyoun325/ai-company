@@ -548,7 +548,9 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
                     roles.VERIFIER, (roles.PLANNER if verdict.verdict == "pass" else who),
                     "REVIEW", verdict=verdict.verdict, severity=verdict.severity,
                     findings=[f.model_dump() for f in verdict.findings],
-                    required_fixes=verdict.required_fixes)
+                    required_fixes=verdict.required_fixes,
+                    confidence=verdict.confidence)
+                score.confidence_total += verdict.confidence
 
                 if verdict.verdict == "pass":
                     score.passes += 1

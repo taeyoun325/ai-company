@@ -94,6 +94,14 @@ class Verdict(Strict):
     severity: Literal["none", "minor", "major", "blocker"]
     findings: list[Finding]
     required_fixes: list[str]
+    confidence: float = Field(
+        ge=0.0, le=1.0,
+        description=(
+            "이 판정 자체에 대한 확신도(0~1). verdict 가 맞다는 통과율이 아니라 "
+            "**이 판정을 내린 근거가 얼마나 단단한가**다. 코드를 실행해보지 "
+            "못했거나, 인수기준이 애매해 임의로 해석했거나, 관련 파일 일부를 "
+            "못 봤다면 낮게 적는다. 확신 없는 근거로 내린 pass/fail 은 그렇게 "
+            "표시돼야 사람이 한 번 더 볼지 판단할 수 있다."))
 
 
 class FinalReport(Strict):
