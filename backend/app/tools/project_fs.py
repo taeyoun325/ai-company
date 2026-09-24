@@ -186,6 +186,48 @@ def write(path: str, content: str, employee_id: str = "SYSTEM",
             "new_lines": len(content.splitlines())}
 
 
+def raw_read(path: str) -> str | None:
+    """직원 권한과 무관하게 지금 이 경로의 내용을 읽는다. 없으면 `None`.
+
+    태스크가 시작하기 **전** 상태를 스냅숏하는 데 쓴다 — 그 시점엔 아직
+    아무 직원도 관여하지 않았으니 권한 검사가 의미가 없다. 반려가 쌓여
+    태스크를 통째로 포기할 때, 이 값으로 되돌린다(`restore_files`).
+    """
+    r = root().resolve()
+    target = (r / path).resolve()
+    if not target.is_relative_to(r) or not target.exists():
+        return None
+    return target.read_text(encoding="utf-8", errors="replace")
+
+
+def restore_files(baseline: dict[str, str | None]) -> list[str]:
+    """`baseline` 이 가리키는 상태로 되돌린다. `None` 이면 그 파일은
+    태스크가 시작하기 전엔 없었다는 뜻이라 지운다.
+
+    검증자의 판정 없이 그냥 덮어쓴다 — 이건 직원의 작업이 아니라
+    오케스트레이터가 **포기한 시도를 치우는** 행위라서 권한 검사를
+    거치지 않는다(§18 자동 롤백).
+    """
+    r = root().resolve()
+    restored: list[str] = []
+    for path, content in baseline.items():
+        target = (r / path).resolve()
+        if not target.is_relative_to(r):
+            continue
+        if content is None:
+            if target.exists():
+                target.unlink()
+                restored.append(path)
+            continue
+        if target.exists() and target.read_text(
+                encoding="utf-8", errors="replace") == content:
+            continue                 # 이미 그 상태다 — 되돌릴 것이 없다
+        target.parent.mkdir(parents=True, exist_ok=True)
+        safeio.write_text(target, content)
+        restored.append(path)
+    return restored
+
+
 def listdir(employee_id: str = "SYSTEM") -> list[str]:
     allowed = _areas(employee_id, write=False)
     return [f for f in store.files_of(slug()) if f.split("/", 1)[0] in allowed]

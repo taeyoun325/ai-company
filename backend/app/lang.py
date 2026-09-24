@@ -629,6 +629,14 @@ _M: dict[str, dict[str, str]] = {
         "en": "Replan limit ({n}) reached — no progress on '{task}'.",
         "ja": "再計画の上限({n})に達しました — '{task}' で進展がありません。",
     },
+    "log.rollback": {
+        "ko": "'{task}' 를 {n}회 반려 끝에 포기합니다 — 이 태스크가 건드린 "
+              "{files} 을(를) 시작 전 상태로 되돌립니다.",
+        "en": "Giving up on '{task}' after {n} rejections — reverting "
+              "{files} to how they were before this task started.",
+        "ja": "'{task}' を{n}回の反려の末に断念します — このタスクが触れた "
+              "{files} を開始前の状態に戻します。",
+    },
     # ── 가입·로그인 (DAY 22) ───────────────────────────────────────
     # 제품에서 **제일 먼저** 보는 화면이다. 여기가 한국어면 영어로 쓰는
     # 사람은 계정을 만들다 막히고, 막힌 이유도 못 읽는다.

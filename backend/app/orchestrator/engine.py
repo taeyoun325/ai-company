@@ -484,6 +484,11 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
             rows = _board(plan, done, task.id)
             rework = 0
             feedback: Verdict | None = None
+            # 이 태스크가 건드리는 각 파일의 **시작 전** 내용. 처음 손대는
+            # 순간에만 채운다 — 재시도마다 다시 읽으면 반려된 중간 상태가
+            # "시작 전"으로 뒤바뀐다. 반려가 쌓여 태스크를 포기하면 여기로
+            # 되돌린다(§18 자동 롤백).
+            baseline: dict[str, str | None] = {}
 
             while True:
                 _check_cancelled(slug)
@@ -499,6 +504,8 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
                 work: WorkResult = employee.ask(
                     who, prompts.implement(task, criteria, pfs.snapshot(who), feedback),
                     WorkResult, model=routed_model)
+                for fw in work.files:
+                    baseline.setdefault(fw.path, pfs.raw_read(fw.path))
                 employee.say(roles.get(who), work.message_to_team)
                 # 반려를 받고 다시 쓰는 것이면 그 사유를 이력에 남긴다.
                 _apply(work, who, round=rounds,
@@ -541,6 +548,13 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
                 rework += 1
                 feedback = verdict
                 if rework >= config.MAX_REWORK:
+                    # 이 태스크는 포기한다 — 반려된 시도의 흔적을 남기지 않는다.
+                    restored = pfs.restore_files(baseline)
+                    if restored:
+                        bus.say("SYSTEM", lang.t(
+                            "log.rollback", task=task.title, n=rework,
+                            files=", ".join(restored)), kind="error")
+                        bus.state(files=store.files_of(slug))
                     score.replans += 1
                     if score.replans > config.MAX_REPLANS:
                         raise Stop(lang.t("stop.replans", n=config.MAX_REPLANS,

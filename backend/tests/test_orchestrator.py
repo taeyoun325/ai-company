@@ -173,6 +173,31 @@ def test_replan_limit_stops_the_run(monkeypatch):
     assert "재기획 상한" in m["stopped_reason"]
 
 
+def test_giving_up_on_a_task_rolls_its_files_back(monkeypatch):
+    """반려가 쌓여 태스크를 포기하면, 그 태스크가 새로 만든 파일이 남지 않는다.
+
+    되돌리지 않으면, 검증자가 끝까지 반려한 미완성 코드가 '중단'된
+    프로젝트의 산출물로 그대로 보인다 — 사용자는 그게 통과 못 한
+    시도의 잔해라는 걸 파일만 보고는 알 수 없다.
+    """
+    monkeypatch.setattr(config, "MAX_REWORK", 1)
+    monkeypatch.setattr(config, "MAX_REPLANS", 0)
+    real = employee.ask
+
+    def always_fail(employee_id, user, schema, history=None, model=None):
+        if schema is Verdict:
+            return Verdict(message_to_team="안 됩니다", verdict="fail",
+                           severity="major", findings=[], required_fixes=["고치세요"])
+        return real(employee_id, user, schema, history, model=model)
+
+    monkeypatch.setattr(employee, "ask", always_fail)
+    slug, m = _run()
+    assert m["status"] == "stopped"
+    files = store.files_of(slug)
+    assert "src/calc.py" not in files, \
+        "포기한 태스크가 새로 만든 파일이 지워지지 않고 그대로 남았다"
+
+
 def test_empty_plan_stops_instead_of_reporting_success(monkeypatch):
     """태스크 0개짜리 계획을 그대로 진행하면 '전부 완료'로 끝난다."""
     real = employee.ask
