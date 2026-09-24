@@ -92,9 +92,9 @@ let acceptLanguage = "";
 function language(): string {
   if (acceptLanguage) return acceptLanguage;
   try {
-    acceptLanguage = window.localStorage.getItem(LANG_STORE_KEY) || "ko";
+    acceptLanguage = window.localStorage.getItem(LANG_STORE_KEY) || "en";
   } catch {
-    acceptLanguage = "ko";    // 사생활 보호 모드에서는 읽기가 던진다
+    acceptLanguage = "en";    // 사생활 보호 모드에서는 읽기가 던진다
   }
   return acceptLanguage;
 }
@@ -332,6 +332,14 @@ export const api = {
     ),
   deleteProject: (slug: string) =>
     call<{ ok: boolean }>(`/api/projects/${seg(slug)}`, { method: "DELETE" }),
+
+  // ── 로그를 평범한 말로 (DAY 23) ─────────────────────────────────
+  // 검증(§11)과 같은 규칙으로 CEO 가 누를 때만 돈다. `force` 는 캐시를
+  // 무시하고 다시 부른다 — 비용이 또 나간다는 뜻이라 버튼을 따로 둔다.
+  narrate: (slug: string, force = false) =>
+    post<{ text: string; cached: boolean }>(
+      `/api/projects/${seg(slug)}/narrate${force ? "?force=true" : ""}`,
+    ),
 
   // ── 크레딧 · 요금제 (§15 §16) ───────────────────────────────────
   credits: () => call<CreditStatus>("/api/credits"),

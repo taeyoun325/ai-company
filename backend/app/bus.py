@@ -158,6 +158,11 @@ def roster() -> dict:
 def bind(run_id: str) -> None:
     """이 스레드가 내보내는 이벤트에 붙일 실행 id."""
     _local.run = run_id
+    # 새 실행은 이전 실행의 "마지막으로 맡았던 사람"을 물려받지 않는다
+    # (스레드 풀이 스레드를 재사용하면 `_local` 이 남아 있다). 물려받으면
+    # 새 실행의 첫 단계가 엉뚱하게 "누구에게서 전달받음"으로 찍힌다.
+    _local.phase_owner = None
+    _local.phase_display = None
 
 
 def current() -> str | None:
@@ -166,6 +171,8 @@ def current() -> str | None:
 
 def release() -> None:
     _local.run = None
+    _local.phase_owner = None
+    _local.phase_display = None
 
 
 # ── 구독 ────────────────────────────────────────────────────────────
@@ -266,8 +273,57 @@ def say(agent: str, text: str, kind: str = "say") -> None:
     emit("message", agent=agent, kind=kind, text=text)
 
 
-def phase(name: str, detail: str = "") -> None:
-    emit("phase", name=name, detail=detail)
+# 단계 → 담당자. 프론트(Office.tsx · page.tsx 의 PHASE_OWNER)와 같은
+# 대응이다. 대부분은 항상 같은 사람이 맡는다 — IMPLEMENT · MANUAL 처럼
+# 맡는 사람이 매번 바뀌는 단계만 호출하는 쪽이 `owner` 로 직접 넘긴다.
+PHASE_OWNER: dict[str, str | None] = {
+    "PLAN": "strategist", "REPLAN": "strategist", "FINALIZE": "strategist",
+    "WRITE_TESTS": "analyst", "REVIEW": "analyst",
+    "TEST": None, "IMPLEMENT": None, "MANUAL": None,
+}
+
+
+def phase(name: str, detail: str = "", owner: str | None = None) -> None:
+    """단계가 바뀌었다.
+
+    로그를 쭉 읽으면 "지금 무슨 일이 벌어지고 있나"가 대화 중간에 묻힌다.
+    그래서 단계가 바뀌는 순간(= 한 직원의 몫이 끝나고 다음 직원에게
+    넘어가는 순간)에만 한 줄 헤드라인을 붙인다. 모델을 불러 매 줄을
+    요약하면 비용이 끝없이 나간다(§11 과 같은 규칙, narrator.py 참고) —
+    이건 표 하나로 정해지는 규칙 기반이라 공짜고 즉시 나간다.
+
+    `owner` 를 안 주면 `PHASE_OWNER` 표를 본다. 둘 다 없으면(TEST 처럼
+    특정 직원이 아니라 자동화가 하는 단계) 헤드라인 없이 단계 이름만
+    나간다 — 화면은 그 경우 원래 하던 대로 보여준다.
+    """
+    from app import lang
+    from app.agents import roles
+
+    resolved = owner if owner is not None else PHASE_OWNER.get(name)
+    try:
+        owner_name = roles.display_name(resolved) if resolved else None
+    except Exception:                                       # noqa: BLE001
+        owner_name = None                  # 헤드라인은 있으면 좋은 것이다
+
+    prev_owner = getattr(_local, "phase_owner", None)
+    prev_name = getattr(_local, "phase_display", None)
+
+    headline = None
+    if owner_name:
+        if prev_owner and prev_name and resolved != prev_owner:
+            headline = lang.t("bus.handoff", frm=prev_name, to=owner_name)
+        elif prev_owner is None:
+            headline = lang.t("bus.started", who=owner_name)
+
+        _local.phase_owner = resolved
+        _local.phase_display = owner_name
+    # 담당자가 없는 단계(TEST 처럼 자동화가 하는 단계)는 "마지막으로 맡은
+    # 사람"을 지우지 않는다. 지우면 TEST 다음 REVIEW 가 "최유나 완료 —
+    # 최유나에게 전달"이 아니라 매번 "시작"으로만 보인다 — IMPLEMENT 가
+    # 끝나고 REVIEW 로 진짜 넘어간 것인데, 그 사이에 자동화가 한 번
+    # 끼었다는 이유로 인계 정보가 사라지면 안 된다.
+
+    emit("phase", name=name, detail=detail, headline=headline)
 
 
 def state(**kw: Any) -> None:

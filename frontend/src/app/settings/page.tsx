@@ -20,13 +20,14 @@
  * 잠긴다 — 그 화면이 열려 있으면 로그인한 아무나 운영자 키를 덮어쓴다.
  * 아래 `ByokPanel` 은 **내 키**이고 저장소부터 다르다.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ByokPanel } from "@/components/ByokPanel";
 import { Button, ErrorBox, MockBadge, Panel, Screen, Skeleton, Warning }
   from "@/components/ui";
 import { useErrorText, useLang } from "@/lib/i18n";
 import { api } from "@/lib/api";
+import { T, revealFrom, stagger, withScope } from "@/lib/motion";
 import type { ByokStatus, Employee, ProviderStatus, Settings } from "@/lib/types";
 import { useLoader } from "@/lib/useLoader";
 
@@ -41,6 +42,18 @@ export default function SettingsPage() {
     ]);
     return { settings: s, providers: st.providers, employees: st.employees, byok: b };
   });
+  const root = useRef<HTMLDivElement>(null);
+  // 패널이 한꺼번에 뜨면 어디부터 볼지가 사라진다(pricing/page.tsx 와
+  // 같은 이유). 처음 데이터가 들어올 때 한 번만, 줄줄이 등장한다.
+  useEffect(() => {
+    const el = root.current;
+    if (!el || !data) return;
+    return withScope(el, () => {
+      revealFrom(el.querySelectorAll("[data-reveal]"), {
+        y: 12, delay: stagger(T.step),
+      });
+    });
+  }, [data]);
   const settings: Settings | null = data?.settings ?? null;
   const providers: ProviderStatus | null = data?.providers ?? null;
   const employees: Employee[] = data?.employees ?? [];
@@ -104,7 +117,7 @@ export default function SettingsPage() {
 
   return (
     <Screen>
-    <div className="space-y-4">
+    <div ref={root} className="space-y-4">
       {(error || loadError) && <ErrorBox>{error ?? loadError}</ErrorBox>}
 
       {loading && !data && (
@@ -124,9 +137,9 @@ export default function SettingsPage() {
         </Warning>
       )}
 
-      <ByokPanel status={byok} reload={load} />
+      <div data-reveal><ByokPanel status={byok} reload={load} /></div>
 
-      <Panel title={t("set.operatorKeys")}>
+      <Panel data-reveal title={t("set.operatorKeys")}>
         <p className="mb-3 text-xs text-dim">
           {operatorLocked
             ? t("set.operatorLocked")
@@ -191,7 +204,7 @@ export default function SettingsPage() {
         </div>
       </Panel>
 
-      <Panel title={t("set.providers")}>
+      <Panel data-reveal title={t("set.providers")}>
         <ul className="space-y-2">
           {providers?.providers.map((p) => (
             <li
@@ -217,7 +230,7 @@ export default function SettingsPage() {
         </ul>
       </Panel>
 
-      <Panel title={t("set.models")}>
+      <Panel data-reveal title={t("set.models")}>
         <p className="mb-3 text-xs text-dim">
           {t("set.modelsHint")}
         </p>

@@ -134,6 +134,7 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
                 connected={stream.connected}
                 polling={stream.polling}
                 past={!project.running}
+                slug={slug}
                 className="h-[24rem]"
               />
             </div>

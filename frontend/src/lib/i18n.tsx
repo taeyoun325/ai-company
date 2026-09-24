@@ -449,6 +449,11 @@ const S = {
     en: "Register API keys in settings",
     ja: "設定で API キーを登録",
   },
+  "run.mockWarnClose": {
+    ko: "닫기 (이 탭에서는 다시 안 보임)",
+    en: "Dismiss (won't show again in this tab)",
+    ja: "閉じる（このタブでは再表示されません）",
+  },
   "run.noCross": { ko: "교차검증이 성립하지 않습니다.", en: "Cross-checking does not hold.", ja: "相互検証が成り立ちません。" },
   "run.noCrossBody": {
     ko: "구현자와 검증자가 같은 회사의 모델이거나, 검증자 쪽 키가 없습니다.",
@@ -478,9 +483,20 @@ const S = {
     ja: "実行中のログは保存されません。誰が何をなぜ変更したかは、下の成果物の版履歴に残っています。",
   },
   "log.unread": { ko: "새 소식 {n}개 ↓", en: "{n} new ↓", ja: "新着 {n} 件 ↓" },
+  "log.stepLines": { ko: "{n}줄", en: "{n} lines", ja: "{n} 行" },
   "log.done": { ko: "완료", en: "Done", ja: "完了" },
   "log.stopped": { ko: "중단", en: "Stopped", ja: "中断" },
   "log.scoreSuffix": { ko: " · 완성도 {n}%", en: " · {n}% complete", ja: " · 完成度 {n}%" },
+
+  // ── 로그를 평범한 말로 (DAY 23) ───────────────────────────────
+  "narrate.button": { ko: "쉽게 설명", en: "Explain simply", ja: "やさしく説明" },
+  "narrate.buttonAgain": { ko: "다시 설명", en: "Explain again", ja: "もう一度説明" },
+  "narrate.loading": { ko: "설명을 만드는 중…", en: "Writing an explanation…", ja: "説明を作成中…" },
+  "narrate.hint": {
+    ko: "직원 이름·단계 이름 같은 용어를 풀어 쓴 요약입니다. 모델 호출이라 비용이 듭니다.",
+    en: "A plain-language summary — internal terms spelled out. This calls a model, so it costs a little.",
+    ja: "専門用語をかみ砕いた要約です。モデル呼び出しのため少額の費用がかかります。",
+  },
 
   // ── 태스크와 점수 (DAY 22) ────────────────────────────────────
   "task.empty": { ko: "아직 계획이 없습니다.", en: "No plan yet.", ja: "まだ計画がありません。" },
@@ -732,6 +748,14 @@ const S = {
     ja: "席を指すと、誰が何で働いているかが見えます。",
   },
   "office.log": { ko: "작업 로그", en: "Activity log", ja: "作業ログ" },
+  "office.logResize": {
+    ko: "작업 로그 폭 조절", en: "Resize activity log", ja: "作業ログの幅を調整",
+  },
+  "rail.resize": {
+    ko: "프로젝트 목록 폭 조절",
+    en: "Resize project list",
+    ja: "プロジェクト一覧の幅を調整",
+  },
   "office.projects": { ko: "프로젝트", en: "Projects", ja: "プロジェクト" },
   "office.newProject": { ko: "새 프로젝트", en: "New project", ja: "新規プロジェクト" },
   "office.collapse": { ko: "목록 접기", en: "Collapse list", ja: "一覧を折りたたむ" },
@@ -798,13 +822,13 @@ type Ctx = {
 
 const LangContext = createContext<Ctx | null>(null);
 
-/** 브라우저가 선호하는 언어. 모르는 언어면 영어로 떨어뜨린다. */
+/**
+ * 처음 오는 사람에게 보일 언어. 기본은 **영어**다 — 브라우저 언어를
+ * 따라가면 한국어 브라우저에서 매번 한국어로 열려서, 정작 "기본은
+ * 영어여야 한다"는 요구와 어긋난다. 저장된 선택(localStorage)이 있으면
+ * 그게 항상 이긴다 — 이 함수는 그마저 없을 때만 불린다.
+ */
 function detect(): Lang {
-  if (typeof navigator === "undefined") return "ko";
-  for (const raw of navigator.languages ?? [navigator.language]) {
-    const code = (raw ?? "").slice(0, 2).toLowerCase();
-    if ((LANGS as readonly string[]).includes(code)) return code as Lang;
-  }
   return "en";
 }
 
@@ -841,9 +865,9 @@ function snapshot(): Lang {
   return current;
 }
 
-// 서버에는 브라우저 설정도 저장소도 없다. 항상 한국어로 그린다.
+// 서버에는 브라우저 설정도 저장소도 없다. 기본 언어(영어)로 그린다.
 function serverSnapshot(): Lang {
-  return "ko";
+  return "en";
 }
 
 function store(l: Lang) {
@@ -892,12 +916,12 @@ export function LangProvider({ children }: { children: ReactNode }) {
 export function useLang(): Ctx {
   const ctx = useContext(LangContext);
   if (!ctx) {
-    // 제공자 밖에서도 화면이 죽지 않게 한국어로 답한다. 번역이 빠진 것은
+    // 제공자 밖에서도 화면이 죽지 않게 기본 언어로 답한다. 번역이 빠진 것은
     // 불편이지만, 여기서 던지면 그 화면 전체가 사라진다.
     return {
-      lang: "ko",
+      lang: "en",
       setLang: () => {},
-      t: (key) => (S[key] as Entry | undefined)?.ko ?? String(key),
+      t: (key) => (S[key] as Entry | undefined)?.en ?? String(key),
     };
   }
   return ctx;

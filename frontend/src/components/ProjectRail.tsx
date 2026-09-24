@@ -26,12 +26,17 @@ import { useState } from "react";
 import { type Key, useLang } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { useLoader, useReloadOn } from "@/lib/useLoader";
-import { useSticky } from "@/lib/sticky";
+import { useSticky, useStickyNumber } from "@/lib/sticky";
 import { useWide } from "@/lib/media";
 import { Icon } from "./icons";
+import { ResizeHandle } from "./ResizeHandle";
 import { Empty, MockBadge, Skeleton, StatusDot, clock, when } from "./ui";
 
 const STORE_KEY = "ai-company.rail";
+const WIDTH_KEY = "ai-company.rail-width";
+const WIDTH_DEFAULT = 240; // w-60
+const WIDTH_MIN = 200;
+const WIDTH_MAX = 420;
 
 export function ProjectRail({
   activeSlug, onNew, refreshKey, phase,
@@ -54,6 +59,19 @@ export function ProjectRail({
   // 그대로 쓰면 첫 화면이 목록으로 덮인다.
   const [drawer, setDrawer] = useState(false);
   const open = wide ? stuck : drawer;
+
+  // 폭도 기억한다. 겹쳐 뜨는 좁은 화면(drawer)에서는 손잡이를 안 그린다
+  // — 화면을 덮고 있는 칸의 폭을 끄는 것은 뜻이 없다. 드래그 중에는
+  // 미리보기 폭만 바꾸고, 손을 떼면 그때 한 번 저장한다.
+  const [railWidthStored, setRailWidthStored] = useStickyNumber(
+    WIDTH_KEY, WIDTH_DEFAULT,
+  );
+  const [railWidthDrag, setRailWidthDrag] = useState<number | null>(null);
+  const railWidth = railWidthDrag ?? railWidthStored;
+  const commitRailWidth = (w: number) => {
+    setRailWidthDrag(null);
+    setRailWidthStored(w);
+  };
   const { data, error, loading, reload } = useLoader("rail", () =>
     api.projects({ limit: 40, sort: "recent" }),
   );
@@ -134,9 +152,11 @@ export function ProjectRail({
         className="fixed inset-0 z-30 bg-black/40 backdrop-blur-[1px]"
       />
     )}
-    <aside className={`flex h-full w-60 shrink-0 flex-col border-r border-line
+    <aside
+      style={wide ? { width: railWidth } : undefined}
+      className={`flex h-full shrink-0 flex-col border-r border-line
       bg-[color:var(--panel)] backdrop-blur-xl ${
-        wide ? "" : "fixed inset-y-0 left-0 z-40 shadow-2xl"
+        wide ? "" : "w-60 fixed inset-y-0 left-0 z-40 shadow-2xl"
       }`}>
       <div className="flex items-center gap-1 px-3 py-3">
         <button
@@ -259,6 +279,17 @@ export function ProjectRail({
         ))}
       </div>
     </aside>
+    {wide && (
+      <ResizeHandle
+        width={railWidth}
+        onChange={setRailWidthDrag}
+        onCommit={commitRailWidth}
+        min={WIDTH_MIN}
+        max={WIDTH_MAX}
+        side="right"
+        label={t("rail.resize")}
+      />
+    )}
     </>
   );
 }

@@ -482,7 +482,8 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
 
             while True:
                 _check_cancelled(slug)
-                bus.phase("IMPLEMENT", f"{roles.get(who).name} · {task.title}")
+                bus.phase("IMPLEMENT", f"{roles.get(who).name} · {task.title}",
+                          owner=who)
                 _spend_guard(rounds := rounds + 1, employee.worst_case_cost(who), owner)
                 bus.state(round=rounds)
                 work: WorkResult = employee.ask(

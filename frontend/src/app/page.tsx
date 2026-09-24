@@ -29,14 +29,21 @@ import { RecentResults } from "@/components/RecentResults";
 import { Office } from "@/components/Office";
 import { PixelOffice } from "@/components/PixelOffice";
 import { ProjectRail } from "@/components/ProjectRail";
+import { ResizeHandle } from "@/components/ResizeHandle";
 import { ScorePanel, TaskBoard } from "@/components/TaskBoard";
 import { Button, ErrorBox, Panel, Skeleton, Warning, num } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { useErrorText, useLang } from "@/lib/i18n";
 import { T, animate, stagger, withScope } from "@/lib/motion";
+import { useSessionFlag, useStickyNumber } from "@/lib/sticky";
 import type { CreditStatus, Employee, ProviderStatus } from "@/lib/types";
 import { useLoader, useReloadOn } from "@/lib/useLoader";
 import { foldState, useStream } from "@/lib/useStream";
+
+const LOG_WIDTH_KEY = "ai-company.log-width";
+const LOG_WIDTH_DEFAULT = 336; // 21rem, 기존 고정폭과 같다
+const LOG_WIDTH_MIN = 260;
+const LOG_WIDTH_MAX = 560;
 
 /** AUTO 에서 지금 일하는 직원. 단계 이름이 자리를 가리킨다. */
 const PHASE_OWNER: Record<string, string[]> = {
@@ -174,7 +181,24 @@ export default function OfficePage() {
     }
   };
 
+  // 작업 로그 폭. 드래그 중에는 미리보기 폭만 바꾸고(부드럽게), 손을
+  // 떼면 그때 한 번 저장한다(sticky.ts) — 매 픽셀마다 localStorage 에
+  // 쓰면 드래그가 끊긴다. 드래그 중이 아니면(null) 저장된 폭을 쓴다.
+  const [logWidthStored, setLogWidthStored] = useStickyNumber(
+    LOG_WIDTH_KEY, LOG_WIDTH_DEFAULT,
+  );
+  const [logWidthDrag, setLogWidthDrag] = useState<number | null>(null);
+  const logWidth = logWidthDrag ?? logWidthStored;
+  const commitLogWidth = (w: number) => {
+    setLogWidthDrag(null);
+    setLogWidthStored(w);
+  };
+
   const allMock = providers?.all_mock ?? false;
+  // 탭을 닫았다 새로 열면 다시 보인다 — `localStorage` 로 영영 안 보이게
+  // 하면 Mock 인 걸 잊은 채로 며칠씩 쓰게 된다. `sessionStorage` 는 이
+  // 탭이 열려 있는 동안만(다른 화면을 오가도) 닫힌 채로 남는다.
+  const [mockDismissed, dismissMockWarn] = useSessionFlag("mock-warn-dismissed");
 
   return (
     <div ref={root} className="flex h-full">
@@ -200,9 +224,9 @@ export default function OfficePage() {
       {/* 가운데 — 사무실과 입력창 */}
       <section ref={work} className="min-w-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto max-w-[640px] space-y-3">
-          {allMock && (
+          {allMock && !mockDismissed && (
             <div data-enter>
-              <Warning>
+              <Warning onClose={dismissMockWarn} closeLabel={t("run.mockWarnClose")}>
                 <strong>{t("run.mockWarn")}</strong>{" "}
                 <Linked
                   text={t("run.mockWarnBody")}
@@ -348,26 +372,47 @@ export default function OfficePage() {
           </div>
 
           {/* 좁은 화면에는 오른쪽 레일이 없다. 그때 로그가 통째로 사라지면
-              지금 무슨 일이 일어나는지 볼 방법이 없어진다 — 가운데로 내린다. */}
-          <div data-enter className="lg:hidden">
-            <Panel title={t("office.log")} className="overflow-hidden">
-              <div className="-m-4">
-                {stream.events.length === 0 ? (
-                  <p className="px-4 py-6 text-center text-xs text-dim">
-                    {t("office.logEmpty")}
-                  </p>
-                ) : (
-                  <ChatLog
-                    events={stream.events}
-                    roster={stream.roster}
-                    connected={stream.connected}
-                    polling={stream.polling}
-                    className="h-[22rem]"
-                  />
-                )}
-              </div>
-            </Panel>
-          </div>
+              지금 무슨 일이 일어나는지 볼 방법이 없어진다 — 가운데로 내린다.
+
+              점수·태스크도 **레일에만** 있었다(DAY 23 이전). 폰에서는
+              사무실 그림의 작은 단계 글자 말고는 진행 상황을 알 방법이
+              없었다 — "프로젝트가 어떻게 되어가는지 모르겠다"는 말이
+              여기서 나왔다. 레일과 같은 것을 여기도 보여준다. */}
+          {(slug || stream.events.length > 0) && (
+            <div data-enter className="space-y-3 lg:hidden">
+              <Panel title={t("proj.score")}>
+                <ScorePanel
+                  score={folded.score}
+                  detail={folded.scoreDetail}
+                  cost={folded.totals?.cost}
+                  round={folded.round}
+                />
+              </Panel>
+              {(folded.tasks?.length ?? 0) > 0 && (
+                <Panel title={t("proj.tasks")}>
+                  <TaskBoard tasks={folded.tasks} />
+                </Panel>
+              )}
+              <Panel title={t("office.log")} className="overflow-hidden">
+                <div className="-m-4">
+                  {stream.events.length === 0 ? (
+                    <p className="px-4 py-6 text-center text-xs text-dim">
+                      {t("office.logEmpty")}
+                    </p>
+                  ) : (
+                    <ChatLog
+                      events={stream.events}
+                      roster={stream.roster}
+                      connected={stream.connected}
+                      polling={stream.polling}
+                      slug={slug}
+                      className="h-[22rem]"
+                    />
+                  )}
+                </div>
+              </Panel>
+            </div>
+          )}
 
           {/* 직원 카드 — 이름 바꾸기와 채용·해고가 여기 있다 */}
           <div data-enter>
@@ -385,8 +430,19 @@ export default function OfficePage() {
       </section>
 
       {/* 오른쪽 — 작업 로그와 진행 상황 */}
+      <ResizeHandle
+        width={logWidth}
+        onChange={setLogWidthDrag}
+        onCommit={commitLogWidth}
+        min={LOG_WIDTH_MIN}
+        max={LOG_WIDTH_MAX}
+        side="left"
+        label={t("office.logResize")}
+        className="hidden lg:block"
+      />
       <aside
-        className="hidden h-full w-[21rem] shrink-0 flex-col border-l border-line
+        style={{ width: logWidth }}
+        className="hidden h-full shrink-0 flex-col border-l border-line
           bg-[color:var(--panel)] backdrop-blur-xl lg:flex"
         data-enter
       >
@@ -431,6 +487,7 @@ export default function OfficePage() {
               roster={stream.roster}
               connected={stream.connected}
               polling={stream.polling}
+              slug={slug}
               className="h-full"
             />
           )}

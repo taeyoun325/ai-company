@@ -75,3 +75,114 @@ export function useSticky(
 
   return [value, set];
 }
+
+// ── 이번 탭에서만(DAY 24 — Mock 경고 닫기) ────────────────────────────
+//
+// `useSticky` 와 같은 모양이지만 `sessionStorage` 를 쓴다 — 탭을 닫았다
+// 새로 열면 다시 보여야 하는 값(예: 닫은 경고)은 `localStorage` 에 두면
+// 영영 안 보이게 된다.
+const sessionCache = new Map<string, boolean>();
+const sessionListeners = new Map<string, Set<() => void>>();
+
+function readSession(key: string, fallback: boolean): boolean {
+  if (sessionCache.has(key)) return sessionCache.get(key)!;
+  let value = fallback;
+  try {
+    value = window.sessionStorage.getItem(key) === "1";
+  } catch {
+    /* 못 읽으면 기본값 */
+  }
+  sessionCache.set(key, value);
+  return value;
+}
+
+export function useSessionFlag(key: string): [boolean, () => void] {
+  const subscribe = useCallback(
+    (cb: () => void) => {
+      const set = sessionListeners.get(key) ?? new Set();
+      set.add(cb);
+      sessionListeners.set(key, set);
+      return () => {
+        set.delete(cb);
+      };
+    },
+    [key],
+  );
+
+  const value = useSyncExternalStore(
+    subscribe,
+    () => readSession(key, false),
+    // 서버에는 세션 저장소가 없다. 언제나 "닫지 않음"으로 그린다.
+    () => false,
+  );
+
+  const setTrue = useCallback(() => {
+    sessionCache.set(key, true);
+    try {
+      window.sessionStorage.setItem(key, "1");
+    } catch {
+      /* 저장이 안 돼도 이번 화면에서는 닫힌 채로 남는다 */
+    }
+    sessionListeners.get(key)?.forEach((fn) => fn());
+  }, [key]);
+
+  return [value, setTrue];
+}
+
+// ── 폭 (DAY 24 — 작업 로그 · 레일 크기 조절) ──────────────────────────
+//
+// 불리언과 같은 이유로 `useSyncExternalStore` 를 쓴다: 서버는 브라우저가
+// 저장해둔 폭을 모르므로 첫 그림은 항상 기본 폭이다.
+const numCache = new Map<string, number>();
+const numListeners = new Map<string, Set<() => void>>();
+
+function readNumber(key: string, fallback: number): number {
+  if (numCache.has(key)) return numCache.get(key)!;
+  let value = fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    const n = raw === null ? NaN : Number(raw);
+    if (Number.isFinite(n)) value = n;
+  } catch {
+    /* 못 읽으면 기본값 */
+  }
+  numCache.set(key, value);
+  return value;
+}
+
+export function useStickyNumber(
+  key: string, fallback: number,
+): [number, (v: number) => void] {
+  const subscribe = useCallback(
+    (cb: () => void) => {
+      const set = numListeners.get(key) ?? new Set();
+      set.add(cb);
+      numListeners.set(key, set);
+      return () => {
+        set.delete(cb);
+      };
+    },
+    [key],
+  );
+
+  const value = useSyncExternalStore(
+    subscribe,
+    () => readNumber(key, fallback),
+    () => fallback,
+  );
+
+  const set = useCallback(
+    (next: number) => {
+      numCache.set(key, next);
+      try {
+        window.localStorage.setItem(key, String(next));
+      } catch {
+        /* 저장이 안 돼도 이번 방문에는 적용된다 */
+      }
+      numListeners.get(key)?.forEach((fn) => fn());
+    },
+    [key],
+  );
+
+  return [value, set];
+}

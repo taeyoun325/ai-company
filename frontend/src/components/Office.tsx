@@ -345,7 +345,9 @@ function NameField({
         }}
       >
         {e.name}
-        <span className="text-[10px] text-dim opacity-0 transition group-hover:opacity-100">
+        {/* 호버로만 보이면 터치 기기에서는 이 버튼이 있는지조차 알 수
+            없다(호버가 없다). 늘 옅게 보이다가 손을 올리면 또렷해진다. */}
+        <span className="text-[10px] text-dim opacity-40 transition group-hover:opacity-100">
           ✎
         </span>
       </span>

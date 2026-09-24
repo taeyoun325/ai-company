@@ -88,6 +88,9 @@ export interface BusEvent {
   /** phase */
   name?: string;
   detail?: string;
+  /** phase — 담당자가 바뀔 때만 온다(app/bus.py). 없으면 화면은 `name`·
+   *  `detail` 로 예전처럼 그린다. */
+  headline?: string | null;
   /** state */
   tasks?: TaskRow[];
   files?: string[];

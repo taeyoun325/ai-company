@@ -328,6 +328,18 @@ _M: dict[str, dict[str, str]] = {
         "en": "Review requested by the CEO",
         "ja": "CEO の要請で検証",
     },
+    # 채팅로그 헤드라인 (DAY 24). 단계가 바뀔 때만 한 줄 — 모델을 불러
+    # 매 줄을 요약하면 비용이 끝없이 나간다(narrator.py 와 같은 규칙).
+    "bus.handoff": {
+        "ko": "{frm} 완료 — {to}에게 전달",
+        "en": "{frm} done — handed to {to}",
+        "ja": "{frm} 完了 — {to} に引き継ぎ",
+    },
+    "bus.started": {
+        "ko": "{who} 시작",
+        "en": "{who} started",
+        "ja": "{who} 開始",
+    },
     # ── 제공자·키 (DAY 22) ─────────────────────────────────────────
     # 설정 화면이 이 문장을 그대로 보여준다. 키를 넣는 사람은 대개
     # 막혀서 온 사람이고, 막힌 이유가 읽히지 않으면 거기서 끝난다.
@@ -537,6 +549,12 @@ _M: dict[str, dict[str, str]] = {
               "reach ${projected}, so the instruction is refused.",
         "ja": "コスト上限(${limit}) — この呼び出しの最悪コストを加えると "
               "${projected} になるため指示を受け付けません。",
+    },
+    # ── 로그를 평범한 말로 (DAY 23 · app/narrator.py) ────────────────
+    "narrate.empty": {
+        "ko": "아직 설명할 로그가 없습니다. 일이 시작되면 다시 눌러주세요.",
+        "en": "Nothing to explain yet. Try again once work has started.",
+        "ja": "まだ説明できるログがありません。作業が始まったらもう一度お試しください。",
     },
     "plan.unknown": {"ko": "없는 요금제: {name}", "en": "No such plan: {name}",
                      "ja": "存在しない料金プラン: {name}"},

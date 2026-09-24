@@ -25,6 +25,7 @@ from app import byok
 from app import config
 from app import deploy
 from app import lang
+from app import narrator
 from app.api import auth as auth_api
 from app.api import local_tools
 from app.auth import deps as auth
@@ -961,6 +962,32 @@ def events(run: str | None = None, after: int = 0):
     rows = bus.read_trace(run, after) if run else bus.replay(run, after)
     return {"events": rows, "last_id": rows[-1]["id"] if rows else after,
             "roster": bus.roster()}
+
+
+@app.post("/api/projects/{slug}/narrate")
+def narrate_project(slug: str, request: Request, force: bool = False):
+    """작업 로그를 평범한 말로 설명한다 (DAY 23 · app/narrator.py).
+
+    검증(§11)과 같은 규칙으로 **CEO 가 누를 때만** 돈다 — 돈이 드는
+    호출을 자동으로 돌리면 아무도 안 보는 요약에 비용이 계속 나간다.
+    """
+    if not store.exists(slug):
+        raise HTTPException(404, lang.t("err.noProject"))
+    auth.require_owner(request, store.meta(slug).get("owner"))
+    try:
+        return narrator.narrate(slug, owner=auth.owner_of(request), force=force)
+    except tenant.NoPlan as e:
+        raise HTTPException(402, str(e))
+    except tenant.KeysMissing as e:
+        raise HTTPException(409, str(e))
+    except narrator.NoProgress as e:
+        raise HTTPException(409, str(e))
+    except KeyError as e:
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:          # 예산 상한 등
+        raise HTTPException(402, str(e))
+    except employees.EmployeeFailed as e:
+        raise HTTPException(502, secrets_broker.scrub(str(e)))
 
 
 if __name__ == "__main__":

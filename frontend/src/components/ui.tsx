@@ -126,17 +126,35 @@ export function MockBadge({
   );
 }
 
-export function Warning({ children }: { children: ReactNode }) {
+export function Warning({
+  children, onClose, closeLabel,
+}: {
+  children: ReactNode;
+  /** 있으면 오른쪽에 닫기(×) 버튼이 뜬다. 없으면 지금처럼 접거나 지울 수
+   *  없는 경고로 남는다 — Mock 경고처럼 계속 봐야 하는 것은 그대로 둔다. */
+  onClose?: () => void;
+  closeLabel?: string;
+}) {
   return (
     <div
-      className="rounded-lg border px-3 py-2 text-sm"
+      className="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm"
       style={{
         color: "var(--mock)",
         borderColor: "color-mix(in srgb, var(--mock) 40%, transparent)",
         background: "color-mix(in srgb, var(--mock) 10%, transparent)",
       }}
     >
-      {children}
+      <div className="min-w-0 flex-1">{children}</div>
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={closeLabel ?? "Close"}
+          className="shrink-0 rounded px-1 text-xs opacity-70 transition hover:opacity-100"
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }

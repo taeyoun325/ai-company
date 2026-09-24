@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS wallets (
 );
 """
 
+# 요금제를 오가며 무한히 크레딧을 받는 것을 막으려면, "이 요금제로 크레딧을
+# 받은 적이 있는가"를 어딘가 적어둬야 한다 — 없으면 A→B→A→B 로 누를 때마다
+# 매번 "새 요금제로 바뀌었다"로 보여서 계속 더해진다. 기존 DB 에는 이 칸이
+# 없으므로 ALTER TABLE 로 얹는다 (없을 때만 — 이미 있으면 예외를 무시한다).
+_MIGRATIONS = (
+    "ALTER TABLE wallets ADD COLUMN granted_plans TEXT NOT NULL DEFAULT ''",
+)
+
 
 def path() -> Path:
     """프로젝트 색인과 같은 파일. 표만 다르다."""
@@ -67,6 +75,11 @@ def conn() -> sqlite3.Connection:
     c.execute("PRAGMA synchronous=NORMAL")
     with c:
         c.executescript(SCHEMA)
+        for stmt in _MIGRATIONS:
+            try:
+                c.execute(stmt)
+            except sqlite3.OperationalError:
+                pass                      # 칸이 이미 있다
     _local.conn = c
     _local.path = str(path())
     return c
@@ -101,20 +114,41 @@ def create(owner: str, plan: str, granted: float) -> dict:
     with _lock, conn() as c:
         c.execute(
             "INSERT INTO wallets "
-            "(owner, plan, granted, spent, topped_up, byok_usd, renewed_at) "
-            "VALUES (?, ?, ?, 0, 0, 0, ?) "
+            "(owner, plan, granted, spent, topped_up, byok_usd, renewed_at, "
+            "granted_plans) "
+            "VALUES (?, ?, ?, 0, 0, 0, ?, ?) "
             "ON CONFLICT (owner) DO NOTHING",
-            (owner, plan, granted, time.time()))
+            (owner, plan, granted, time.time(), plan))
     return get(owner) or {}
 
 
-def add_plan(owner: str, plan: str, credits: float) -> None:
-    """요금제를 바꾸고 그 몫을 **더한다.** 이미 쓴 것은 그대로 둔다."""
+def add_plan(owner: str, plan: str, credits: float) -> bool:
+    """요금제를 바꾼다.
+
+    이 요금제로 크레딧을 받은 게 **처음**이면 그 몫을 더한다. 전에 이미
+    받은 적이 있으면(전에 골랐다가 다른 데로 갔다가 돌아온 경우 포함)
+    요금제만 바뀌고 크레딧은 다시 주지 않는다 — 두 요금제를 번갈아
+    누르면 누를 때마다 크레딧이 쌓이는 길을 막는다. 이미 쓴 것은
+    그대로 둔다.
+
+    반환값은 이번 전환에서 크레딧을 실제로 줬는지.
+    """
     with _lock, conn() as c:
+        row = c.execute(
+            "SELECT granted_plans FROM wallets WHERE owner = ?",
+            (owner,)).fetchone()
+        already = {p for p in (row["granted_plans"] if row else "").split(",")
+                   if p}
+        if plan in already:
+            c.execute("UPDATE wallets SET plan = ? WHERE owner = ?",
+                      (plan, owner))
+            return False
+        already.add(plan)
         c.execute(
             "UPDATE wallets SET plan = ?, granted = granted + ?, "
-            "renewed_at = ? WHERE owner = ?",
-            (plan, credits, time.time(), owner))
+            "renewed_at = ?, granted_plans = ? WHERE owner = ?",
+            (plan, credits, time.time(), ",".join(sorted(already)), owner))
+        return True
 
 
 def add_spent(owner: str, credits: float) -> None:
@@ -173,16 +207,18 @@ def migrate_from(file: Path) -> int:
     for owner, row in data.items():
         if not isinstance(row, dict) or get(owner) is not None:
             continue
+        plan_name = row.get("plan", "free")
         with _lock, conn() as c:
             c.execute(
                 "INSERT INTO wallets "
-                "(owner, plan, granted, spent, topped_up, byok_usd, renewed_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "(owner, plan, granted, spent, topped_up, byok_usd, renewed_at,"
+                " granted_plans)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (owner) DO NOTHING",
-                (owner, row.get("plan", "free"),
+                (owner, plan_name,
                  float(row.get("granted", 0)), float(row.get("spent", 0)),
                  float(row.get("topped_up", 0)), float(row.get("byok_usd", 0)),
-                 float(row.get("renewed_at", time.time()))))
+                 float(row.get("renewed_at", time.time())), plan_name))
         moved += 1
     return moved
 
