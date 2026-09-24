@@ -33,7 +33,8 @@ import type { ReactNode } from "react";
 export type IconName =
   | "strategist" | "developer" | "analyst" | "writer" | "designer"
   | "building" | "req" | "verify" | "package" | "person" | "system"
-  | "plus" | "play" | "stop" | "panel";
+  | "plus" | "play" | "stop" | "panel" | "copy" | "check" | "download"
+  | "chevron";
 
 /** 24×24 격자 위의 path 들. 바깥에서 stroke 속성을 걸어준다. */
 const GLYPHS: Record<IconName, ReactNode> = {
@@ -136,6 +137,22 @@ const GLYPHS: Record<IconName, ReactNode> = {
     </>
   ),
   stop: <rect x="6.5" y="6.5" width="11" height="11" rx="2" />,
+  copy: (
+    <>
+      <rect x="8.5" y="8.5" width="11" height="11" rx="2" />
+      <path d="M6 15.5H5.5A1.5 1.5 0 0 1 4 14V5.5A1.5 1.5 0 0 1 5.5 4H14a1.5 1.5 0 0 1 1.5 1.5V6" />
+    </>
+  ),
+  check: <polyline points="5 12.5 9.5 17 19 6.5" />,
+  download: (
+    <>
+      <path d="M12 3.6v11.3" />
+      <path d="M7.4 10.4 12 15l4.6-4.6" />
+      <path d="M4.5 17v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2" />
+    </>
+  ),
+  // 접힘/펼침 삼각형 — 파일 트리의 폴더.
+  chevron: <path d="M9 6.5 15 12 9 17.5" />,
   // 톱니 — 시스템이 하는 말. 사람이 한 말과 섞이면 안 된다.
   system: (
     <>

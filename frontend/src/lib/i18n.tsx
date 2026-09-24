@@ -345,6 +345,8 @@ const S = {
   "file.toCurrent": { ko: "v{n} → 현재", en: "v{n} → current", ja: "v{n} → 現在" },
   "file.raw": { ko: "원문 보기", en: "View raw", ja: "原文を見る" },
   "file.noDiff": { ko: "차이가 없습니다.", en: "No differences.", ja: "差分はありません。" },
+  "file.copy": { ko: "복사", en: "Copy", ja: "コピー" },
+  "file.download": { ko: "다운로드", en: "Download", ja: "ダウンロード" },
 
   // ── 요금제 화면 (DAY 22) ──────────────────────────────────────
   "price.myCredits": { ko: "내 크레딧", en: "My credits", ja: "マイクレジット" },

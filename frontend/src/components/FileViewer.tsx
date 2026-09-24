@@ -11,11 +11,13 @@
  */
 import type { FileVersion } from "@/lib/types";
 import { useErrorText, useLang } from "@/lib/i18n";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
+import { highlightLine, langOf } from "@/lib/highlight";
 import { useLoader } from "@/lib/useLoader";
 import { Empty } from "./ui";
+import { Icon } from "./icons";
 
 /**
  * 이 파일이 여기까지 온 경위.
@@ -74,6 +76,163 @@ function Trail({ versions }: { versions: FileVersion[] }) {
   );
 }
 
+/**
+ * 평평한 경로 목록을 폴더 트리로.
+ *
+ * `src/` `docs/` `design/` 를 매번 접두사 문자열로 반복해 보여주던 것을
+ * 한 번만 적고 그 밑에 접는 구조로 바꾼다 — 파일이 늘어날수록 평평한
+ * 목록은 같은 접두사가 몇 번이고 반복되는 벽이 된다.
+ */
+interface TreeNode {
+  name: string;
+  path: string;
+  children: Map<string, TreeNode>;
+}
+
+function buildTree(files: string[]): TreeNode {
+  const root: TreeNode = { name: "", path: "", children: new Map() };
+  for (const f of files) {
+    let node = root;
+    const parts = f.split("/");
+    parts.forEach((part, i) => {
+      const path = parts.slice(0, i + 1).join("/");
+      let next = node.children.get(part);
+      if (!next) {
+        next = { name: part, path, children: new Map() };
+        node.children.set(part, next);
+      }
+      node = next;
+    });
+  }
+  return root;
+}
+
+function FileTree({
+  node, depth, chosen, onPick, collapsed, onToggle,
+}: {
+  node: TreeNode; depth: number; chosen: string | null;
+  onPick: (f: string) => void;
+  collapsed: Set<string>; onToggle: (path: string) => void;
+}) {
+  const entries = [...node.children.values()].sort((a, b) => {
+    const aDir = a.children.size > 0, bDir = b.children.size > 0;
+    if (aDir !== bDir) return aDir ? -1 : 1;    // 폴더 먼저
+    return a.name.localeCompare(b.name);
+  });
+  return (
+    <>
+      {entries.map((n) => {
+        const isDir = n.children.size > 0;
+        const isClosed = collapsed.has(n.path);
+        if (isDir) {
+          return (
+            <div key={n.path}>
+              <button
+                type="button"
+                onClick={() => onToggle(n.path)}
+                className="flex w-full items-center gap-1 rounded-md px-1.5 py-1
+                  text-left font-mono text-xs text-dim hover:bg-panel2"
+                style={{ paddingLeft: `${depth * 0.75 + 0.375}rem` }}
+              >
+                <Icon
+                  name="chevron"
+                  size={11}
+                  className={`shrink-0 transition-transform ${isClosed ? "" : "rotate-90"}`}
+                />
+                {n.name}/
+              </button>
+              {!isClosed && (
+                <FileTree
+                  node={n} depth={depth + 1} chosen={chosen} onPick={onPick}
+                  collapsed={collapsed} onToggle={onToggle}
+                />
+              )}
+            </div>
+          );
+        }
+        return (
+          <button
+            key={n.path}
+            type="button"
+            onClick={() => onPick(n.path)}
+            className={`block w-full truncate rounded-md py-1 text-left font-mono
+              text-xs ${n.path === chosen ? "bg-panel2 text-fg" : "text-muted hover:bg-panel2"}`}
+            style={{ paddingLeft: `${depth * 0.75 + 0.375}rem`, paddingRight: "0.5rem" }}
+            title={n.path}
+          >
+            {n.name}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+/** 복사 · 다운로드. 클로드 아티팩트에도 있는 그 두 버튼이다. */
+function FileActions({ path, content }: { path: string; content: string }) {
+  const { t } = useLang();
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* 클립보드 권한이 없는 환경도 있다 — 버튼은 조용히 아무 일도 안 한다 */
+    }
+  };
+
+  const download = () => {
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = path.split("/").pop() || path;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => void copy()}
+        title={t("file.copy")}
+        className="rounded-md p-1.5 text-dim hover:bg-panel2 hover:text-fg"
+      >
+        <Icon name={copied ? "check" : "copy"} size={14}
+              style={copied ? { color: "var(--ok)" } : undefined} />
+      </button>
+      <button
+        type="button"
+        onClick={download}
+        title={t("file.download")}
+        className="rounded-md p-1.5 text-dim hover:bg-panel2 hover:text-fg"
+      >
+        <Icon name="download" size={14} />
+      </button>
+    </div>
+  );
+}
+
+/** 줄번호 + 문법 강조. 회색 줄번호 칸은 선택되지 않아 복사할 때 안 딸려온다. */
+function CodeLines({ text, lang }: { text: string; lang: string | null }) {
+  const lines = text.split("\n");
+  return (
+    <code className="grid" style={{ gridTemplateColumns: "auto 1fr" }}>
+      {lines.map((line, i) => (
+        <span key={i} className="contents">
+          <span className="select-none pr-3 text-right text-dim">{i + 1}</span>
+          <span className="whitespace-pre-wrap break-all">
+            {highlightLine(line, lang)}
+          </span>
+        </span>
+      ))}
+    </code>
+  );
+}
+
 export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
   const { t } = useLang();
   const errText = useErrorText();
@@ -81,6 +240,14 @@ export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
   // 있다가 effect 로 맞추면, 목록이 바뀔 때마다 렌더가 한 번 더 돈다.
   const [chosen, setChosen] = useState<string | null>(null);
   const path = chosen && files.includes(chosen) ? chosen : (files[0] ?? null);
+  const tree = useMemo(() => buildTree(files), [files]);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggle = (p: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(p)) next.delete(p); else next.add(p);
+      return next;
+    });
 
   const [compare, setCompare] = useState<number | null>(null);
   const [diff, setDiff] = useState<{ kind: string; text: string }[]>([]);
@@ -118,28 +285,24 @@ export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
 
   return (
     <div className="grid gap-3 md:grid-cols-[minmax(0,13rem)_1fr]">
-      <ul className="max-h-[28rem] space-y-0.5 overflow-y-auto">
-        {files.map((f) => (
-          <li key={f}>
-            <button
-              type="button"
-              onClick={() => pick(f)}
-              className={`w-full truncate rounded-md px-2 py-1 text-left font-mono text-xs
-                ${f === path ? "bg-panel2 text-fg" : "text-muted hover:bg-panel2"}`}
-              title={f}
-            >
-              {/* 목록에서 눈이 찾는 것은 **파일 이름**이지 폴더가 아니다.
-                  `src/` `docs/` `design/` 가 같은 굵기로 반복되면 네 줄이
-                  같은 글자 뭉치로 보인다. 폴더는 흐리게 둔다. */}
-              <span className="text-dim">{f.slice(0, f.lastIndexOf("/") + 1)}</span>
-              {f.slice(f.lastIndexOf("/") + 1)}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="max-h-[28rem] space-y-0.5 overflow-y-auto">
+        <FileTree
+          node={tree} depth={0} chosen={path} onPick={pick}
+          collapsed={collapsed} onToggle={toggle}
+        />
+      </div>
 
       <div className="min-w-0">
         {error && <p className="mb-2 text-xs" style={{ color: "var(--bad)" }}>{error}</p>}
+
+        {path && (
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate font-mono text-xs text-dim" title={path}>
+              {path}
+            </span>
+            <FileActions path={path} content={content} />
+          </div>
+        )}
 
         {past.length > 0 && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -188,7 +351,7 @@ export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
 
         <pre className="max-h-[28rem] overflow-auto rounded-lg bg-panel2 p-3 font-mono text-xs leading-relaxed">
           {compare === null ? (
-            <code>{content}</code>
+            <CodeLines text={content} lang={path ? langOf(path) : null} />
           ) : diff.length === 0 ? (
             <code className="text-dim">{t("file.noDiff")}</code>
           ) : (
