@@ -178,9 +178,8 @@ def _check_cancelled(slug: str) -> None:
             raise Stop(lang.t("stop.byCeo"))
 
 
-def start(requirement: str, attachment_ids: list[str] | None = None,
-          owner: str = "local") -> str:
-    """새 실행을 시작하고 프로젝트 slug 를 돌려준다 (AUTO, §10).
+def _admit(owner: str) -> None:
+    """좌석·잔액 검사. 새로 시작하든 멈춘 걸 이어서 돌리든 같은 문을 지난다.
 
     동시 실행 수를 제한하는 이유: 각 실행이 모델을 호출하므로 무제한이면
     비용과 요청 한도가 동시에 터진다.
@@ -215,19 +214,60 @@ def start(requirement: str, attachment_ids: list[str] | None = None,
     # 한 번만 시작할 수 있게 되는데, 그건 상한이 아니라 횟수 제한이다.
     credits.reserve(owner, employee.max_worst_case())
 
-    slug = store.new_project(requirement, owner=owner)
+
+def _spawn(requirement: str, slug: str, attachment_ids: list[str],
+           owner: str, checkpoint: dict | None = None) -> None:
     # 요청의 언어를 **여기서** 집는다. 실행 스레드는 요청 컨텍스트를
     # 물려받지 못하므로, 안 집으면 영어로 요청한 사람이 한국어 산출물을
     # 받는다 (DAY 21).
     t = threading.Thread(
         target=_run,
-        args=(requirement, slug, attachment_ids or [], owner, lang.current()),
+        args=(requirement, slug, attachment_ids, owner, lang.current(), checkpoint),
         daemon=True, name=f"run:{slug}")
     with _runs_lock:
         _runs[slug] = t
-    store.save_meta(slug, {"beat": time.time()})
+    store.save_meta(slug, {"beat": time.time(), "status": "running",
+                           "stopped_reason": None})
     _start_beating()
     t.start()
+
+
+def start(requirement: str, attachment_ids: list[str] | None = None,
+          owner: str = "local") -> str:
+    """새 실행을 시작하고 프로젝트 slug 를 돌려준다 (AUTO, §10)."""
+    _admit(owner)
+    slug = store.new_project(requirement, owner=owner)
+    _spawn(requirement, slug, attachment_ids or [], owner)
+    return slug
+
+
+class NotResumable(RuntimeError):
+    """`stopped` 가 아닌 프로젝트는 이어서 돌릴 게 없거나 이미 돌고 있다."""
+
+
+def resume(slug: str, owner: str = "local") -> str:
+    """멈춘 실행을 이어서 돈다 (§18 체크포인트).
+
+    처음부터 다시 계획하지 않는다 — 마지막으로 저장된 체크포인트
+    (`_persist` 가 태스크마다 남긴 done · rounds · plan)를 그대로
+    이어받는다. 계획이 서기도 전에 멈췄다면(예산 상한을 PLAN 에서
+    맞았다면) 되돌릴 계획이 없으므로 처음부터 다시 계획한다 — 그래도
+    **같은 프로젝트**로 이어지는 것이 새 프로젝트를 또 만드는 것보다
+    낫다. 대화 이력과 이미 쓴 비용이 한 slug 에 남는다.
+
+    `stopped` 만 재개할 수 있다. `running` 은 이미 돌고 있고, `done` 은
+    이어갈 것이 없다 — 둘 다 재개가 아니라 다른 요청이다.
+    """
+    m = store.meta(slug)
+    if not m:
+        raise KeyError(slug)
+    if m.get("status") != "stopped":
+        raise NotResumable(lang.t("resume.notStopped",
+                                  status=m.get("status", "?")))
+    _admit(owner)
+    requirement = str(m.get("requirement", ""))
+    checkpoint = m.get("checkpoint") or {}
+    _spawn(requirement, slug, [], owner, checkpoint=checkpoint)
     return slug
 
 
@@ -375,7 +415,8 @@ def route(requirement: str) -> Routing:
 
 # ── 본체 ────────────────────────────────────────────────────────────
 def _run(requirement: str, slug: str, attachment_ids: list[str],
-         owner: str = "local", language: str = "ko") -> None:
+         owner: str = "local", language: str = "ko",
+         checkpoint: dict | None = None) -> None:
     """실행 스레드의 입구. 테넌트 자세를 **이 스레드에서 다시 세운다.**
 
     컨텍스트 변수는 새 스레드로 따라오지 않는다. 여기서 세우지 않으면
@@ -383,32 +424,46 @@ def _run(requirement: str, slug: str, attachment_ids: list[str],
     BYOK 고객의 요금을 우리가 낸다. 둘 다 조용히 일어난다.
     """
     with tenant.bind(owner), lang.bind(language):
-        _run_bound(requirement, slug, attachment_ids, owner)
+        _run_bound(requirement, slug, attachment_ids, owner, checkpoint)
 
 
 def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
-               owner: str = "local") -> None:
+               owner: str = "local", checkpoint: dict | None = None) -> None:
     # 이 스레드의 컨텍스트를 묶는다. 이후 bus/usage/pfs 호출은 전부 이 실행 소유다.
     bus.bind(slug)
-    usage.bind(slug)
     pfs.use(slug)
-    bus.reset(slug)
+    m = store.meta(slug)
+    if checkpoint is None:
+        # 재개면 이전 실행의 로그를 지우지 않는다 — 지금까지 무슨 일이
+        # 있었는지가 재개 이후의 로그와 이어져야 "왜 여기서부터 다시
+        # 도나"를 사람이 읽을 수 있다.
+        bus.reset(slug)
+        usage.bind(slug)
+    else:
+        # `bind()` 는 0부터 다시 센다 — 재개에는 그걸 쓰면 안 된다.
+        # 프로세스가 그대로면 메모리에 남은 값도 있겠지만, 서버가 그 사이
+        # 재시작됐을 수 있으므로 **디스크에 남은 값**에서 시작한다.
+        usage.seed(slug, m.get("usage") or {})
 
     score = Score()
-    m = store.meta(slug)
     any_mock = any(employee.is_mock(e) for e in roles.EMPLOYEES.values())
     store.save_meta(slug, {"mock": any_mock})
     bus.state(project={"slug": slug, "name": m.get("name", ""),
                        "requirement": requirement, "mock": any_mock})
     bus.emit("projects", list=store.list_projects())
 
-    rounds = 0
-    done: set[str] = set()
+    rounds = int(checkpoint.get("rounds", 0)) if checkpoint else 0
+    done: set[str] = set(checkpoint.get("done", [])) if checkpoint else set()
     rows: list[dict] = []
-    plan: Plan | None = None
+    plan: Plan | None = (
+        Plan.model_validate(checkpoint["plan"])
+        if checkpoint and checkpoint.get("plan") else None)
     report: dict = {}
 
-    bus.say("USER", requirement)
+    if checkpoint is None:
+        bus.say("USER", requirement)
+    else:
+        bus.say("SYSTEM", lang.t("log.resumed", n=len(done)), kind="tool")
     if any_mock:
         bus.say("SYSTEM", lang.t("log.mock"), kind="error")
     attachments_note = ""
@@ -419,63 +474,75 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
                 kind="tool")
         store.save_meta(slug, {"attachments": attachments_note})
 
-    bus.phase("PLAN", lang.t("phase.plan"))
-    score.push()
-
     try:
-        # 1) 기획 ────────────────────────────────────────────────────
-        _check_cancelled(slug)
-        _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.PLANNER), owner)
-        plan = employee.ask(roles.PLANNER,
-                            prompts.plan(requirement, attachments_note), Plan)
-        employee.say(roles.get(roles.PLANNER), plan.message_to_team)
-        bus.handoff(roles.PLANNER, roles.VERIFIER, "PLAN",
-                    task_titles=[t.title for t in plan.tasks],
-                    criteria=[c.text for c in plan.acceptance_criteria])
-        criteria: list[Criterion] = plan.acceptance_criteria
-        if not plan.tasks:
-            raise Stop(lang.t("stop.noTasks"))
-        score.total_tasks = len(plan.tasks)
-        score.ac_total = len(criteria)
-        store.save_meta(slug, {"name": plan.project_name,
-                               "criteria": [c.model_dump() for c in criteria]})
-        bus.state(project={"slug": slug, "name": plan.project_name,
-                           "requirement": requirement, "mock": any_mock})
-        rows = _board(plan, done, None)
-        score.push()
+        if plan is None:
+            # 1) 기획 ────────────────────────────────────────────────
+            bus.phase("PLAN", lang.t("phase.plan"))
+            score.push()
+            _check_cancelled(slug)
+            _spend_guard(rounds := rounds + 1,
+                        employee.worst_case_cost(roles.PLANNER), owner)
+            plan = employee.ask(roles.PLANNER,
+                                prompts.plan(requirement, attachments_note), Plan)
+            employee.say(roles.get(roles.PLANNER), plan.message_to_team)
+            bus.handoff(roles.PLANNER, roles.VERIFIER, "PLAN",
+                        task_titles=[t.title for t in plan.tasks],
+                        criteria=[c.text for c in plan.acceptance_criteria])
+            criteria: list[Criterion] = plan.acceptance_criteria
+            if not plan.tasks:
+                raise Stop(lang.t("stop.noTasks"))
+            score.total_tasks = len(plan.tasks)
+            score.ac_total = len(criteria)
+            store.save_meta(slug, {"name": plan.project_name,
+                                   "criteria": [c.model_dump() for c in criteria]})
+            bus.state(project={"slug": slug, "name": plan.project_name,
+                               "requirement": requirement, "mock": any_mock})
+            rows = _board(plan, done, None)
+            score.push()
 
-        # 2) 검증자가 테스트를 **먼저** 쓴다 ─────────────────────────
-        #    구현자는 이 파일들을 읽지도 못한다. 보면 맞춰 짜기 때문이다.
-        bus.phase("WRITE_TESTS", lang.t("phase.write_tests"))
-        _check_cancelled(slug)
-        _spend_guard(rounds := rounds + 1, employee.worst_case_cost(roles.VERIFIER), owner)
-        suite: TestSuite = employee.ask(
-            roles.VERIFIER, prompts.write_tests(criteria, plan.tasks), TestSuite)
-        employee.say(roles.get(roles.VERIFIER), suite.message_to_team)
-        covered: set[str] = set()
-        for tf in suite.files:
-            path = tf.path if tf.path.startswith("tests/") else f"tests/{tf.path}"
-            try:
-                pfs.write(path, tf.content, roles.VERIFIER, round=rounds)
-            except pfs.Denied as e:
+            # 2) 검증자가 테스트를 **먼저** 쓴다 ─────────────────────
+            #    구현자는 이 파일들을 읽지도 못한다. 보면 맞춰 짜기 때문이다.
+            bus.phase("WRITE_TESTS", lang.t("phase.write_tests"))
+            _check_cancelled(slug)
+            _spend_guard(rounds := rounds + 1,
+                        employee.worst_case_cost(roles.VERIFIER), owner)
+            suite: TestSuite = employee.ask(
+                roles.VERIFIER, prompts.write_tests(criteria, plan.tasks), TestSuite)
+            employee.say(roles.get(roles.VERIFIER), suite.message_to_team)
+            covered: set[str] = set()
+            for tf in suite.files:
+                path = tf.path if tf.path.startswith("tests/") else f"tests/{tf.path}"
+                try:
+                    pfs.write(path, tf.content, roles.VERIFIER, round=rounds)
+                except pfs.Denied as e:
+                    bus.say(roles.VERIFIER,
+                            lang.t("log.testDenied", path=path, why=e),
+                            kind="error")
+                    continue
+                covered.update(tf.covers)
                 bus.say(roles.VERIFIER,
-                        lang.t("log.testDenied", path=path, why=e),
-                        kind="error")
-                continue
-            covered.update(tf.covers)
-            bus.say(roles.VERIFIER,
-                    lang.t("log.testWritten", path=path,
-                           covers=", ".join(tf.covers) or lang.t("log.unspecified")),
-                    kind="tool")
-        score.ac_covered = len(covered & {c.id for c in criteria})
-        if suite.uncovered:
-            bus.say(roles.VERIFIER,
-                    lang.t("log.uncovered", ids=", ".join(suite.uncovered)),
-                    kind="verdict")
-        bus.handoff(roles.VERIFIER, "IMPLEMENT", "WRITE_TESTS",
-                    covered=sorted(covered), uncovered=suite.uncovered)
-        bus.state(files=store.files_of(slug))
-        score.push()
+                        lang.t("log.testWritten", path=path,
+                               covers=", ".join(tf.covers) or lang.t("log.unspecified")),
+                        kind="tool")
+            score.ac_covered = len(covered & {c.id for c in criteria})
+            if suite.uncovered:
+                bus.say(roles.VERIFIER,
+                        lang.t("log.uncovered", ids=", ".join(suite.uncovered)),
+                        kind="verdict")
+            bus.handoff(roles.VERIFIER, "IMPLEMENT", "WRITE_TESTS",
+                        covered=sorted(covered), uncovered=suite.uncovered)
+            bus.state(files=store.files_of(slug))
+            score.push()
+        else:
+            # 재개 — 이미 있는 계획을 그대로 쓴다. PLAN·WRITE_TESTS 를
+            # 다시 돌리면 검증자가 이미 쓴 테스트를 또 쓰거나, 전략가가
+            # 이미 끝난 태스크를 다른 계획으로 다시 쪼갤 수 있다.
+            criteria = plan.acceptance_criteria
+            score.total_tasks = len(plan.tasks)
+            score.ac_total = len(criteria)
+            score.ac_covered = int(checkpoint.get("ac_covered", 0))
+            rows = _board(plan, done, None)
+            score.push()
 
         # 3) 태스크 루프 ─────────────────────────────────────────────
         queue = _topo(plan.tasks)
@@ -558,7 +625,7 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
                     score.done_tasks = len(done)
                     rows = _board(plan, done, None)
                     score.push()
-                    _persist(slug, plan, rows, score)
+                    _persist(slug, plan, rows, score, done, rounds)
                     break
 
                 score.reworks += 1
@@ -603,18 +670,18 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
         score.ac_met = len(set(final.met_criteria) & ids)
         score.push()
 
-        _persist(slug, plan, rows, score, status="done", report=final)
+        _persist(slug, plan, rows, score, done, rounds, status="done", report=final)
         bus.emit("projects", list=store.list_projects())
         bus.emit("done", ok=not final.unmet_criteria, summary=final.summary,
                  unmet=final.unmet_criteria, score=score.value())
 
     except Stop as e:
-        _fail(slug, plan, rows, score, str(e))
+        _fail(slug, plan, rows, score, done, rounds, str(e))
     except employee.EmployeeFailed as e:
-        _fail(slug, plan, rows, score,
+        _fail(slug, plan, rows, score, done, rounds,
               lang.t("stop.employeeFailed", why=e))
     except Exception as e:                       # noqa: BLE001
-        _fail(slug, plan, rows, score, f"{type(e).__name__}: {e}")
+        _fail(slug, plan, rows, score, done, rounds, f"{type(e).__name__}: {e}")
     finally:
         # 실제로 쓴 만큼만 깎는다 (§15). 예약해두고 돌려주는 방식이 아닌
         # 이유: 실행이 죽으면 돌려줄 사람이 없다. Mock 은 원가가 0 이므로
@@ -630,8 +697,8 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
         pfs.release()
 
 
-def _persist(slug, plan, rows, score, status="running",
-             report: FinalReport | None = None) -> None:
+def _persist(slug, plan, rows, score, done: set[str], rounds: int,
+             status="running", report: FinalReport | None = None) -> None:
     patch = {
         "status": status,
         "score": score.value(),
@@ -642,15 +709,25 @@ def _persist(slug, plan, rows, score, status="running",
         "cache_ok": usage.cache_working(slug),
         "criteria": [c.model_dump() for c in plan.acceptance_criteria] if plan else [],
         "files": store.files_of(slug),
+        # 재개(§18)를 위한 체크포인트. `resume()` 이 이 셋만으로 처음부터
+        # 다시 계획하지 않고 이어갈 수 있다 — done 은 이미 끝낸 태스크,
+        # rounds 는 상한 검사가 이어서 세야 할 값, plan 은 다시 물을
+        # 필요가 없는 계획이다.
+        "checkpoint": {
+            "done": sorted(done),
+            "rounds": rounds,
+            "plan": plan.model_dump() if plan else None,
+            "ac_covered": score.ac_covered,
+        },
     }
     if report is not None:
         patch["report"] = report.model_dump()
     store.save_meta(slug, patch)
 
 
-def _fail(slug, plan, rows, score, msg: str) -> None:
+def _fail(slug, plan, rows, score, done: set[str], rounds: int, msg: str) -> None:
     bus.say("SYSTEM", lang.t("log.stopped", why=msg), kind="error")
-    _persist(slug, plan, rows, score, status="stopped")
+    _persist(slug, plan, rows, score, done, rounds, status="stopped")
     store.save_meta(slug, {"stopped_reason": msg})
     bus.emit("projects", list=store.list_projects())
     bus.emit("done", ok=False, summary=msg, unmet=[], score=score.value())

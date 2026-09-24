@@ -53,6 +53,26 @@ def bind(run_id: str) -> None:
         _runs[run_id] = _blank()
 
 
+def seed(run_id: str, data: dict[str, dict]) -> None:
+    """저장된 값에서 다시 센다 (재개, §18).
+
+    `bind()` 처럼 이 스레드의 집계 대상을 정하지만, 0 이 아니라 **디스크에
+    남아 있던 값**에서 시작한다. 멈췄던 실행이 재개될 때, 그 사이 서버가
+    재시작됐다면 메모리에는 아무것도 안 남아 있다 — `store.meta(slug)`
+    에 저장해 둔 값을 여기로 명시적으로 넣어야, 재개한 뒤의 사용량이
+    처음부터 다시 세지지 않고 이어진다.
+    """
+    _local.run = run_id
+    with _lock:
+        keys = set(_keys()) | set(data or {})
+        merged: dict[str, dict] = {}
+        for a in keys:
+            row = dict(_EMPTY)
+            row.update(data.get(a) or {})
+            merged[a] = row
+        _runs[run_id] = merged
+
+
 def attach(run_id: str) -> None:
     """집계 대상만 정한다. 이미 쌓인 값은 건드리지 않는다.
 

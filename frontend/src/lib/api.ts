@@ -256,6 +256,10 @@ export const api = {
   runs: () => call<{ running: string[]; projects: Project[] }>("/api/runs"),
   run: (slug: string) => call<Project>(`/api/runs/${seg(slug)}`),
   cancelRun: (slug: string) => post<{ ok: boolean }>(`/api/runs/${seg(slug)}/cancel`),
+  resumeRun: (slug: string) =>
+    post<{ slug: string; running: boolean; mock: boolean }>(
+      `/api/runs/${seg(slug)}/resume`,
+    ),
   route: (requirement: string) =>
     post<{ employee: string; why: string }>("/api/route", { requirement }),
 

@@ -527,6 +527,7 @@ const S = {
     ja: "成果物は実際の AI の作業結果ではありません。",
   },
   "proj.stop": { ko: "정지", en: "Stop", ja: "停止" },
+  "proj.resume": { ko: "이어서 진행", en: "Resume", ja: "再開" },
   "proj.stopped": { ko: "중단", en: "Stopped", ja: "中断" },
   "proj.unmet": {
     ko: "충족되지 않은 인수기준",

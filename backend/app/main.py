@@ -429,6 +429,35 @@ def start_run(req: RunReq, request: Request):
     return {"slug": slug, "running": True, "mock": is_mock}
 
 
+@app.post("/api/runs/{slug}/resume")
+def resume_run(slug: str, request: Request):
+    """멈춘 실행을 이어서 돈다 (§18 체크포인트).
+
+    처음부터 다시 계획하지 않는다 — 마지막으로 저장된 체크포인트를
+    이어받는다. `stopped` 상태가 아니면(이미 돌고 있거나 끝났으면) 재개할
+    것이 없다.
+    """
+    if not store.exists(slug):
+        raise HTTPException(404, lang.t("err.noProject"))
+    auth.require_owner(request, store.meta(slug).get("owner"))
+    owner = auth.owner_of(request)
+    try:
+        orchestrator.resume(slug, owner=owner)
+    except orchestrator.NotResumable as e:
+        raise HTTPException(409, str(e))
+    except tenant.NoPlan as e:
+        raise HTTPException(402, str(e))
+    except tenant.KeysMissing as e:
+        raise HTTPException(409, str(e))
+    except credits.InsufficientCredits as e:
+        raise HTTPException(402, str(e))
+    except RuntimeError as e:
+        raise HTTPException(429, str(e))
+    with tenant.bind(owner):
+        is_mock = registry.status()["all_mock"]
+    return {"slug": slug, "running": True, "mock": is_mock}
+
+
 @app.get("/api/runs")
 def list_runs(request: Request):
     """**내** 실행만. 진행 중 목록도 걸러야 한다 — 남의 slug 가 보이면

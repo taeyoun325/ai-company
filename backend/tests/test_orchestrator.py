@@ -274,6 +274,63 @@ def test_concurrency_limit(monkeypatch):
         engine.start("아무거나")
 
 
+# ── 재개 (§18 체크포인트) ─────────────────────────────────────────
+def test_resume_continues_from_the_checkpoint_instead_of_restarting(monkeypatch):
+    """멈춘 실행을 재개하면 이미 끝난 태스크를 다시 하지 않는다.
+
+    Mock 개발자는 t1(src/calc.py)에서 한 번 반려를 받고 고친다 —
+    라운드 4에서 통과한다는 것을 미리 확인해 뒀다. 라운드 상한을 4로
+    두면 t1 만 끝낸 채로 멈춘다.
+    """
+    monkeypatch.setattr(config, "MAX_ROUNDS", 4)
+    slug, m = _run()
+    assert m["status"] == "stopped"
+    assert "라운드 상한" in m["stopped_reason"]
+    checkpoint = m["checkpoint"]
+    # t1 이 통과한 라운드(4) 다음, t2 의 가드 검사가 라운드를 5로 올리고
+    # 나서야 상한을 넘겨 멈춘다 — 그 시도 자체가 라운드로 세진다.
+    assert checkpoint["rounds"] == 5
+    assert len(checkpoint["done"]) == 1, "t1 하나만 끝나고 멈춰야 한다"
+    developer_calls_before = m["usage"]["developer"]["calls"]
+
+    monkeypatch.setattr(config, "MAX_ROUNDS", 100)
+    engine.resume(slug)
+    m2 = _wait(slug)
+
+    assert m2["status"] == "done", m2.get("stopped_reason")
+    assert m2["usage"]["developer"]["calls"] == developer_calls_before, \
+        "재개했는데 이미 끝난 태스크를 다시 구현했다"
+    files = store.files_of(slug)
+    assert "src/calc.py" in files
+    assert "docs/README.md" in files
+    assert "design/screen.md" in files
+
+
+def test_resume_keeps_the_log_from_before_the_stop(monkeypatch):
+    """재개는 새 실행이 아니다 — 이전 로그가 지워지면 안 된다."""
+    monkeypatch.setattr(config, "MAX_ROUNDS", 4)
+    slug, _ = _run()
+    events_before = len(bus.history(slug))
+
+    monkeypatch.setattr(config, "MAX_ROUNDS", 100)
+    engine.resume(slug)
+    _wait(slug)
+
+    assert len(bus.history(slug)) > events_before
+
+
+def test_resume_rejects_a_project_that_is_not_stopped():
+    slug, m = _run()
+    assert m["status"] == "done"
+    with pytest.raises(engine.NotResumable):
+        engine.resume(slug)
+
+
+def test_resume_rejects_an_unknown_project():
+    with pytest.raises(KeyError):
+        engine.resume("no-such-project")
+
+
 # ── AUTO 라우팅 (§10) ──────────────────────────────────────────────
 def test_route_picks_an_assignable_employee():
     assert engine.route("README 를 써주세요").employee in roles.assignable()

@@ -137,6 +137,19 @@ _M: dict[str, dict[str, str]] = {
         "en": "**Mock employees** are working. The output is not the work of a real model. Register API keys in settings.",
         "ja": "今は **Mock 社員**が働いています。成果物は実際の AI の作業結果ではありません。設定で API キーを登録してください。",
     },
+    "log.resumed": {
+        "ko": "멈췄던 지점에서 이어갑니다 — 이미 끝난 태스크 {n}개는 다시 "
+              "하지 않습니다.",
+        "en": "Resuming from where it stopped — the {n} task(s) already done "
+              "won't be redone.",
+        "ja": "止まったところから再開します — すでに完了したタスク{n}件は"
+              "やり直しません。",
+    },
+    "resume.notStopped": {
+        "ko": "멈춘 실행만 재개할 수 있습니다 — 지금 상태: {status}.",
+        "en": "Only a stopped run can be resumed — current status: {status}.",
+        "ja": "停止した実行のみ再開できます — 現在の状態: {status}。",
+    },
     "log.attached": {"ko": "첨부: {what}", "en": "Attached: {what}", "ja": "添付: {what}"},
     "log.pytest": {
         "ko": "격리 환경에서 pytest 실행 중…",

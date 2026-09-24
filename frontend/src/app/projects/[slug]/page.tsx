@@ -91,6 +91,13 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
                 {t("proj.stop")}
               </Button>
             )}
+            {/* 멈춘 것만 재개할 수 있다 — 처음부터 다시 계획하지 않고
+                마지막 체크포인트에서 이어간다(§18). */}
+            {project.status === "stopped" && (
+              <Button onClick={() => void api.resumeRun(slug).then(reload)}>
+                {t("proj.resume")}
+              </Button>
+            )}
           </span>
         }
       >
