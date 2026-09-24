@@ -132,6 +132,29 @@ def test_cost_limit_is_checked_before_the_call(monkeypatch):
     assert m["cost"] <= config.MAX_PROJECT_COST + 1e-9, "상한을 넘겨 쓴 뒤 멈췄다"
 
 
+def test_daily_cost_cap_stops_the_run_even_under_the_project_cap(monkeypatch):
+    """프로젝트 상한 위의 두 번째 벽 — 하루 전체를 막는다.
+
+    프로젝트 상한(기본 $5)은 그대로 두고 일일 상한만 조인다. 프로젝트
+    상한이 넉넉한데도 멈춰야, 이게 같은 검사의 중복이 아니라 별개의
+    벽이라는 뜻이다.
+    """
+    monkeypatch.setattr(config, "MAX_DAILY_COST", 0.0001)
+    monkeypatch.setattr(employee, "worst_case_cost", lambda _id: 1.0)
+    _, m = _run()
+    assert m["status"] == "stopped"
+    assert "오늘 사용한도" in m["stopped_reason"]
+
+
+def test_user_lifetime_cost_cap_stops_the_run_even_under_the_project_cap(monkeypatch):
+    """평생 누적 상한 — 크레딧 잔액이 넉넉해도 이 벽은 따로 본다."""
+    monkeypatch.setattr(config, "MAX_USER_COST", 0.0001)
+    monkeypatch.setattr(employee, "worst_case_cost", lambda _id: 1.0)
+    _, m = _run()
+    assert m["status"] == "stopped"
+    assert "누적 사용한도" in m["stopped_reason"]
+
+
 def test_replan_limit_stops_the_run(monkeypatch):
     """검증자가 계속 반려하면 무한 루프가 된다. 그 비용은 CEO 가 낸다."""
     monkeypatch.setattr(config, "MAX_REWORK", 1)

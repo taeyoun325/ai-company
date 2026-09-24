@@ -14,6 +14,7 @@
    아무 데도 가지 않는다. 이 셋이 어긋나면 청구서로만 드러난다.
 """
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # backend/
 
 from app import config, usage                                   # noqa: E402
 from app.agents import roles                                     # noqa: E402
-from app.usage import credits                                    # noqa: E402
+from app.usage import credits, wallet_store                      # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -136,6 +137,64 @@ def test_charge_can_go_negative():
     """0 에서 멈추면 얼마나 초과했는지 기록이 사라진다."""
     credits.charge("local", 10_000.0)
     assert credits.balance() < 0
+
+
+# ── 일일·평생 누적 상한(§18 의 두 번째 벽) ────────────────────────
+def test_charge_adds_to_todays_cost_regardless_of_billing_method():
+    """일일 상한은 청구 방식과 무관하게 **실제 원가**를 본다."""
+    assert credits.daily_cost_usd("local") == 0.0
+    credits.charge("local", 0.10)
+    assert credits.daily_cost_usd("local") == pytest.approx(0.10)
+    credits.charge("local", 0.05)
+    assert credits.daily_cost_usd("local") == pytest.approx(0.15)
+
+
+def test_daily_cost_resets_after_utc_midnight():
+    """날짜가 바뀌면 어제 쓴 돈은 오늘의 상한과 무관하다."""
+    credits.charge("local", 1.0)
+    assert credits.daily_cost_usd("local") == pytest.approx(1.0)
+    # 하루 전 자정으로 되돌려 "어제 쓴 것"처럼 만든다.
+    yesterday = wallet_store._utc_midnight(time.time()) - 3600
+    with wallet_store._lock, wallet_store.conn() as c:
+        c.execute("UPDATE wallets SET daily_reset_at = ? WHERE owner = ?",
+                  (yesterday, "local"))
+    assert credits.daily_cost_usd("local") == 0.0
+    credits.charge("local", 0.5)
+    assert credits.daily_cost_usd("local") == pytest.approx(0.5), \
+        "어제 쓴 금액이 새 날의 합계에 섞였다"
+
+
+def test_lifetime_cost_counts_platform_and_byok_spend_together():
+    assert credits.lifetime_cost_usd("local") == 0.0
+    credits.charge("local", 0.20)                 # 플랫폼 청구 (크레딧 차감)
+    wallet_store.add_byok_usd("local", 0.30)       # 고객 자기 키 (기록만)
+    assert credits.lifetime_cost_usd("local") == pytest.approx(0.50)
+
+
+def test_check_global_caps_passes_when_under_both_limits():
+    credits.check_global_caps("local", 0.01)       # 예외가 나면 실패
+
+
+def test_check_global_caps_blocks_when_daily_cap_would_be_exceeded(monkeypatch):
+    monkeypatch.setattr(config, "MAX_DAILY_COST", 1.0)
+    credits.charge("local", 0.90)
+    with pytest.raises(credits.DailyCostExceeded):
+        credits.check_global_caps("local", 0.20)
+
+
+def test_check_global_caps_blocks_when_lifetime_cap_would_be_exceeded(monkeypatch):
+    monkeypatch.setattr(config, "MAX_USER_COST", 1.0)
+    credits.charge("local", 0.90)
+    with pytest.raises(credits.UserCostExceeded):
+        credits.check_global_caps("local", 0.20)
+
+
+def test_check_global_caps_is_off_when_the_limit_is_zero(monkeypatch):
+    """0 은 운영자가 끈 것으로 본다 — 검사 자체를 건너뛴다."""
+    monkeypatch.setattr(config, "MAX_DAILY_COST", 0.0)
+    monkeypatch.setattr(config, "MAX_USER_COST", 0.0)
+    credits.charge("local", 10_000.0)
+    credits.check_global_caps("local", 10_000.0)   # 예외가 나면 실패
 
 
 def test_reserve_blocks_before_spending():

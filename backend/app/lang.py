@@ -104,6 +104,22 @@ _M: dict[str, dict[str, str]] = {
         "en": "Not enough credits — this run needs up to {needed}, and you have {balance}.",
         "ja": "クレジットが不足しています — この作業の最大見積もり {needed}、残高 {balance}。",
     },
+    "cost.dailyExceeded": {
+        "ko": "오늘 사용한도(${limit})를 넘습니다 — 이 호출까지 더하면 ${projected}. "
+              "자정(UTC)이 지나면 다시 시작할 수 있습니다.",
+        "en": "Today's cost cap (${limit}) would be exceeded — adding this call "
+              "reaches ${projected}. Try again after UTC midnight.",
+        "ja": "本日の利用上限(${limit})を超えます — この呼び出しを加えると "
+              "${projected}。UTC 深夜0時以降に再度お試しください。",
+    },
+    "cost.userExceeded": {
+        "ko": "누적 사용한도(${limit})를 넘습니다 — 이 호출까지 더하면 ${projected}. "
+              "운영자에게 문의하세요.",
+        "en": "Lifetime cost cap (${limit}) would be exceeded — adding this call "
+              "reaches ${projected}. Contact the operator.",
+        "ja": "累計利用上限(${limit})を超えます — この呼び出しを加えると "
+              "${projected}。運営者にお問い合わせください。",
+    },
     "run.concurrent": {
         "ko": "동시 실행 한도({n})에 도달했습니다. 진행 중인 작업이 끝난 뒤에 시작하세요.",
         "en": "You have reached the concurrent run limit ({n}). Start again when a running job finishes.",

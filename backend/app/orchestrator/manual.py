@@ -236,11 +236,15 @@ def _guard(employee_id: str, slug: str, owner: str = "local") -> None:
     limit = min(config.MAX_PROJECT_COST,
                 float(credits.plan(credits.wallet(owner).plan)
                       .get("max_project_cost", config.MAX_PROJECT_COST)))
-    projected = usage.total_cost(slug) + employee.worst_case_cost(employee_id)
+    about_to_spend = employee.worst_case_cost(employee_id)
+    projected = usage.total_cost(slug) + about_to_spend
     if projected > limit:
         raise RuntimeError(
             lang.t("manual.cost", limit=limit,
                    projected=f"{projected:.2f}"))
+    # 프로젝트 상한 위의 두 번째 벽(§18) — AUTO 의 `_spend_guard` 와 같은 검사.
+    # MANUAL 이라고 비켜가면, 싼 요금제로 MANUAL 만 돌리는 것이 우회가 된다.
+    credits.check_global_caps(owner, about_to_spend)
 
 
 def _persist(slug: str) -> None:

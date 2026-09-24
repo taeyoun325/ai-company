@@ -50,6 +50,36 @@ class InsufficientCredits(RuntimeError):
         self.balance = balance
 
 
+class DailyCostExceeded(RuntimeError):
+    """오늘(UTC) 이미 쓴 실제 원가가 `config.MAX_DAILY_COST` 를 넘는다.
+
+    요금제 상한(`_spend_guard`/`_guard` 의 `max_project_cost`)과는 별개다 —
+    이건 프로젝트 하나가 아니라 **하루 전체**를 막는 안전장치다.
+    """
+
+    def __init__(self, projected: float, limit: float):
+        from app import lang
+        super().__init__(lang.t("cost.dailyExceeded", limit=f"{limit:.2f}",
+                                projected=f"{projected:.2f}"))
+        self.projected = projected
+        self.limit = limit
+
+
+class UserCostExceeded(RuntimeError):
+    """이 사용자가 평생 쓴 실제 원가가 `config.MAX_USER_COST` 를 넘는다.
+
+    크레딧 잔액이나 요금제와 무관하다 — 충전을 계속하면 크레딧은 늘 있지만,
+    한 계정이 낼 수 있는 돈에는 그래도 바닥이 있어야 사고가 안 커진다.
+    """
+
+    def __init__(self, projected: float, limit: float):
+        from app import lang
+        super().__init__(lang.t("cost.userExceeded", limit=f"{limit:.2f}",
+                                projected=f"{projected:.2f}"))
+        self.projected = projected
+        self.limit = limit
+
+
 @dataclass
 class Wallet:
     owner: str = "local"
@@ -238,6 +268,10 @@ def charge(owner: str, usd: float) -> float:
     기록이 사라지고, 다음 달에 그만큼 덜 받아야 한다는 사실도 사라진다.
     """
     w = wallet(owner)
+    # 일일 상한은 청구 방식과 무관하게 **실제로 나간 돈**을 본다 — 크레딧
+    # 이든 BYOK 든, 우리가 감당해야 할 API 호출이 일어난 건 같다.
+    if usd:
+        wallet_store.add_daily_cost(owner, usd)
     if not charges_credits(w.plan):
         # 고객 키로 나간 돈은 **기록만** 한다. 청구는 제공자가 고객에게
         # 직접 한다. 기록까지 버리면 고객은 자기가 얼마를 썼는지 우리
@@ -248,6 +282,41 @@ def charge(owner: str, usd: float) -> float:
     # 나중 것이 앞의 차감을 덮어쓰고, 돈이 조용히 복구된다.
     wallet_store.add_spent(owner, usd_to_credits(usd))
     return wallet(owner).balance
+
+
+def daily_cost_usd(owner: str) -> float:
+    """오늘(UTC) 이미 쓴 실제 원가(달러)."""
+    return wallet_store.daily_cost(owner)
+
+
+def lifetime_cost_usd(owner: str) -> float:
+    """이 사용자가 평생 낸 실제 원가(달러). 청구 방식과 무관하다.
+
+    플랫폼 청구분은 `spent`(크레딧)를 달러로 환산한 값이 곧 원가이고
+    (크레딧 = 원가 / CREDIT_USD 로 만들어지므로), BYOK 청구분은
+    `byok_usd` 에 이미 달러로 쌓여 있다. 둘을 더하면 청구 방식과 무관한
+    "이 계정 때문에 실제로 나간 돈" 전체가 된다.
+    """
+    w = wallet(owner)
+    return credits_to_usd(w.spent) + w.byok_usd
+
+
+def check_global_caps(owner: str, about_to_spend_usd: float) -> None:
+    """일일·평생 누적 상한(§18 의 마지막 방벽). 요금제 상한과 별개로 늘 본다.
+
+    프로젝트 비용 상한(`max_project_cost`)은 프로젝트 **하나**를 막는다.
+    이건 그 위에 있는 두 번째 벽이다 — 여러 프로젝트를 연달아 돌려
+    하루치를, 또는 계정 하나가 평생 낼 수 있는 돈을 넘기는 사고를 막는다.
+    한도를 0 으로 두면(운영자가 끈 것으로 본다) 검사하지 않는다.
+    """
+    if config.MAX_DAILY_COST > 0:
+        projected = daily_cost_usd(owner) + about_to_spend_usd
+        if projected > config.MAX_DAILY_COST:
+            raise DailyCostExceeded(projected, config.MAX_DAILY_COST)
+    if config.MAX_USER_COST > 0:
+        projected = lifetime_cost_usd(owner) + about_to_spend_usd
+        if projected > config.MAX_USER_COST:
+            raise UserCostExceeded(projected, config.MAX_USER_COST)
 
 
 def refund(owner: str, credits: float) -> float:
@@ -276,6 +345,12 @@ def status(owner: str = "local") -> dict:
         "balance_usd": round(credits_to_usd(w.balance), 4),
         "max_concurrent": p.get("max_concurrent", 1),
         "max_project_cost": p.get("max_project_cost", 0.5),
+        # 프로젝트 상한 위의 두 번째 벽(§18). 0 이면 운영자가 끈 것 —
+        # 화면에는 그 경우 None 을 보내 "상한이 없다"를 그대로 말한다.
+        "daily_cost_usd": round(daily_cost_usd(w.owner), 4),
+        "max_daily_cost": config.MAX_DAILY_COST if config.MAX_DAILY_COST > 0 else None,
+        "lifetime_cost_usd": round(lifetime_cost_usd(w.owner), 4),
+        "max_user_cost": config.MAX_USER_COST if config.MAX_USER_COST > 0 else None,
         # 단가가 검증되지 않았으면 이 숫자들은 근거가 아니라 추측이다.
         "prices_verified": config.PRICES_VERIFIED,
         "prices_verified_on": config.PRICES_VERIFIED_ON,

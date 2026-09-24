@@ -26,6 +26,7 @@ SQLite 로 옮기면 차감이 **한 줄의 UPDATE** 가 된다:
 """
 from __future__ import annotations
 
+import calendar
 import json
 import sqlite3
 import threading
@@ -47,15 +48,34 @@ CREATE TABLE IF NOT EXISTS wallets (
     byok_usd   REAL NOT NULL DEFAULT 0,
     renewed_at REAL NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS spend_log (
+    owner TEXT NOT NULL,
+    day   TEXT NOT NULL,
+    usd   REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (owner, day)
+);
 """
 
 # 요금제를 오가며 무한히 크레딧을 받는 것을 막으려면, "이 요금제로 크레딧을
 # 받은 적이 있는가"를 어딘가 적어둬야 한다 — 없으면 A→B→A→B 로 누를 때마다
 # 매번 "새 요금제로 바뀌었다"로 보여서 계속 더해진다. 기존 DB 에는 이 칸이
 # 없으므로 ALTER TABLE 로 얹는다 (없을 때만 — 이미 있으면 예외를 무시한다).
+#
+# daily_cost_usd · daily_reset_at 은 일일 사용한도(config.MAX_DAILY_COST) 를
+# 위한 칸이다. `spent`(크레딧) 는 하루 단위로 리셋되지 않고 평생 누적이라
+# 여기 못 쓴다 — 오늘 얼마를 썼는지는 별도로 세야 한다.
 _MIGRATIONS = (
     "ALTER TABLE wallets ADD COLUMN granted_plans TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE wallets ADD COLUMN daily_cost_usd REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE wallets ADD COLUMN daily_reset_at REAL NOT NULL DEFAULT 0",
 )
+
+
+def _utc_midnight(ts: float) -> float:
+    """`ts` 가 속한 UTC 날짜의 자정(그날 00:00:00)을 초로."""
+    day = time.gmtime(ts)
+    return float(calendar.timegm((day.tm_year, day.tm_mon, day.tm_mday,
+                                  0, 0, 0, 0, 0, 0)))
 
 
 def path() -> Path:
@@ -156,6 +176,45 @@ def add_spent(owner: str, credits: float) -> None:
     with _lock, conn() as c:
         c.execute("UPDATE wallets SET spent = spent + ? WHERE owner = ?",
                   (credits, owner))
+
+
+def daily_cost(owner: str) -> float:
+    """오늘(UTC) 이미 쓴 실제 원가(달러). 날짜가 바뀌었으면 0 —
+    **쓰지는 않는다**, 다음 `add_daily_cost` 가 리셋과 함께 쓴다."""
+    with _lock, conn() as c:
+        row = c.execute(
+            "SELECT daily_cost_usd, daily_reset_at FROM wallets "
+            "WHERE owner = ?", (owner,)).fetchone()
+    if row is None or float(row["daily_reset_at"]) < _utc_midnight(time.time()):
+        return 0.0
+    return float(row["daily_cost_usd"])
+
+
+def add_daily_cost(owner: str, usd: float) -> float:
+    """오늘 실제로 나간 돈(달러)을 더한다. 날짜가 바뀌었으면 0 부터 다시 센다.
+
+    청구 방식(크레딧 · BYOK)과 무관하게 **실제 원가**를 더한다 — 일일
+    상한은 사용자가 산 크레딧이 아니라 우리가 실제로 낸 돈을 막는
+    안전장치라서다.
+    """
+    midnight = _utc_midnight(time.time())
+    with _lock, conn() as c:
+        row = c.execute(
+            "SELECT daily_reset_at FROM wallets WHERE owner = ?",
+            (owner,)).fetchone()
+        stale = row is None or float(row["daily_reset_at"]) < midnight
+        if stale:
+            c.execute(
+                "UPDATE wallets SET daily_cost_usd = ?, daily_reset_at = ? "
+                "WHERE owner = ?", (usd, midnight, owner))
+            return usd
+        c.execute(
+            "UPDATE wallets SET daily_cost_usd = daily_cost_usd + ? "
+            "WHERE owner = ?", (usd, owner))
+        row2 = c.execute(
+            "SELECT daily_cost_usd FROM wallets WHERE owner = ?",
+            (owner,)).fetchone()
+    return float(row2["daily_cost_usd"]) if row2 else usd
 
 
 def add_topup(owner: str, credits: float) -> None:

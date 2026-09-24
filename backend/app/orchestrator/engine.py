@@ -256,6 +256,11 @@ def _spend_guard(rounds: int, about_to_spend: float = 0.0,
     if credits.usd_to_credits(about_to_spend) > credits.balance(owner):
         raise Stop(lang.t("stop.credits",
                           left=f"{credits.balance(owner):.1f}"))
+    # 프로젝트 상한 위의 두 번째 벽(§18) — 일일·평생 누적 원가.
+    try:
+        credits.check_global_caps(owner, about_to_spend)
+    except (credits.DailyCostExceeded, credits.UserCostExceeded) as e:
+        raise Stop(str(e)) from e
 
 
 def _topo(tasks: list[Task]) -> list[Task]:
