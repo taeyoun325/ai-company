@@ -57,7 +57,8 @@ def is_mock(e: Employee) -> bool:
 
 
 def _request(e: Employee, user: str, schema: type[BaseModel] | None,
-             history: list[Message] | None = None) -> GenerateRequest:
+             history: list[Message] | None = None,
+             model: str | None = None) -> GenerateRequest:
     system = e.system
     if schema is not None:
         system = f"{system}\n\n{json_io.render_instruction(schema)}"
@@ -68,7 +69,7 @@ def _request(e: Employee, user: str, schema: type[BaseModel] | None,
     system += lang.prompt_line()
     messages = [*(history or []), Message("user", user)]
     return GenerateRequest(
-        system=system, messages=messages, model=e.model,
+        system=system, messages=messages, model=model or e.model,
         max_tokens=e.max_tokens, temperature=e.temperature, effort=e.effort,
         agent=e.id,                      # ← 사용량이 이 키로 잡힌다 (§14)
     )
@@ -79,11 +80,17 @@ def say(e: Employee, text: str, kind: str = "say") -> None:
 
 
 def ask(employee_id: str, user: str, schema: type[T],
-        history: list[Message] | None = None) -> T:
-    """직원에게 일을 시키고 스키마로 검증된 답을 받는다."""
+        history: list[Message] | None = None,
+        model: str | None = None) -> T:
+    """직원에게 일을 시키고 스키마로 검증된 답을 받는다.
+
+    `model` 을 주면 이 호출 한 번만 그 모델로 부른다 — 직원의 기본 모델
+    (`roles.py`) 은 바꾸지 않는다. 난이도에 따라 모델을 고르는
+    `orchestrator.routing` 이 여기로 넘긴다.
+    """
     e = roles.get(employee_id)
     p = provider_of(e)
-    req = _request(e, user, schema, history)
+    req = _request(e, user, schema, history, model=model)
 
     last_error: str | None = None
     for attempt in range(REPAIR_ATTEMPTS + 1):
@@ -96,7 +103,7 @@ def ask(employee_id: str, user: str, schema: type[T],
                 f"## 다시 할 것\n같은 요청에 대해 **JSON 객체 하나만** 내보내세요. "
                 f"위 오류가 가리키는 필드를 고치세요.\n\n"
                 f"## 원래 요청\n{user}",
-                schema, history)
+                schema, history, model=model)
         try:
             result = p.generate(req)
         except ProviderError as ex:

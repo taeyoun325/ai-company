@@ -94,10 +94,10 @@ def test_verifier_never_sees_the_builders_explanation(monkeypatch):
     seen: list[str] = []
     real = employee.ask
 
-    def spy(employee_id, user, schema, history=None):
+    def spy(employee_id, user, schema, history=None, model=None):
         if employee_id == roles.VERIFIER:
             seen.append(user)
-        return real(employee_id, user, schema, history)
+        return real(employee_id, user, schema, history, model=model)
 
     monkeypatch.setattr(employee, "ask", spy)
     _run()
@@ -161,11 +161,11 @@ def test_replan_limit_stops_the_run(monkeypatch):
     monkeypatch.setattr(config, "MAX_REPLANS", 0)
     real = employee.ask
 
-    def always_fail(employee_id, user, schema, history=None):
+    def always_fail(employee_id, user, schema, history=None, model=None):
         if schema is Verdict:
             return Verdict(message_to_team="안 됩니다", verdict="fail",
                            severity="major", findings=[], required_fixes=["고치세요"])
-        return real(employee_id, user, schema, history)
+        return real(employee_id, user, schema, history, model=model)
 
     monkeypatch.setattr(employee, "ask", always_fail)
     _, m = _run()
@@ -177,11 +177,11 @@ def test_empty_plan_stops_instead_of_reporting_success(monkeypatch):
     """태스크 0개짜리 계획을 그대로 진행하면 '전부 완료'로 끝난다."""
     real = employee.ask
 
-    def empty(employee_id, user, schema, history=None):
+    def empty(employee_id, user, schema, history=None, model=None):
         if schema is Plan:
             return Plan(message_to_team="빈 계획", project_name="x",
                         acceptance_criteria=[], tasks=[])
-        return real(employee_id, user, schema, history)
+        return real(employee_id, user, schema, history, model=model)
 
     monkeypatch.setattr(employee, "ask", empty)
     _, m = _run()

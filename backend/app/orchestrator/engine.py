@@ -42,7 +42,7 @@ from app.agents.schemas import (Criterion, FinalReport, Plan, Routing, Task,
                                 TestSuite, Verdict, WorkResult)
 from app.database import index, store
 from app.usage import credits
-from app.orchestrator import prompts, runner
+from app.orchestrator import difficulty, prompts, runner
 from app.orchestrator.score import Score
 from app.tools import project_fs as pfs
 
@@ -491,9 +491,14 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
                           owner=who)
                 _spend_guard(rounds := rounds + 1, employee.worst_case_cost(who), owner)
                 bus.state(round=rounds)
+                # 작은 태스크·첫 시도면 더 싼 모델로 내려간다(§ 난이도 라우팅).
+                # 기본 모델의 최악 비용으로 이미 위의 _spend_guard 를 통과했으므로
+                # 여기서 고르는 모델은 그보다 비쌀 수 없다.
+                routed_model = difficulty.pick_model(
+                    roles.get(who), task, is_retry=feedback is not None)
                 work: WorkResult = employee.ask(
                     who, prompts.implement(task, criteria, pfs.snapshot(who), feedback),
-                    WorkResult)
+                    WorkResult, model=routed_model)
                 employee.say(roles.get(who), work.message_to_team)
                 # 반려를 받고 다시 쓰는 것이면 그 사유를 이력에 남긴다.
                 _apply(work, who, round=rounds,
