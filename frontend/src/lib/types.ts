@@ -112,6 +112,8 @@ export interface BusEvent {
    *  않고 이미 받은 답을 그대로 구조로 남긴 것이다. */
   from?: string;
   to?: string;
+  /** 이 인계가 일어난 단계. "phase" 이벤트의 `name` 과 같은 값 집합이다. */
+  phase?: string;
   task_titles?: string[];
   criteria?: string[];
   covered?: string[];

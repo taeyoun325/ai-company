@@ -38,7 +38,7 @@ import { T, animate, prefersReducedMotion, stagger, withScope }
 import { api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import type { Employee } from "@/lib/types";
-import { PixelOffice } from "./PixelOffice";
+import { HandoffGraph } from "./HandoffGraph";
 import { Icon, iconOfAgent } from "./icons";
 import { Button, MockBadge, money } from "./ui";
 
@@ -111,7 +111,7 @@ export function Office({
       {/* 그림이 먼저다. 카드 목록은 숫자를 주지만 "지금 회사가 돌고
           있는가"를 한 번에 말하지는 못한다. */}
       {!cardsOnly && (
-        <PixelOffice
+        <HandoffGraph
           employees={employees}
           working={working}
           onPick={onPick}

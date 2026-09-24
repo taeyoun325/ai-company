@@ -26,7 +26,7 @@ import { useRouter } from "next/navigation";
 
 import { ChatLog } from "@/components/ChatLog";
 import { RecentResults } from "@/components/RecentResults";
-import { PixelOffice } from "@/components/PixelOffice";
+import { HandoffGraph } from "@/components/HandoffGraph";
 import { ProjectRail } from "@/components/ProjectRail";
 import { ResizeHandle } from "@/components/ResizeHandle";
 import { ScorePanel, TaskBoard } from "@/components/TaskBoard";
@@ -254,7 +254,7 @@ export default function OfficePage() {
               <h1 className="text-[13px] font-semibold tracking-tight">
                 {t("office.title")}
               </h1>
-              {/* 단계는 이제 탁자 가운데에 놓인다(PixelOffice). 여기에도
+              {/* 단계는 이제 그래프 가운데에 놓인다(HandoffGraph). 여기에도
                   적으면 같은 말이 두 번 보이고, 눈이 어느 쪽을 봐야 하는지
                   모른다. 대신 실행 중이라는 사실만 표시한다. */}
               {running && (
@@ -272,13 +272,15 @@ export default function OfficePage() {
                 <Skeleton lines={6} />
               </div>
             ) : (
-            <PixelOffice
+            <HandoffGraph
               employees={employees}
               working={isWorking}
               onPick={(id) => setPicked((p) => (p === id ? null : id))}
               picked={picked}
               phase={folded.phase}
               detail={folded.detail}
+              events={stream.events}
+              roster={stream.roster}
             />
             )}
           </div>

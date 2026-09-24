@@ -745,6 +745,24 @@ const S = {
     ja: "上から見たドットのオフィス。各席に社員が座り、頭の位置にはその社員を動かす AI プロバイダの印があります。",
   },
   "office.title": { ko: "사무실", en: "Office", ja: "オフィス" },
+  "handoff.recent": { ko: "최근 인계", en: "Recent handoffs", ja: "最近の引き継ぎ" },
+  "handoff.system": { ko: "시스템", en: "System", ja: "システム" },
+  "handoff.plan": {
+    ko: "태스크 {n}개짜리 계획", en: "planned {n} tasks", ja: "タスク{n}件の計画",
+  },
+  "handoff.writeTests": {
+    ko: "인수기준 {n}개 커버하는 테스트 작성",
+    en: "wrote tests covering {n} criteria",
+    ja: "受入基準{n}件をカバーするテストを作成",
+  },
+  "handoff.implement": { ko: "구현 완료", en: "implementation done", ja: "実装完了" },
+  "handoff.reviewPass": { ko: "검토 통과", en: "review passed", ja: "レビュー合格" },
+  "handoff.reviewFail": {
+    ko: "지적 {n}건으로 반려", en: "rejected with {n} finding(s)", ja: "指摘{n}件で差し戻し",
+  },
+  "handoff.finalize": {
+    ko: "인수기준 {n}개 충족 확인", en: "confirmed {n} criteria met", ja: "受入基準{n}件の充足を確認",
+  },
   "office.hint": {
     ko: "자리를 가리키면 누가 무엇으로 일하는지 보입니다.",
     en: "Point at a seat to see who works there and on what.",
