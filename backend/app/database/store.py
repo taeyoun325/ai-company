@@ -17,6 +17,7 @@ from __future__ import annotations
 import difflib
 import json
 import re
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,22 @@ from app import config, safeio
 META = ".meta.json"
 HISTORY = ".history"
 AREAS = ("src", "tests", "docs", "design")
+
+# 프로젝트당 잠금 하나. 실행 스레드가 태스크마다 메타를 쓰는 동안,
+# 20초 심장박동(engine.py BEAT_EVERY)이 같은 파일에 끼어들면 읽고-고치고-
+# 쓰는 사이에 한쪽의 갱신이 사라진다 — 나중에 쓴 쪽이 이긴다. 잠금은
+# 한 프로세스 안에서만 유효하다; 여러 인스턴스가 같은 프로젝트를 동시에
+# 쓰는 경우는 여전히 이 잠금의 범위 밖이다.
+_meta_locks_guard = threading.Lock()
+_meta_locks: dict[str, threading.Lock] = {}
+
+
+def _meta_lock(slug: str) -> threading.Lock:
+    with _meta_locks_guard:
+        lock = _meta_locks.get(slug)
+        if lock is None:
+            lock = _meta_locks[slug] = threading.Lock()
+        return lock
 
 
 def _slug(text: str) -> str:
@@ -115,11 +132,12 @@ def save_meta(slug: str, patch: dict) -> dict:
     """
     d = dir_of(slug)
     d.mkdir(parents=True, exist_ok=True)
-    m = meta(slug)
-    m.update(patch)
-    # 원자적으로 쓴다 (app/safeio.py). 여기서 잘리면 프로젝트 하나가
-    # 통째로 "없는 프로젝트"가 된다 — 산출물은 멀쩡한데 메타만 깨져서.
-    safeio.write_json(d / META, m)
+    with _meta_lock(slug):
+        m = meta(slug)
+        m.update(patch)
+        # 원자적으로 쓴다 (app/safeio.py). 여기서 잘리면 프로젝트 하나가
+        # 통째로 "없는 프로젝트"가 된다 — 산출물은 멀쩡한데 메타만 깨져서.
+        safeio.write_json(d / META, m)
     _reindex(m)
     return m
 
