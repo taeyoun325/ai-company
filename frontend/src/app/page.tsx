@@ -26,7 +26,6 @@ import { useRouter } from "next/navigation";
 
 import { ChatLog } from "@/components/ChatLog";
 import { RecentResults } from "@/components/RecentResults";
-import { Office } from "@/components/Office";
 import { PixelOffice } from "@/components/PixelOffice";
 import { ProjectRail } from "@/components/ProjectRail";
 import { ResizeHandle } from "@/components/ResizeHandle";
@@ -414,18 +413,6 @@ export default function OfficePage() {
             </div>
           )}
 
-          {/* 직원 카드 — 이름 바꾸기와 채용·해고가 여기 있다 */}
-          <div data-enter>
-            <Office
-              employees={employees}
-              phase={folded.phase}
-              detail={folded.detail}
-              picked={picked}
-              onPick={(id) => setPicked((p) => (p === id ? null : id))}
-              onStaffChange={reload}
-              cardsOnly
-            />
-          </div>
         </div>
       </section>
 
@@ -470,27 +457,30 @@ export default function OfficePage() {
           )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto border-t border-line">
-          {stream.events.length === 0 ? (
-            <>
+        <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-line
+          border-t border-line overflow-hidden">
+          {/* 작업 로그 — 진행 중이면 흐르고, 아니면 안내문만 남는다. */}
+          <div className="min-h-0 overflow-y-auto">
+            {stream.events.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-dim">
                 {t("office.logEmpty")}
               </p>
-              {/* 실행 전에는 이 칸이 통째로 비어 있었다. 지난 결과로
-                  채운다 — 왼쪽 레일이 "무엇을 시켰나"를 보여주므로
-                  여기는 "어떻게 끝났나"만 보여준다. */}
-              <RecentResults />
-            </>
-          ) : (
-            <ChatLog
-              events={stream.events}
-              roster={stream.roster}
-              connected={stream.connected}
-              polling={stream.polling}
-              slug={slug}
-              className="h-full"
-            />
-          )}
+            ) : (
+              <ChatLog
+                events={stream.events}
+                roster={stream.roster}
+                connected={stream.connected}
+                polling={stream.polling}
+                slug={slug}
+                className="h-full"
+              />
+            )}
+          </div>
+          {/* 지난 결과 — 로그와 상관없이 늘 붙어 있다. 진행 중이든 아니든
+              "이런 일은 보통 어떻게 끝났나"는 항상 궁금하다. */}
+          <div className="min-h-0 overflow-y-auto">
+            <RecentResults />
+          </div>
         </div>
 
         {/* 실행이 없으면 이 칸은 "—" 두 줄이다. 아무것도 알려주지 않으면서

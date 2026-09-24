@@ -28,25 +28,27 @@ import { clock, money, took, when } from "./ui";
 export function RecentResults() {
   const { t, lang } = useLang();
   const { data, loading } = useLoader("recent", () =>
-    api.projects({ limit: 8, sort: "recent" }),
+    api.projects({ limit: 30, sort: "recent" }),
   );
 
   // 끝난 것만. 진행 중·중단은 왼쪽 레일이 이미 맨 위에 올려준다.
   const rows = (data?.projects ?? [])
-    .filter((p) => p.status === "done" || p.status === "manual")
-    .slice(0, 3);
-
-  if (loading || rows.length === 0) return null;
+    .filter((p) => p.status === "done" || p.status === "manual");
 
   const midnight = new Date();
   midnight.setHours(0, 0, 0, 0);
   const today = midnight.getTime() / 1000;
 
   return (
-    <section className="border-t border-line px-3 py-3">
+    <section className="px-3 py-3">
       <h2 className="text-[10px] font-semibold uppercase tracking-wider text-dim">
         {t("recent.title")}
       </h2>
+      {loading || rows.length === 0 ? (
+        <p className="px-1 py-6 text-center text-xs text-dim">
+          {t("recent.none")}
+        </p>
+      ) : (
       <ul className="mt-2 space-y-1">
         {rows.map((p) => (
           <li key={p.slug}>
@@ -79,6 +81,7 @@ export function RecentResults() {
           </li>
         ))}
       </ul>
+      )}
     </section>
   );
 }
