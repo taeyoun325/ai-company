@@ -429,6 +429,9 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
         plan = employee.ask(roles.PLANNER,
                             prompts.plan(requirement, attachments_note), Plan)
         employee.say(roles.get(roles.PLANNER), plan.message_to_team)
+        bus.handoff(roles.PLANNER, roles.VERIFIER, "PLAN",
+                    task_titles=[t.title for t in plan.tasks],
+                    criteria=[c.text for c in plan.acceptance_criteria])
         criteria: list[Criterion] = plan.acceptance_criteria
         if not plan.tasks:
             raise Stop(lang.t("stop.noTasks"))
@@ -469,6 +472,8 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
             bus.say(roles.VERIFIER,
                     lang.t("log.uncovered", ids=", ".join(suite.uncovered)),
                     kind="verdict")
+        bus.handoff(roles.VERIFIER, "IMPLEMENT", "WRITE_TESTS",
+                    covered=sorted(covered), uncovered=suite.uncovered)
         bus.state(files=store.files_of(slug))
         score.push()
 
@@ -511,6 +516,12 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
                 _apply(work, who, round=rounds,
                        reason=(feedback.message_to_team if feedback else ""))
                 bus.state(files=store.files_of(slug))
+                # 검증자의 **프롬프트**에는 여전히 안 넘긴다(교차검증 오염
+                # 방지, 위 주석과 같은 이유) — 이건 사람이 로그로 보는
+                # 감사 기록이지, 다음 모델 호출에 들어가는 입력이 아니다.
+                bus.handoff(who, roles.VERIFIER, "IMPLEMENT",
+                            files=[fw.path for fw in work.files],
+                            summary=work.summary, self_check=work.self_check)
 
                 bus.phase("TEST", task.title)
                 report = _run_tests(score)
@@ -533,6 +544,11 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
                         kind="verdict")
                 for f in verdict.findings:
                     bus.say(roles.VERIFIER, f"`{f.file}` · {f.issue}", kind="tool")
+                bus.handoff(
+                    roles.VERIFIER, (roles.PLANNER if verdict.verdict == "pass" else who),
+                    "REVIEW", verdict=verdict.verdict, severity=verdict.severity,
+                    findings=[f.model_dump() for f in verdict.findings],
+                    required_fixes=verdict.required_fixes)
 
                 if verdict.verdict == "pass":
                     score.passes += 1
@@ -579,6 +595,8 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
             roles.PLANNER,
             prompts.finalize(criteria, pfs.snapshot("SYSTEM"), report), FinalReport)
         employee.say(roles.get(roles.PLANNER), final.message_to_team)
+        bus.handoff(roles.PLANNER, "SYSTEM", "FINALIZE",
+                    met=final.met_criteria, unmet=final.unmet_criteria)
         ids = {c.id for c in criteria}
         score.ac_met = len(set(final.met_criteria) & ids)
         score.push()

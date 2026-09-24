@@ -89,6 +89,48 @@ def test_tests_are_written_before_implementation():
     assert phases.index("WRITE_TESTS") < phases.index("IMPLEMENT")
 
 
+def test_handoffs_carry_structured_rationale_beyond_the_one_line_message():
+    """`say()` 는 message_to_team 한 줄만 채팅에 남긴다 — self_check·findings·
+    met/unmet 같은 구조화된 근거는 handoff 이벤트에만 있다."""
+    slug, _ = _run()
+    handoffs = [e for e in bus.history(slug) if e["type"] == "handoff"]
+    phases = {h["phase"] for h in handoffs}
+    assert {"PLAN", "WRITE_TESTS", "IMPLEMENT", "REVIEW", "FINALIZE"} <= phases
+
+    plan_h = next(h for h in handoffs if h["phase"] == "PLAN")
+    assert plan_h["from"] == roles.PLANNER
+    assert plan_h["task_titles"], "태스크 제목이 하나도 안 실렸다"
+
+    impl_h = next(h for h in handoffs if h["phase"] == "IMPLEMENT")
+    assert impl_h["self_check"], "self_check 가 구조화된 형태로 안 남았다"
+
+    review_h = next(h for h in handoffs if h["phase"] == "REVIEW")
+    assert review_h["verdict"] in ("pass", "fail")
+
+    final_h = next(h for h in handoffs if h["phase"] == "FINALIZE")
+    assert final_h["to"] == "SYSTEM"
+    assert "met" in final_h and "unmet" in final_h
+
+
+def test_handoff_never_feeds_the_reviewer_prompt(monkeypatch):
+    """구조화된 인계 기록은 감사 로그일 뿐이다 — 검증자의 다음 프롬프트에
+    섞이면 자기 합리화 오염 방지 규칙이 뒷문으로 뚫린다."""
+    seen: list[str] = []
+    real = employee.ask
+
+    def spy(employee_id, user, schema, history=None, model=None):
+        if employee_id == roles.VERIFIER and schema is Verdict:
+            seen.append(user)
+        return real(employee_id, user, schema, history, model=model)
+
+    monkeypatch.setattr(employee, "ask", spy)
+    _run()
+    assert seen
+    for text in seen:
+        assert "self_check" not in text
+        assert "message_to_team" not in text
+
+
 def test_verifier_never_sees_the_builders_explanation(monkeypatch):
     """검증자가 담당자의 자기 합리화를 읽으면 교차검증이 오염된다."""
     seen: list[str] = []

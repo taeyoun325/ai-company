@@ -151,6 +151,7 @@ export function useStream(run?: string): StreamState {
       "projects",
       "approval",
       "approval_done",
+      "handoff",
     ];
     types.forEach((t) => es.addEventListener(t, onMessage as EventListener));
 

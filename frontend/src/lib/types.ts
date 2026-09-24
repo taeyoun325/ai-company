@@ -74,7 +74,8 @@ export type EventType =
   | "done"
   | "projects"
   | "approval"
-  | "approval_done";
+  | "approval_done"
+  | "handoff";
 
 export interface BusEvent {
   id: number;
@@ -105,6 +106,22 @@ export interface BusEvent {
   ok?: boolean;
   summary?: string;
   unmet?: string[];
+  /** handoff — bus.handoff(), app/bus.py. message 의 message_to_team 한
+   *  줄로는 안 보이던 구조화된 인계 근거(무엇을 확인했는지, 검증자가
+   *  무엇을 지적했는지, 어떤 인수기준이 충족됐는지). 모델을 새로 부르지
+   *  않고 이미 받은 답을 그대로 구조로 남긴 것이다. */
+  from?: string;
+  to?: string;
+  task_titles?: string[];
+  criteria?: string[];
+  covered?: string[];
+  uncovered?: string[];
+  self_check?: string;
+  findings?: { file: string; issue: string; why: string }[];
+  required_fixes?: string[];
+  verdict?: "pass" | "fail";
+  severity?: "none" | "minor" | "major" | "blocker";
+  met?: string[];
 }
 
 export interface TaskRow {
