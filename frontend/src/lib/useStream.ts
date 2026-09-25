@@ -75,10 +75,14 @@ export function useStream(run?: string): StreamState {
     setEvents((prev) => {
       // 재연결 직후에는 겹쳐 올 수 있다. id 로 거른다 — 안 거르면
       // 같은 말풍선이 두 번 뜨고, 사용자는 직원이 두 번 말했다고 믿는다.
-      const seen = new Set(prev.map((e) => e.id));
-      const fresh = incoming.filter((e) => !seen.has(e.id));
+      // 번호만으로 가르지 않고 **번호+시각**으로 가른다 (DAY 25). DAY 24
+      // 까지 서버는 재시작할 때마다 번호를 1 부터 다시 셌다 — 그때 남은
+      // 트레이스에는 같은 번호의 다른 사건이 섞여 있고, 번호로만 거르면
+      // 재시작 뒤의 사건이 "이미 받은 것"으로 버려진다.
+      const seen = new Set(prev.map(eventKey));
+      const fresh = incoming.filter((e) => !seen.has(eventKey(e)));
       if (fresh.length === 0) return prev;
-      const next = [...prev, ...fresh].sort((a, b) => a.id - b.id);
+      const next = [...prev, ...fresh].sort((a, b) => a.ts - b.ts || a.id - b.id);
       return next.length > KEEP ? next.slice(next.length - KEEP) : next;
     });
     lastId.current = Math.max(lastId.current, ...incoming.map((e) => e.id));
@@ -152,6 +156,13 @@ export function useStream(run?: string): StreamState {
       "approval",
       "approval_done",
       "handoff",
+      // DAY 25 — 승인 게이트 · 모델 호출 시간 · 결재 대기. 여기 빠지면
+      // 서버가 보내도 화면이 못 받는다(SSE 는 이름으로 골라 듣는다).
+      "gate",
+      "awaiting",
+      // `call`(모델 호출 시작·끝)은 듣지 않는다. 화면이 쓰지 않는데 받으면
+      // 호출마다 두 줄씩 버퍼(KEEP)를 먹어서 정작 말풍선이 밀려난다 —
+      // 지금 몇 초째인지는 사무실(/api/office)이 서버에서 접어 준다.
     ];
     types.forEach((t) => es.addEventListener(t, onMessage as EventListener));
 
@@ -196,6 +207,11 @@ export function useStream(run?: string): StreamState {
   }, [polling, run, push]);
 
   return { events, roster, connected, polling, clear };
+}
+
+/** 사건 하나를 가리키는 열쇠. 번호가 겹친 옛 기록에서도 갈린다. */
+export function eventKey(e: BusEvent): string {
+  return `${e.id}:${e.ts}`;
 }
 
 /** 이벤트 흐름에서 현재 상태를 접어낸다 — 화면마다 다시 접지 않도록. */

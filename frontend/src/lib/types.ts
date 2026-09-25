@@ -75,7 +75,13 @@ export type EventType =
   | "projects"
   | "approval"
   | "approval_done"
-  | "handoff";
+  | "handoff"
+  /** DAY 25 — 승인 게이트가 열리고(open)·보류되고(held)·닫힐(closed) 때. */
+  | "gate"
+  /** DAY 25 — 모델 호출 하나의 시작·끝(걸린 시간). 채팅에는 안 그린다. */
+  | "call"
+  /** DAY 25 — 실행이 결재를 기다리며 쉬러 들어갔다. */
+  | "awaiting";
 
 export interface BusEvent {
   id: number;
@@ -123,16 +129,30 @@ export interface BusEvent {
   required_fixes?: string[];
   verdict?: "pass" | "fail";
   severity?: "none" | "minor" | "major" | "blocker";
-  /** 판정 확신도(0~1) — Verdict.confidence 와 같은 값. */
+  /** 판정 확신도(0~1) — Verdict.confidence 와 같은 값. handoff(REVIEW)와
+   *  판정 message(kind=verdict) 둘 다에 실린다 (DAY 25). */
   confidence?: number;
   met?: string[];
+  /** handoff — 어느 태스크의 인계인가 (병렬 실행 · DAY 25). */
+  task_id?: string;
+  /** phase — 병렬로 도는 태스크 중 어느 줄의 단계인가 (DAY 25). */
+  lane?: string;
+  /** state — 지금 도는 줄들 (DAY 25). */
+  active?: { task: string; title: string; assignee: string }[];
+  /** gate */
+  stage?: "open" | "held" | "closed" | "start" | "end";
+  approval?: Approval;
+  /** call */
+  call_id?: number;
+  ms?: number;
+  model?: string;
 }
 
 export interface TaskRow {
   id: string;
   title: string;
   assignee: string;
-  status: "todo" | "doing" | "done";
+  status: "todo" | "doing" | "done" | "awaiting";
 }
 
 /** 파일 한 판본. 옛 판본에는 경위가 없어서 빈 값으로 온다 (DAY 22). */
@@ -155,7 +175,7 @@ export interface Project {
   created_at: number;
   /** 마지막으로 움직인 시각. created_at 과 빼면 걸린 시간이다. */
   updated_at?: number;
-  status: "running" | "done" | "stopped" | "manual";
+  status: "running" | "done" | "stopped" | "manual" | "awaiting";
   score: number;
   score_detail?: Record<string, string | number | boolean>;
   tasks: TaskRow[];
@@ -177,6 +197,154 @@ export interface Project {
   events?: BusEvent[];
   mode?: string;
   last_verdict?: Verdict;
+  /** 대표가 멈춰 서서 보겠다는 지점 (DAY 25 · HITL). */
+  gates?: string[];
+  approvals?: Approval[];
+  permissions?: { overrides?: Record<string, { writes?: string[]; reads?: string[] }>;
+                  risks?: string[] };
+  checkpoint?: { stage?: string | null; done?: string[]; rounds?: number };
+}
+
+// ── 사무실 · 결재 · 권한 · 지표 (DAY 25) ──────────────────────────
+export type Decision = "approve" | "reject" | "hold" | "discard";
+
+export interface Approval {
+  id: string;
+  gate: "plan" | "task";
+  title: string;
+  status: "pending" | "approved" | "rejected" | "stopped" | "discarded";
+  created_at: number;
+  held?: boolean;
+  comment?: string;
+  decided_at?: number;
+  task_id?: string;
+  detail: {
+    // plan
+    tasks?: { id: string; title: string; assignee: string; deps: string[] }[];
+    criteria?: { id: string; text: string }[];
+    message?: string;
+    // task
+    assignee?: string;
+    reason?: "task" | "confidence";
+    confidence?: number;
+    threshold?: number;
+    files?: string[];
+    findings?: { file: string; issue: string; why: string }[];
+    rework?: number;
+  };
+}
+
+/** 사규 §2 의 다섯 상태. 색과 말풍선이 여기에 딸려 있다. */
+export type OfficeState = "done" | "working" | "approval" | "integration" | "idle";
+
+export interface OfficeEmployee {
+  id: string;
+  name: string;
+  dept: string;
+  role: string;
+  provider: string;
+  hired: boolean;
+  mock: boolean;
+  state: OfficeState;
+  /** 상태가 이렇게 된 이유 한 줄 (사규 §2 ②). 비어 있는 일이 없다. */
+  reason: string;
+  task: { id: string | null; title: string | null } | null;
+  progress: { done: number; total: number };
+  calls: number;
+  cost: number;
+  avg_ms: number | null;
+  inflight_ms: number | null;
+  place: "desk" | "meeting" | "away";
+}
+
+export interface IntegrationItem {
+  key: string;
+  label: string;
+  why: string;
+  detail?: string;
+  affects: string[];
+  fix: string | null;
+}
+
+export interface ScenarioStep {
+  key: string;
+  state: "done" | "current" | "todo" | "off" | "skip";
+}
+
+export interface OfficeSnapshot {
+  now: number;
+  run: {
+    slug: string;
+    name: string;
+    requirement: string;
+    status: Project["status"];
+    running: boolean;
+    stopped_reason: string | null;
+    created_at: number;
+    mock: boolean;
+    cost: number;
+    score: number | null;
+    tasks_done: number;
+    tasks_total: number;
+    pending: number;
+    held: number;
+    confidence: number | string | null;
+  } | null;
+  employees: OfficeEmployee[];
+  approvals: Approval[];
+  gates: string[];
+  meeting: { who: string[]; approval_id: string | null };
+  integrations: IntegrationItem[];
+  scenario: ScenarioStep[];
+  metrics: {
+    inflight: { call_id: number; agent: string; model: string | null; elapsed_ms: number }[];
+    parallelism: number | null;
+    wall_ms: number;
+    human_wait_ms: number;
+  } | null;
+}
+
+export interface AskAnswer {
+  intent: string;
+  lines: { who: string; text: string }[];
+  action?: { focus?: boolean; meeting?: string[]; choose?: string[]; decided?: string };
+}
+
+export interface RunMetrics {
+  wall_ms: number;
+  human_wait_ms: number;
+  model_ms: number;
+  parallelism: number | null;
+  calls: number;
+  failed_calls: number;
+  retries: number;
+  by_agent: Record<string, {
+    calls: number; ok: number; failed: number; total_ms: number; wait_ms: number;
+    retries: number; output: number; avg_ms: number; p50_ms: number; p95_ms: number;
+    max_ms: number; tokens_per_sec: number | null;
+  }>;
+  by_phase: Record<string, { ms: number; count: number }>;
+  slowest: { call_id: number; agent: string; model: string; ms: number; attempts: number;
+             ok: boolean; error?: string | null }[];
+  inflight: { call_id: number; agent: string; model: string | null; elapsed_ms: number }[];
+  finished: boolean;
+}
+
+export interface PermissionRow {
+  id: string;
+  kind: string;
+  base: { writes: string[]; reads: string[] };
+  effective: { writes: string[]; reads: string[] };
+  overridden: boolean;
+  locked: { writes: string[]; reads: string[] };
+  risky: { reads: string[] };
+}
+
+export interface PermissionsView {
+  overrides: Record<string, { writes?: string[]; reads?: string[] }>;
+  risks: string[];
+  acknowledged_at: number | null;
+  table: PermissionRow[];
 }
 
 export interface Verdict {

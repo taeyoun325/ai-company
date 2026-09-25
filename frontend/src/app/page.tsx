@@ -1,42 +1,58 @@
 "use client";
 
 /**
- * 사무실 — 작업 화면 (지시서 §4 · §10 · §11 · DAY 22 개편).
+ * 사무실 — 작업 화면 (지시서 §4 · §10 · §11 · DAY 25 전면 개편).
  *
- * ## 한 화면에서 끝난다
+ * ## 사규대로 움직이는 사무실
  *
- * 왼쪽에 프로젝트 목록, 가운데에 사무실과 입력창, 오른쪽에 작업 로그.
- * 셋 다 **동시에 필요한 것**이라 탭으로 나누면 오가느라 맥락을 잃는다.
- * 창 높이에 맞춰 고정하고 각 칸만 따로 스크롤한다 — 로그를 읽는 동안
- * 사무실이 화면 밖으로 나가면 지금 누가 일하는지 볼 수 없다.
+ * DAY 25 에 화면을 사규(인원 편성 · 직원 상태 · 하루 시나리오 · 대표
+ * 지시창)의 모양으로 다시 짰다:
  *
- * ## 사무실이 먼저, 입력창이 바로 밑
+ * 1. **결재함** — 대표 결정이 필요하면 맨 위에 선다. 승인 · 수정 요청 ·
+ *    보류 · 폐기. 한 번에 하나씩.
+ * 2. **하루 시나리오** — 출근부터 비서실 브리핑까지 12단계 중 지금 어디인가.
+ *    ★ 은 대표 승인 지점이다.
+ * 3. **평면도** — 부서 자리 · 회의실 · 대표실 · 비서실 · 휴게실. 직원은
+ *    상태 다섯 가지(완료 · 진행 중 · 승인 대기 · 연동 대기 · 대기)로
+ *    색과 말풍선을 달고, 상태가 바뀐 이유를 한 줄 달고 있다.
+ * 4. **대표 지시창** — "현황 보고" · "왜 늦어져?" · "[이름] 뭐해?" ·
+ *    "회의 소집" · "지금 브리핑" · "집중 모드" · "승인할게".
+ * 5. **일 맡기기** — AUTO · 직접 지시, 그리고 이번 일의 승인 지점.
  *
- * CEO 가 하는 일은 둘뿐이다: 일을 맡기거나(AUTO), 직원을 지목해 직접
- * 시키거나(MANUAL). 그 둘의 입구가 사무실 바로 아래 있어야, 지시하기
- * 전에 **누가 있는지 보고** 지시하게 된다.
+ * 직원 상태는 서버가 정한다(backend/app/office.py). 여기서 짐작하면 "무엇을
+ * 완료로 치나" 같은 규칙이 화면과 서버 두 곳에 살게 된다.
+ *
+ * ## 로그는 그대로 오른쪽에
+ *
+ * 사무실은 "지금"을, 로그는 "지금까지"를 보여준다. 둘 다 동시에 필요하다.
  *
  * ## Mock 경고는 접히지 않는다
  *
  * 접히거나 사라지는 경고는 아무도 안 본다. 그 상태에서 나온 산출물을
  * 실제 AI 의 작업 결과로 믿는 순간이 이 제품에서 제일 나쁜 순간이다.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ChatLog } from "@/components/ChatLog";
+import { GateToggles } from "@/components/GateToggles";
 import { RecentResults } from "@/components/RecentResults";
-import { HandoffGraph } from "@/components/HandoffGraph";
 import { ProjectRail } from "@/components/ProjectRail";
 import { ResizeHandle } from "@/components/ResizeHandle";
 import { ScorePanel, TaskBoard } from "@/components/TaskBoard";
+import { ApprovalDesk } from "@/components/office/ApprovalDesk";
+import { CommandWindow } from "@/components/office/CommandWindow";
+import { EmployeeCard, IntegrationList } from "@/components/office/EmployeeCard";
+import { type MeetingCall, OfficeFloor } from "@/components/office/OfficeFloor";
+import { ScenarioStrip } from "@/components/office/ScenarioStrip";
 import { Button, ErrorBox, Panel, Skeleton, Warning, num } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { useErrorText, useLang } from "@/lib/i18n";
 import { T, animate, stagger, withScope } from "@/lib/motion";
-import { useSessionFlag, useStickyNumber } from "@/lib/sticky";
-import type { CreditStatus, Employee, ProviderStatus } from "@/lib/types";
-import { useLoader, useReloadOn } from "@/lib/useLoader";
+import { useSessionFlag, useSticky, useStickyNumber } from "@/lib/sticky";
+import type { AskAnswer, CreditStatus, ProviderStatus } from "@/lib/types";
+import { useLoader } from "@/lib/useLoader";
+import { useOffice } from "@/lib/useOffice";
 import { foldState, useStream } from "@/lib/useStream";
 
 const LOG_WIDTH_KEY = "ai-company.log-width";
@@ -44,54 +60,71 @@ const LOG_WIDTH_DEFAULT = 336; // 21rem, 기존 고정폭과 같다
 const LOG_WIDTH_MIN = 260;
 const LOG_WIDTH_MAX = 560;
 
-/** AUTO 에서 지금 일하는 직원. 단계 이름이 자리를 가리킨다. */
-const PHASE_OWNER: Record<string, string[]> = {
-  PLAN: ["strategist"],
-  REPLAN: ["strategist"],
-  FINALIZE: ["strategist"],
-  WRITE_TESTS: ["analyst"],
-  REVIEW: ["analyst"],
-  TEST: [],
-  IMPLEMENT: ["developer", "writer", "designer"],
-  MANUAL: [],
-};
+/** 사무실을 다시 읽어야 하는 이벤트 — 사람의 자리나 상태가 바뀌는 것들. */
+const PULSE_TYPES = new Set(["phase", "gate", "awaiting", "done", "handoff"]);
 
 export default function OfficePage() {
   const router = useRouter();
   const { t, lang } = useLang();
   const errText = useErrorText();
   const [slug, setSlug] = useState<string | null>(null);
-  // 실행 slug 를 같이 보낸다. 안 보내면 직원별 사용량이 전부 0 으로 와서,
-  // 한창 일하는 중인데 사무실이 "아무도 일하지 않음"으로 보인다.
-  const { data: state, error: loadError, loading, reload } = useLoader(
-    slug ?? "", () => api.state(slug ?? undefined),
+  const { data: state, error: loadError } = useLoader(
+    "state", () => api.state(),
   );
-  const employees: Employee[] = state?.employees ?? [];
   const providers: ProviderStatus | null = state?.providers ?? null;
   const wallet: CreditStatus | null = state?.credits ?? null;
   const [requirement, setRequirement] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [routing, setRouting] = useState<{ employee: string; why: string } | null>(null);
-  const [picked, setPicked] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [gates, setGates] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [meetingCall, setMeetingCall] = useState<MeetingCall | null>(null);
+  const [arrivalKey, setArrivalKey] = useState<string | null>(null);
+  const [focus, setFocus] = useSticky("ai-company.focus", false);
   const root = useRef<HTMLDivElement>(null);
-  // 가운데 칸(사무실·입력·직원 카드)의 스크롤 상자.
   const work = useRef<HTMLElement>(null);
 
   const stream = useStream(slug ?? undefined);
   const folded = foldState(stream.events);
-  // 진행 중인가는 **계산 결과**다. 따로 상태로 들고 있으면 done 이벤트를
-  // 놓쳤을 때 버튼이 영영 잠긴 채로 남는다.
-  const running = slug !== null && folded.done === null;
 
-  // 실행 중에는 직원별 사용량이 계속 바뀐다. 단계가 넘어갈 때만 다시
-  // 읽는다 — 고정 간격 폴링은 아무 일도 없을 때까지 서버를 두드린다.
-  // slug 가 바뀌는 순간은 `useLoader` 가 이미 읽는다(key 가 slug 다).
-  // 여기서는 **단계가 넘어갈 때만** 읽는다.
-  useReloadOn(slug ? `${folded.phase}-${folded.done}` : null, reload);
+  // 사무실은 로그가 **자리를 바꾸는 사건**을 낼 때만 바로 다시 읽는다.
+  const pulse = useMemo(() => {
+    for (let i = stream.events.length - 1; i >= 0; i--) {
+      const e = stream.events[i];
+      if (PULSE_TYPES.has(e.type) || (e.type === "state" && e.active)) return e.id;
+    }
+    return 0;
+  }, [stream.events]);
+  const office = useOffice(slug, pulse);
+  const snap = office.data;
+  const run = snap?.run ?? null;
+  const running = run?.status === "running";
 
-  // 화면이 들어올 때 한 번. 작업 중에는 아무것도 움직이지 않는다 —
-  // 도구에서 움직임은 소음이고, 소음이 늘면 진짜 신호(맥박)가 묻힌다.
+  // 들어왔을 때 돌고 있거나 결재를 기다리는 실행이 있으면 그 사무실을 연다.
+  // 새로고침했다고 일하던 사무실이 빈 방이 되면, 대표는 일이 멈춘 줄 안다.
+  useEffect(() => {
+    let live = true;
+    const fromUrl = new URLSearchParams(window.location.search).get("run");
+    if (fromUrl) {
+      // 주소창은 렌더 밖의 값이다 — 첫 그림(서버)에는 없으므로 하이드레이션
+      // 뒤에 한 번 읽는다. 초기값으로 읽으면 서버와 브라우저의 첫 그림이
+      // 달라진다.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSlug(fromUrl);
+      return;
+    }
+    api.runs().then((r) => {
+      if (!live) return;
+      const awaiting = r.projects.find((p) => p.status === "awaiting");
+      const pick = r.running[0] ?? awaiting?.slug ?? null;
+      if (pick) setSlug((cur) => cur ?? pick);
+    }).catch(() => { /* 사무실은 빈 방으로 뜬다 */ });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   useEffect(() => {
     const el = root.current;
     if (!el) return;
@@ -103,16 +136,6 @@ export default function OfficePage() {
     });
   }, []);
 
-  const isWorking = (id: string) => {
-    if (!folded.phase) return false;
-    const owners = PHASE_OWNER[folded.phase] ?? [];
-    if (owners.length > 1 && folded.detail) {
-      const e = employees.find((x) => folded.detail!.includes(x.name));
-      return e ? e.id === id : owners.includes(id);
-    }
-    return owners.includes(id);
-  };
-
   const start = async () => {
     const text = requirement.trim();
     if (!text || busy) return;
@@ -121,18 +144,13 @@ export default function OfficePage() {
     setRouting(null);
     stream.clear();
     try {
-      const r = await api.startRun(text);
+      const r = await api.startRun(text, { gates });
       setSlug(r.slug);
-      // 시작 버튼은 사무실 **아래**에 있다. 누르는 순간 화면은 입력칸에
-      // 맞춰져 있고, 정작 일이 벌어지는 사무실은 위로 밀려 잘려 있다.
-      // 일을 맡겼으면 일하는 곳이 보여야 한다.
-      // 부드럽게 올리면 실행이 시작되며 일어나는 다시 그리기에 끊긴다
-      // (400 → 311 에서 멈췄다). 애니메이션 없이 즉시 올린다.
+      setArrivalKey(r.slug);          // ① 전원 출근
+      window.history.replaceState(null, "", `/?run=${encodeURIComponent(r.slug)}`);
       work.current?.scrollTo({ top: 0 });
     } catch (e) {
       setError(
-        // 402 는 두 가지다 — 요금제를 아직 안 골랐거나, 크레딧이 모자라거나.
-        // 서버 문장이 이미 할 일을 말하고 있으면 덧붙이지 않는다.
         e instanceof ApiError && e.isBudget
           ? e.message
           : e instanceof ApiError && e.isBusy
@@ -175,14 +193,34 @@ export default function OfficePage() {
     if (!slug) return;
     try {
       await api.cancelRun(slug);
+      void office.reload();
     } catch (e) {
       setError(errText(e));
     }
   };
 
-  // 작업 로그 폭. 드래그 중에는 미리보기 폭만 바꾸고(부드럽게), 손을
-  // 떼면 그때 한 번 저장한다(sticky.ts) — 매 픽셀마다 localStorage 에
-  // 쓰면 드래그가 끊긴다. 드래그 중이 아니면(null) 저장된 폭을 쓴다.
+  const updateGates = async (next: string[]) => {
+    if (!slug || !run || run.status === "done") {
+      setGates(next);
+      return;
+    }
+    try {
+      await api.setGates(slug, next);
+      void office.reload();
+    } catch (e) {
+      setError(errText(e));
+    }
+  };
+
+  // 지시창의 답이 사무실을 움직인다 — 회의 소집 · 집중 모드 · 결재.
+  const onAction = (a: AskAnswer) => {
+    if (a.action?.focus !== undefined) setFocus(a.action.focus);
+    if (a.action?.meeting) {
+      setMeetingCall({ who: a.action.meeting, lines: a.lines, startedAt: Date.now() });
+    }
+    if (a.action?.decided) void office.reload();
+  };
+
   const [logWidthStored, setLogWidthStored] = useStickyNumber(
     LOG_WIDTH_KEY, LOG_WIDTH_DEFAULT,
   );
@@ -194,44 +232,33 @@ export default function OfficePage() {
   };
 
   const allMock = providers?.all_mock ?? false;
-  // 탭을 닫았다 새로 열면 다시 보인다 — `localStorage` 로 영영 안 보이게
-  // 하면 Mock 인 걸 잊은 채로 며칠씩 쓰게 된다. `sessionStorage` 는 이
-  // 탭이 열려 있는 동안만(다른 화면을 오가도) 닫힌 채로 남는다.
   const [mockDismissed, dismissMockWarn] = useSessionFlag("mock-warn-dismissed");
+  const picked = snap?.employees.find((e) => e.id === selected) ?? null;
+  const liveGates = run && run.status !== "done" ? snap?.gates ?? [] : gates;
 
   return (
     <div ref={root} className="flex h-full">
       <ProjectRail
         activeSlug={slug}
         phase={folded.phase}
-        // 단계가 바뀔 때마다 목록을 다시 읽는다. 시작할 때만 읽으면
-        // 돌고 있는 줄이 목록에 "진행 중"으로 잡히는 창이 너무 짧고,
-        // 끝난 뒤의 파일 수·크레딧도 늦게 반영된다.
-        //
-        // 다만 **실행 중이 아닐 때는 움직이지 않는다.** 새로고침하면
-        // 버스가 지난 이벤트를 재생하면서 `folded.phase` 가 채워지는데,
-        // 그때마다 키가 바뀌어 목록을 한 번 더 읽고 있었다(프로덕션
-        // 빌드에서 `/api/projects` 가 두 번씩 나갔다).
-        refreshKey={slug ? `${slug}-${folded.done}-${folded.phase ?? ""}` : "idle"}
+        refreshKey={slug ? `${slug}-${folded.done}-${folded.phase ?? ""}-${run?.status ?? ""}`
+          : "idle"}
         onNew={() => {
           setSlug(null);
           setRequirement("");
           stream.clear();
+          window.history.replaceState(null, "", "/");
         }}
       />
 
-      {/* 가운데 — 사무실과 입력창 */}
       <section ref={work} className="min-w-0 flex-1 overflow-y-auto px-4 py-4">
-        <div className="mx-auto max-w-[640px] space-y-3">
+        <div className="mx-auto max-w-[920px] space-y-3">
           {allMock && !mockDismissed && (
             <div data-enter>
               <Warning onClose={dismissMockWarn} closeLabel={t("run.mockWarnClose")}>
                 <strong>{t("run.mockWarn")}</strong>{" "}
-                <Linked
-                  text={t("run.mockWarnBody")}
-                  label={t("run.mockWarnLink")}
-                  href="/settings"
-                />
+                <Linked text={t("run.mockWarnBody")} label={t("run.mockWarnLink")}
+                  href="/settings" />
               </Warning>
             </div>
           )}
@@ -242,128 +269,134 @@ export default function OfficePage() {
               </Warning>
             </div>
           )}
-          {(error || loadError) && (
+          {(error || loadError || office.error) && (
             <div data-enter>
-              <ErrorBox>{error ?? loadError}</ErrorBox>
+              <ErrorBox>{error ?? loadError ?? office.error}</ErrorBox>
             </div>
           )}
 
-          {/* 사무실 */}
-          <div data-enter className="space-y-1.5">
-            <div className="flex items-center justify-between px-1">
-              <h1 className="text-[13px] font-semibold tracking-tight">
-                {t("office.title")}
-              </h1>
-              {/* 단계는 이제 그래프 가운데에 놓인다(HandoffGraph). 여기에도
-                  적으면 같은 말이 두 번 보이고, 눈이 어느 쪽을 봐야 하는지
-                  모른다. 대신 실행 중이라는 사실만 표시한다. */}
+          {/* 머리 — 회사 이름 · 지금 프로젝트 · 집중 모드 */}
+          <div data-enter className="flex flex-wrap items-center gap-2 px-1">
+            <h1 className="text-[13px] font-semibold tracking-tight">{t("office.title")}</h1>
+            {run && (
+              <span className="min-w-0 truncate text-[12px] text-muted">
+                · {run.name}
+                <span className="ml-1.5 text-dim">
+                  {t(`list.${run.status}` as Parameters<typeof t>[0])}
+                  {run.tasks_total > 0 && ` · ${run.tasks_done}/${run.tasks_total}`}
+                </span>
+              </span>
+            )}
+            <span className="ml-auto flex items-center gap-2">
               {running && (
                 <span className="flex items-center gap-1.5 text-[11px] text-muted">
                   <span className="size-1.5 animate-pulse rounded-full"
-                        style={{ background: "var(--accent)" }} />
+                    style={{ background: "var(--st-working)" }} />
                   {t("list.running")}
                 </span>
               )}
-            </div>
-            {loading && employees.length === 0 ? (
-              // 사무실이 비어 보이면 "직원이 아무도 없다"로 읽힌다.
-              // 방이 올 자리를 먼저 그려둔다.
-              <div className="glass glass-lit p-4">
-                <Skeleton lines={6} />
-              </div>
-            ) : (
-            <HandoffGraph
-              employees={employees}
-              working={isWorking}
-              onPick={(id) => setPicked((p) => (p === id ? null : id))}
-              picked={picked}
-              phase={folded.phase}
-              detail={folded.detail}
-              events={stream.events}
-              roster={stream.roster}
-            />
-            )}
+              <button type="button" onClick={() => setFocus(!focus)}
+                aria-pressed={focus}
+                className="rounded-full border px-2.5 py-0.5 text-[11px] transition"
+                style={{
+                  borderColor: focus ? "var(--st-working)" : "var(--line)",
+                  color: focus ? "var(--st-working)" : "var(--muted)",
+                }}>
+                {focus ? t("office.focusOn") : t("office.focusOff")}
+              </button>
+              {slug && run && (
+                <a href={`/projects/${encodeURIComponent(slug)}`}
+                  className="text-[11px] text-dim hover:text-fg">
+                  {t("run.detail")} →
+                </a>
+              )}
+            </span>
           </div>
 
-          {/* 입력창 — 사무실 바로 밑. 누가 있는지 보고 나서 지시한다. */}
-          <div data-enter>
-            <Panel
-              title={t("office.ask")}
-              right={
-                slug && (
-                  <span className="truncate text-[11px] text-dim">
-                    <code>{slug}</code>
-                  </span>
-                )
-              }
-            >
+          {/* ⑦ 대표 승인 — 결정할 일이 있으면 맨 위 */}
+          {slug && snap && snap.approvals.length > 0 && (
+            <div data-enter>
+              <ApprovalDesk slug={slug} approvals={snap.approvals}
+                onDecided={() => void office.reload()} />
+            </div>
+          )}
+
+          {snap ? (
+            <div data-enter className="space-y-2">
+              <ScenarioStrip steps={snap.scenario} />
+              <OfficeFloor snap={snap} events={stream.events} focus={focus}
+                meetingCall={meetingCall} selected={selected} onSelect={setSelected}
+                arrivalKey={arrivalKey} />
+              {picked && (
+                <EmployeeCard e={picked} items={snap.integrations}
+                  onClose={() => setSelected(null)} />
+              )}
+              <IntegrationList items={snap.integrations} />
+            </div>
+          ) : (
+            <div className="glass glass-lit p-4"><Skeleton lines={8} /></div>
+          )}
+
+          <div data-enter className="grid gap-3 lg:grid-cols-2">
+            <CommandWindow run={slug} snap={snap} focus={focus} onAction={onAction} />
+
+            {/* 일 맡기기 */}
+            <Panel title={t("office.ask")}
+              right={slug && <span className="truncate text-[11px] text-dim">
+                <code>{slug}</code></span>}>
               <textarea
                 value={requirement}
                 onChange={(e) => setRequirement(e.target.value)}
                 rows={3}
                 placeholder={t("office.placeholder")}
                 onKeyDown={(e) => {
-                  // 줄바꿈이 필요한 입력이라 Enter 로 보내지 않는다.
-                  // 그래도 손을 옮기지 않고 보낼 길은 있어야 한다.
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void start();
                 }}
                 className="w-full resize-y rounded-xl border border-line bg-[color:var(--panel-2)]
                   px-3 py-2 text-sm outline-none backdrop-blur
                   placeholder:text-dim focus:border-accent"
               />
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Button
-                  tone="primary"
-                  onClick={start}
-                  disabled={busy || running || !requirement.trim()}
-                >
+              <p className="mb-1 mt-2 text-[11px] text-dim">
+                {run && run.status !== "done" ? t("gate.liveTitle") : t("gate.title")}
+              </p>
+              <GateToggles value={liveGates} onChange={(g) => void updateGates(g)} />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button tone="primary" onClick={start}
+                  disabled={busy || running || run?.status === "awaiting"
+                    || !requirement.trim()}>
                   {t("office.auto")}
                 </Button>
                 <Button onClick={openManual} disabled={busy || !requirement.trim()}>
                   {t("office.manual")}
                 </Button>
-                <Button
-                  tone="ghost"
-                  onClick={askRouting}
-                  disabled={busy || !requirement.trim()}
-                >
+                <Button tone="ghost" onClick={askRouting}
+                  disabled={busy || !requirement.trim()}>
                   {t("office.whoFirst")}
                 </Button>
-                {running && (
+                {(running || run?.status === "awaiting") && (
                   <Button tone="danger" onClick={cancel} className="ml-auto">
                     {t("proj.stop")}
                   </Button>
                 )}
               </div>
-              {/* 만들어진 파일은 로그를 읽어야만 알 수 있었다. 오른쪽
-                  레일의 버튼은 **개수**만 말한다 — 무엇이 생겼는지는
-                  한 줄이면 보여줄 수 있다. */}
               {(folded.files?.length ?? 0) > 0 && (
-                <p className="mt-2 flex flex-wrap items-center gap-1.5
-                  text-[11px]">
+                <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
                   <span className="text-dim">{t("run.made")}</span>
                   {folded.files!.slice(0, 6).map((f) => (
-                    <span key={f}
-                          className="rounded-md bg-panel2 px-1.5 py-0.5 font-mono">
-                      <span className="text-dim">
-                        {f.slice(0, f.lastIndexOf("/") + 1)}
-                      </span>
+                    <span key={f} className="rounded-md bg-panel2 px-1.5 py-0.5 font-mono">
+                      <span className="text-dim">{f.slice(0, f.lastIndexOf("/") + 1)}</span>
                       {f.slice(f.lastIndexOf("/") + 1)}
                     </span>
                   ))}
                   {folded.files!.length > 6 && (
-                    <span className="text-dim">
-                      +{folded.files!.length - 6}
-                    </span>
+                    <span className="text-dim">+{folded.files!.length - 6}</span>
                   )}
                 </p>
               )}
               {routing && (
                 <p className="mt-2 text-xs text-muted">
                   {t("run.routing")}:{" "}
-                  <strong
-                    style={{ color: `var(--${routing.employee}, var(--accent))` }}
-                  >
+                  <strong style={{ color: `var(--${routing.employee}, var(--accent))` }}>
                     {routing.employee}
                   </strong>{" "}
                   — {routing.why}
@@ -372,22 +405,12 @@ export default function OfficePage() {
             </Panel>
           </div>
 
-          {/* 좁은 화면에는 오른쪽 레일이 없다. 그때 로그가 통째로 사라지면
-              지금 무슨 일이 일어나는지 볼 방법이 없어진다 — 가운데로 내린다.
-
-              점수·태스크도 **레일에만** 있었다(DAY 23 이전). 폰에서는
-              사무실 그림의 작은 단계 글자 말고는 진행 상황을 알 방법이
-              없었다 — "프로젝트가 어떻게 되어가는지 모르겠다"는 말이
-              여기서 나왔다. 레일과 같은 것을 여기도 보여준다. */}
+          {/* 좁은 화면에는 오른쪽 레일이 없다 — 점수·태스크·로그를 여기로 내린다. */}
           {(slug || stream.events.length > 0) && (
             <div data-enter className="space-y-3 lg:hidden">
               <Panel title={t("proj.score")}>
-                <ScorePanel
-                  score={folded.score}
-                  detail={folded.scoreDetail}
-                  cost={folded.totals?.cost}
-                  round={folded.round}
-                />
+                <ScorePanel score={folded.score} detail={folded.scoreDetail}
+                  cost={folded.totals?.cost} round={folded.round} />
               </Panel>
               {(folded.tasks?.length ?? 0) > 0 && (
                 <Panel title={t("proj.tasks")}>
@@ -401,24 +424,17 @@ export default function OfficePage() {
                       {t("office.logEmpty")}
                     </p>
                   ) : (
-                    <ChatLog
-                      events={stream.events}
-                      roster={stream.roster}
-                      connected={stream.connected}
-                      polling={stream.polling}
-                      slug={slug}
-                      className="h-[22rem]"
-                    />
+                    <ChatLog events={stream.events} roster={stream.roster}
+                      connected={stream.connected} polling={stream.polling}
+                      slug={slug} className="h-[22rem]" />
                   )}
                 </div>
               </Panel>
             </div>
           )}
-
         </div>
       </section>
 
-      {/* 오른쪽 — 작업 로그와 진행 상황 */}
       <ResizeHandle
         width={logWidth}
         onChange={setLogWidthDrag}
@@ -439,9 +455,6 @@ export default function OfficePage() {
           <span className="flex min-w-0 items-center gap-1.5 text-[13px]
             font-semibold tracking-tight">
             {t("office.log")}
-            {/* 단계는 사무실 그림 안에만 있었다. 로그를 읽는 동안에는
-                그림이 위로 밀려 안 보이는데, 정작 "지금 어디쯤인가"가
-                제일 궁금한 순간이 그때다. */}
             {running && folded.phase && (
               <span className="flex min-w-0 items-center gap-1 rounded-md
                 px-1.5 py-0.5 text-[10px] font-medium"
@@ -461,50 +474,33 @@ export default function OfficePage() {
 
         <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-line
           border-t border-line overflow-hidden">
-          {/* 작업 로그 — 진행 중이면 흐르고, 아니면 안내문만 남는다. */}
           <div className="min-h-0 overflow-y-auto">
             {stream.events.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-dim">
                 {t("office.logEmpty")}
               </p>
             ) : (
-              <ChatLog
-                events={stream.events}
-                roster={stream.roster}
-                connected={stream.connected}
-                polling={stream.polling}
-                slug={slug}
-                className="h-full"
-              />
+              <ChatLog events={stream.events} roster={stream.roster}
+                connected={stream.connected} polling={stream.polling}
+                slug={slug} className="h-full" />
             )}
           </div>
-          {/* 지난 결과 — 로그와 상관없이 늘 붙어 있다. 진행 중이든 아니든
-              "이런 일은 보통 어떻게 끝났나"는 항상 궁금하다. */}
           <div className="min-h-0 overflow-y-auto">
             <RecentResults />
           </div>
         </div>
 
-        {/* 실행이 없으면 이 칸은 "—" 두 줄이다. 아무것도 알려주지 않으면서
-            자리를 먹고, 그 위의 지난 결과까지 밀어낸다. */}
         {(slug || stream.events.length > 0) && (
-        <div className="shrink-0 space-y-3 border-t border-line p-3">
-          <ScorePanel
-            score={folded.score}
-            detail={folded.scoreDetail}
-            cost={folded.totals?.cost}
-            round={folded.round}
-          />
-          {(folded.tasks?.length ?? 0) > 0 && <TaskBoard tasks={folded.tasks} />}
-          {slug && (folded.files?.length ?? 0) > 0 && (
-            <Button
-              className="w-full"
-              onClick={() => router.push(`/projects/${slug}`)}
-            >
-              {t("run.detail")} ({folded.files?.length ?? 0})
-            </Button>
-          )}
-        </div>
+          <div className="shrink-0 space-y-3 border-t border-line p-3">
+            <ScorePanel score={folded.score} detail={folded.scoreDetail}
+              cost={folded.totals?.cost} round={folded.round} />
+            {(folded.tasks?.length ?? 0) > 0 && <TaskBoard tasks={folded.tasks} />}
+            {slug && (folded.files?.length ?? 0) > 0 && (
+              <Button className="w-full" onClick={() => router.push(`/projects/${slug}`)}>
+                {t("run.detail")} ({folded.files?.length ?? 0})
+              </Button>
+            )}
+          </div>
         )}
       </aside>
     </div>

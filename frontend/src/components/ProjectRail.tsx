@@ -118,7 +118,9 @@ export function ProjectRail({
   }
 
   const rows = [...(data?.projects ?? [])].sort((a, b) => {
-    const run = (p: typeof a) => (p.status === "running" ? 0 : 1);
+    // 결재를 기다리는 것도 위로 — 대표가 움직여야 풀리는 일이다.
+    const run = (p: typeof a) =>
+      (p.status === "running" || p.status === "awaiting" ? 0 : 1);
     return run(a) - run(b) || b.created_at - a.created_at;
   });
 
@@ -130,7 +132,7 @@ export function ProjectRail({
   midnight.setHours(0, 0, 0, 0);
   const today = midnight.getTime() / 1000;
   const bucket = (p: (typeof rows)[number]) =>
-    p.status === "running" ? "running"
+    p.status === "running" || p.status === "awaiting" ? "running"
       : p.created_at >= today ? "today"
         : p.created_at >= today - 86400 ? "yesterday"
           : "earlier";
@@ -250,7 +252,14 @@ export function ProjectRail({
                   {/* 돌고 있는 줄에는 단계를 적는다. 시각·파일 수는 끝난
                       것에나 의미가 있고, 지금 돌는 것에 필요한 것은
                       "어디까지 왔나"다. */}
-                  {p.status === "running" && phase ? (
+                  {p.status === "awaiting" ? (
+                    <span className="mt-0.5 flex items-center gap-1 text-[11px]
+                      font-medium" style={{ color: "var(--st-approval)" }}>
+                      <span className="approval-pulse size-1 rounded-full"
+                            style={{ background: "var(--st-approval)" }} aria-hidden />
+                      {t("list.awaiting")}
+                    </span>
+                  ) : p.status === "running" && phase ? (
                     <span className="mt-0.5 flex items-center gap-1
                       text-[11px] font-medium" style={{ color: "var(--accent)" }}>
                       <span className="size-1 animate-pulse rounded-full"

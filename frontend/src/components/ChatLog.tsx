@@ -34,6 +34,7 @@ import { Icon, iconOfAgent } from "./icons";
 import { useEffect, useRef, useState } from "react";
 
 import type { BusEvent, Roster } from "@/lib/types";
+import { eventKey } from "@/lib/useStream";
 
 /** `phase` 이벤트 하나와 그 뒤에 딸린 `message` 들의 묶음.
  *  첫 단계 전에 온 말(요구사항·첨부 안내)은 `phase` 가 없다 —
@@ -50,7 +51,7 @@ function buildSegments(rows: BusEvent[]): Segment[] {
   for (const e of rows) {
     if (e.type === "phase") {
       if (current.phase || current.messages.length > 0) segments.push(current);
-      current = { key: `phase-${e.id}`, phase: e, messages: [] };
+      current = { key: `phase-${eventKey(e)}`, phase: e, messages: [] };
     } else if (e.type === "message") {
       current.messages.push(e);
     }
@@ -228,7 +229,7 @@ export function ChatLog({
               />
             ))}
             {doneRows.map((e) => (
-              <Row key={e.id} e={e} roster={roster} />
+              <Row key={eventKey(e)} e={e} roster={roster} />
             ))}
           </ol>
         )}
@@ -283,7 +284,7 @@ function SegmentRow({
     return (
       <>
         {seg.messages.map((m) => (
-          <Row key={m.id} e={m} roster={roster} />
+          <Row key={eventKey(m)} e={m} roster={roster} />
         ))}
       </>
     );
@@ -327,11 +328,26 @@ function SegmentRow({
             {seg.phase.detail ? ` · ${seg.phase.detail}` : ""}
           </li>
           {seg.messages.map((m) => (
-            <Row key={m.id} e={m} roster={roster} />
+            <Row key={eventKey(m)} e={m} roster={roster} />
           ))}
         </ol>
       )}
     </li>
+  );
+}
+
+function ConfidenceChip({ value }: { value: number }) {
+  const { t } = useLang();
+  const pct = Math.round(value * 100);
+  const color = pct >= 80 ? "var(--st-done)" : pct >= 60 ? "var(--st-working)"
+    : "var(--bad)";
+  return (
+    <span className="mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5
+      text-[10px] font-medium" title={t("task.confidenceHint")}
+      style={{ borderColor: color, color }}>
+      {t("log.confidence", { n: pct })}
+      {pct < 60 && <span>· {t("task.lowConfidence")}</span>}
+    </span>
   );
 }
 
@@ -383,6 +399,12 @@ function Row({ e, roster }: { e: BusEvent; roster: Roster }) {
         >
           {e.text}
         </p>
+        {/* 검증자가 이 판정을 얼마나 확신했나 (§18 신뢰도 · DAY 25).
+            낮으면 "사람 확인 권장"을 붙인다 — 확신도 게이트를 켜두면
+            이런 통과는 결재함으로 간다. */}
+        {e.kind === "verdict" && typeof e.confidence === "number" && (
+          <ConfidenceChip value={e.confidence} />
+        )}
       </div>
     </li>
   );

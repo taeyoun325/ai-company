@@ -7,17 +7,21 @@
  * 흐르고, 끝났으면 저장된 이력이 그대로 보인다 — 두 경우에 다른 화면을
  * 만들면 "끝나자마자 화면이 빈다" 같은 일이 생긴다.
  */
-import { use, useEffect, type ReactNode } from "react";
+import { use, useEffect, useState, type ReactNode } from "react";
 
 import { ChatLog } from "@/components/ChatLog";
+import { GateToggles } from "@/components/GateToggles";
+import { MetricsPanel } from "@/components/MetricsPanel";
+import { PermissionsPanel } from "@/components/PermissionsPanel";
 import { ProjectRail } from "@/components/ProjectRail";
 import { FileViewer } from "@/components/FileViewer";
 import { ScorePanel, TaskBoard } from "@/components/TaskBoard";
+import { ApprovalDesk } from "@/components/office/ApprovalDesk";
 import {
   Button, Empty, ErrorBox, MockBadge, money, Panel, took, Warning, when,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { useLang } from "@/lib/i18n";
+import { useErrorText, useLang } from "@/lib/i18n";
 import type { Project } from "@/lib/types";
 import { useLoader } from "@/lib/useLoader";
 import { useSlug } from "@/lib/useSlug";
@@ -31,6 +35,19 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
   );
   const stream = useStream(slug);
   const folded = foldState(stream.events);
+  const errText = useErrorText();
+  const [actionError, setActionError] = useState<string | null>(null);
+  // 결재함의 파일 링크(`?file=`)로 들어오면 그 파일을 열어 둔다.
+  const [initialFile, setInitialFile] = useState<string | null>(null);
+  useEffect(() => {
+    const f = new URLSearchParams(window.location.search).get("file");
+    // 주소창은 렌더 밖의 값이라 effect 에서 한 번 읽는다(하이드레이션 이후).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (f) setInitialFile(f);
+  }, []);
+  // 결재·게이트 이벤트가 오면 결재함을 다시 읽는다.
+  const gatePulse = stream.events.filter((e) => e.type === "gate"
+    || e.type === "awaiting").length;
   // 실제로 불린 직원만. 0 회는 "일하지 않았다"이지 "일했는데 0"이 아니다.
   const used = Object.entries(project?.usage ?? {})
     .filter(([, u]) => u.calls > 0);
@@ -39,6 +56,21 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
   useEffect(() => {
     if (project?.running) void reload();
   }, [folded.phase, folded.done, project?.running, reload]);
+  useEffect(() => {
+    if (gatePulse) void reload();
+  }, [gatePulse, reload]);
+
+  // 재개가 왜 안 됐는지를 삼키면(DAY 24 까지 그랬다) 버튼이 고장 난 것처럼
+  // 보인다. 402(요금제·잔액) · 409(키·상태) · 429(좌석)를 그대로 보여준다.
+  const act = async (fn: () => Promise<unknown>) => {
+    setActionError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setActionError(errText(e));
+    }
+    await reload();
+  };
 
   if (error) {
     return (
@@ -86,15 +118,17 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
                 · {took(project.created_at, project.updated_at)}
               </span>
             )}
-            {project.running && (
-              <Button tone="danger" onClick={() => void api.cancelRun(slug).then(reload)}>
+            {(project.running || project.status === "awaiting") && (
+              <Button tone="danger" onClick={() => void act(() => api.cancelRun(slug))}>
                 {t("proj.stop")}
               </Button>
             )}
             {/* 멈춘 것만 재개할 수 있다 — 처음부터 다시 계획하지 않고
                 마지막 체크포인트에서 이어간다(§18). */}
             {project.status === "stopped" && (
-              <Button onClick={() => void api.resumeRun(slug).then(reload)}>
+              <Button tone="primary" onClick={() => void act(() => api.resumeRun(slug))}
+                title={t("proj.resumeHint", {
+                  n: project.checkpoint?.done?.length ?? 0 })}>
                 {t("proj.resume")}
               </Button>
             )}
@@ -116,6 +150,28 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
             {t("proj.stopped")}: {project.stopped_reason}
           </p>
         )}
+        {project.status === "stopped" && (
+          <p className="mt-1 text-xs text-dim">
+            {project.checkpoint?.stage
+              ? t("proj.resumeFrom", {
+                  n: project.checkpoint?.done?.length ?? 0,
+                  total: project.tasks?.length ?? 0 })
+              : t("proj.resumeFromStart")}
+          </p>
+        )}
+        {project.status === "awaiting" && (
+          <p className="mt-2 text-sm" style={{ color: "var(--st-approval)" }}>
+            {t("proj.awaiting")}
+          </p>
+        )}
+        {(project.permissions?.risks ?? []).includes("tests_visible") && (
+          <p className="mt-2 text-xs" style={{ color: "var(--warn)" }}>
+            {t("perm.riskActive")}
+          </p>
+        )}
+        {actionError && (
+          <p className="mt-2 text-sm" style={{ color: "var(--bad)" }}>{actionError}</p>
+        )}
         {project.report && (
           <div className="mt-3 space-y-1 rounded-lg bg-panel2 p-3 text-sm">
             <p>{project.report.summary}</p>
@@ -128,11 +184,25 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
         )}
       </Panel>
 
+      {(project.approvals ?? []).some((a) => a.status === "pending") && (
+        <ApprovalDesk slug={slug}
+          approvals={(project.approvals ?? []).filter((a) => a.status === "pending")}
+          onDecided={() => void reload()} />
+      )}
+
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <div className="space-y-4">
           <Panel title={t("proj.files")}>
-            <FileViewer slug={slug} files={files} />
+            <FileViewer key={initialFile ?? "-"} slug={slug} files={files}
+              initial={initialFile} />
           </Panel>
+          {project.mode !== "manual" && (
+            <Panel title={t("metrics.title")}>
+              <MetricsPanel slug={slug} live={!!project.running}
+                names={Object.fromEntries(Object.entries(stream.roster)
+                  .map(([k, v]) => [k, v.name]))} />
+            </Panel>
+          )}
           <Panel title={t("office.log")} className="flex max-h-[30rem] flex-col overflow-hidden">
             <div className="-m-4 flex min-h-0 flex-1 flex-col">
               <ChatLog
@@ -159,6 +229,16 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
           </Panel>
           <Panel title={t("proj.tasks")}>
             <TaskBoard tasks={tasks} />
+          </Panel>
+          {project.mode !== "manual" && project.status !== "done" && (
+            <Panel title={t("gate.panel")}>
+              <p className="mb-2 text-[11px] text-dim">{t("gate.liveTitle")}</p>
+              <GateToggles value={project.gates ?? []}
+                onChange={(g) => void act(() => api.setGates(slug, g))} />
+            </Panel>
+          )}
+          <Panel title={t("perm.title")}>
+            <PermissionsPanel slug={slug} running={!!project.running} />
           </Panel>
           {project.criteria && project.criteria.length > 0 && (
             <Panel title={t("proj.criteria")}>
@@ -226,6 +306,8 @@ function FactBar({ project, score, cost }: {
   const { t } = useLang();
   const tone = project.status === "done"
     ? "var(--ok)"
+    : project.status === "awaiting"
+      ? "var(--st-approval)"
     : project.status === "stopped"
       ? "var(--bad)"
       : project.status === "running"
@@ -233,6 +315,7 @@ function FactBar({ project, score, cost }: {
         : "var(--dim)";
   const label: Record<string, string> = {
     done: t("list.done"),
+    awaiting: t("list.awaiting"),
     stopped: t("list.stopped"),
     running: t("list.running"),
     manual: t("list.manual"),

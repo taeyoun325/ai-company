@@ -60,6 +60,13 @@ function Mark({ status }: { status: TaskRow["status"] }) {
         ✓
       </span>
     );
+  if (status === "awaiting")
+    return (
+      <span aria-label={t("task.awaiting")} className="approval-pulse rounded-full"
+            style={{ color: "var(--st-approval)" }}>
+        ◆
+      </span>
+    );
   if (status === "doing")
     return (
       <span aria-label={t("task.running")} className="working" style={{ ["--c" as string]: "var(--accent)", color: "var(--accent)" }}>
@@ -113,8 +120,29 @@ export function ScorePanel({
           <Item k={t("task.k.criteria")} v={String(detail.criteria ?? "—")} />
           <Item k={t("task.k.reworks")} v={String(detail.reworks ?? 0)} />
           <Item k={t("task.k.replans")} v={String(detail.replans ?? 0)} />
+          {/* 검증자가 자기 판정을 얼마나 확신했나 (§18 신뢰도). 통과율과 다른
+              질문이다 — 둘이 같이 낮으면 검증 자체가 흔들린다. DAY 24 까지
+              데이터는 쌓였는데 화면 어디에도 없었다. */}
+          <ConfidenceItem v={detail.confidence} />
         </dl>
       )}
+    </div>
+  );
+}
+
+function ConfidenceItem({ v }: { v: string | number | boolean | undefined }) {
+  const { t } = useLang();
+  const n = typeof v === "number" ? v : null;
+  const color = n == null ? undefined
+    : n >= 80 ? "var(--st-done)" : n >= 60 ? "var(--st-working)" : "var(--bad)";
+  return (
+    <div className="col-span-2 flex justify-between rounded-md bg-panel2 px-2 py-1"
+      title={t("task.confidenceHint")}>
+      <dt className="text-dim">{t("task.k.confidence")}</dt>
+      <dd className="font-medium" style={{ color }}>
+        {n == null ? "—" : `${n}%`}
+        {n != null && n < 60 && <span className="ml-1 text-[10px]">{t("task.lowConfidence")}</span>}
+      </dd>
     </div>
   );
 }

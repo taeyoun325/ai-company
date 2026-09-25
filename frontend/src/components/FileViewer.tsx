@@ -233,12 +233,17 @@ function CodeLines({ text, lang }: { text: string; lang: string | null }) {
   );
 }
 
-export function FileViewer({ slug, files }: { slug: string; files: string[] }) {
+export function FileViewer({ slug, files, initial = null }: {
+  slug: string;
+  files: string[];
+  /** 처음 열어 둘 파일 — 결재함의 파일 링크(`?file=`)가 여기로 온다 (DAY 25). */
+  initial?: string | null;
+}) {
   const { t } = useLang();
   const errText = useErrorText();
   // 고른 파일이 없거나 목록에서 사라졌으면 첫 번째를 본다. 상태로 들고
   // 있다가 effect 로 맞추면, 목록이 바뀔 때마다 렌더가 한 번 더 돈다.
-  const [chosen, setChosen] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<string | null>(initial);
   const path = chosen && files.includes(chosen) ? chosen : (files[0] ?? null);
   const tree = useMemo(() => buildTree(files), [files]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());

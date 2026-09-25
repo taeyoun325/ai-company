@@ -240,6 +240,8 @@ export function StatusDot({ status }: { status: string }) {
       ? "var(--ok)"
       : status === "running"
         ? "var(--accent)"
+        : status === "awaiting"
+          ? "var(--st-approval)"
         : status === "stopped"
           ? "var(--bad)"
           : "var(--dim)";

@@ -17,6 +17,9 @@ import { use, useState } from "react";
 import { ChatLog } from "@/components/ChatLog";
 import { FileViewer } from "@/components/FileViewer";
 import { Office } from "@/components/Office";
+import { EmployeeCard } from "@/components/office/EmployeeCard";
+import { OfficeFloor } from "@/components/office/OfficeFloor";
+import { useOffice } from "@/lib/useOffice";
 import {
   Button, ErrorBox, Panel, Screen, Skeleton, Warning,
 } from "@/components/ui";
@@ -48,6 +51,10 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
 
   const stream = useStream(slug);
   const folded = foldState(stream.events);
+  // 사무실 평면도 — AUTO 와 같은 그림을 쓴다 (DAY 25). 지시를 보내거나 받을
+  // 때마다 다시 읽는다.
+  const office = useOffice(slug, `${busy ?? ""}-${stream.events.length}`);
+  const floorPick = office.data?.employees.find((e) => e.id === picked) ?? null;
 
   const employee = employees.find((e) => e.id === picked) ?? null;
   const allMock = employees.length > 0 && employees.every((e) => e.mock);
@@ -113,12 +120,27 @@ export default function ManualPage({ params }: { params: Promise<{ slug: string 
           </Button>
         }
       >
-        <Office
-          employees={employees}
-          busy={busy}
-          picked={picked}
-          onPick={(id) => setPicked(id)}
-        />
+        {office.data ? (
+          <div className="space-y-3">
+            <OfficeFloor snap={office.data} events={stream.events} focus={false} still
+              meetingCall={null} selected={picked} arrivalKey={null}
+              onSelect={(id) => id && setPicked(id)} />
+            {floorPick && (
+              <EmployeeCard e={floorPick} items={office.data.integrations}
+                onClose={() => setPicked(null)} />
+            )}
+          </div>
+        ) : (
+          <Skeleton lines={6} />
+        )}
+        {/* 이름 바꾸기 · 채용 · 모델 — 인사 카드는 그대로 둔다 (DAY 21). */}
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs text-dim">{t("man.staffCards")}</summary>
+          <div className="mt-2">
+            <Office employees={employees} busy={busy} picked={picked}
+              onPick={(id) => setPicked(id)} cardsOnly />
+          </div>
+        </details>
       </Panel>
 
       <Panel

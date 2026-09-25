@@ -13,6 +13,12 @@
  * 중, 404 는 없음. 화면이 다르게 반응해야 하므로 상태를 그대로 들고 간다.
  */
 import type {
+  Approval,
+  AskAnswer,
+  Decision,
+  OfficeSnapshot,
+  PermissionsView,
+  RunMetrics,
   ByokStatus,
   CreditStatus,
   FileVersion,
@@ -157,6 +163,17 @@ const post = <T>(path: string, body?: unknown) =>
 
 const del = <T>(path: string) => call<T>(path, { method: "DELETE" });
 
+const put = <T>(path: string, body?: unknown) =>
+  call<T>(path, { method: "PUT", body: body ? JSON.stringify(body) : undefined });
+
+/** 새 실행에 함께 보낼 것 (DAY 25). */
+export interface StartOptions {
+  /** 대표가 멈춰 서서 보겠다는 지점 — "plan" · "task" · "task:<직원>" · "confidence" */
+  gates?: string[];
+  permissions?: Record<string, { writes?: string[]; reads?: string[] }>;
+  acknowledge_risk?: boolean;
+}
+
 export const api = {
   // ── 인증 (DAY 15) ───────────────────────────────────────────────
   me: () => call<MeResponse>("/api/auth/me"),
@@ -249,9 +266,10 @@ export const api = {
     ),
 
   // ── AUTO (§10) ──────────────────────────────────────────────────
-  startRun: (requirement: string) =>
+  startRun: (requirement: string, opts: StartOptions = {}) =>
     post<{ slug: string; running: boolean; mock: boolean }>("/api/runs", {
       requirement,
+      ...opts,
     }),
   runs: () => call<{ running: string[]; projects: Project[] }>("/api/runs"),
   run: (slug: string) => call<Project>(`/api/runs/${seg(slug)}`),
@@ -262,6 +280,37 @@ export const api = {
     ),
   route: (requirement: string) =>
     post<{ employee: string; why: string }>("/api/route", { requirement }),
+
+  // ── 결재 · 게이트 (DAY 25 · HITL) ───────────────────────────────
+  approvals: (slug: string) =>
+    call<{ gates: string[]; approvals: Approval[]; confidence_gate: number;
+           status: string }>(`/api/runs/${seg(slug)}/approvals`),
+  /** `resumed` — 쉬던 실행을 지금 깨웠는가. `note` — 못 깨운 이유(좌석·잔액). */
+  decide: (slug: string, id: string, decision: Decision, comment = "") =>
+    post<{ approval: Approval; resumed: boolean; note: string | null }>(
+      `/api/runs/${seg(slug)}/approvals/${seg(id)}`, { decision, comment },
+    ),
+  setGates: (slug: string, gates: string[]) =>
+    put<{ gates: string[] }>(`/api/runs/${seg(slug)}/gates`, { gates }),
+
+  // ── 사무실 · 대표 지시창 (DAY 25) ───────────────────────────────
+  office: (run?: string | null) =>
+    call<OfficeSnapshot>(`/api/office${run ? `?run=${encodeURIComponent(run)}` : ""}`),
+  ask: (text: string, run?: string | null) =>
+    post<AskAnswer>("/api/office/ask", {
+      text, run: run ?? null, tz_offset: new Date().getTimezoneOffset(),
+    }),
+
+  // ── 관측성 · 권한 (DAY 25) ──────────────────────────────────────
+  metrics: (slug: string) => call<RunMetrics>(`/api/runs/${seg(slug)}/metrics`),
+  permissions: (slug: string) =>
+    call<PermissionsView>(`/api/projects/${seg(slug)}/permissions`),
+  setPermissions: (
+    slug: string,
+    overrides: Record<string, { writes?: string[]; reads?: string[] }>,
+    acknowledge_risk = false,
+  ) => put<PermissionsView>(`/api/projects/${seg(slug)}/permissions`,
+                           { overrides, acknowledge_risk }),
 
   // ── MANUAL (§11) ────────────────────────────────────────────────
   openManual: (requirement: string) =>

@@ -29,6 +29,7 @@ import { useLoader } from "@/lib/useLoader";
  *  이 표만 한국어로 남는다. */
 const LABEL: Record<string, Key> = {
   running: "list.running",
+  awaiting: "list.awaiting",
   done: "list.done",
   stopped: "list.stopped",
   manual: "list.manual",
