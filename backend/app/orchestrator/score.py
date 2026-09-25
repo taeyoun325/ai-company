@@ -35,6 +35,20 @@ class Score:
         self.ac_met: int | None = None     # 최종 검수 결과
         self.confidence_total = 0.0        # 판정마다의 확신도(0~1) 합
 
+    # 재개(§18)에 들고 갈 칸. 멈췄다 이어간 실행이 반려 횟수·확신도를
+    # 0 부터 다시 세면, 화면의 "확신도 95%" 가 재개 **이후** 판정 몇 개만의
+    # 평균이 된다 — 앞에서 받은 낮은 확신도가 조용히 지워진다.
+    _CARRY = ("reviews", "passes", "reworks", "replans", "confidence_total",
+              "tests", "tests_pass", "tests_ran", "ac_covered")
+
+    def carry(self) -> dict:
+        return {k: getattr(self, k) for k in self._CARRY}
+
+    def restore(self, saved: dict | None) -> None:
+        for k in self._CARRY:
+            if saved and k in saved:
+                setattr(self, k, saved[k])
+
     def value(self) -> int:
         if self.ac_met is not None and self.ac_total:
             return round(100 * self.ac_met / self.ac_total)

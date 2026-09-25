@@ -106,6 +106,10 @@ class GeminiProvider(AIProvider):
                 "system_instruction": req.system,
                 "max_output_tokens": req.max_tokens,
                 "temperature": req.temperature,
+                # 도구를 안 넘기므로 자동 함수 호출(AFC)은 할 일이 없다. 켜져
+                # 있으면 genai 가 호출마다 경고 한 줄을 로그에 남긴다 —
+                # 가짜 서버로 SDK 를 태워보고 알았다(DAY 25).
+                "automatic_function_calling": {"disable": True},
             },
         }
 

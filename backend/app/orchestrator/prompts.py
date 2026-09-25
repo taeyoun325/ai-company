@@ -112,6 +112,22 @@ def replan(current: Plan, task: Task, verdict: Verdict) -> str:
     )
 
 
+def revise_plan(current: Plan, comment: str) -> str:
+    """CEO 가 계획 승인 게이트에서 반려했다 (DAY 25 · HITL).
+
+    CEO 의 말은 **의뢰인의 말**이다 — 첨부 자료와 달리 지시로 따른다.
+    다만 테스트가 아직 쓰이지 않은 시점이므로 인수기준도 고칠 수 있다.
+    """
+    return (
+        f"# 현재 계획\n{current.model_dump_json(indent=2)}\n\n"
+        f"# CEO 의 반려 의견\n{comment}\n\n"
+        f"# 할 일\nCEO 의 의견을 반영해 계획을 다시 내세요.\n"
+        f"- 의견이 인수기준을 바꾸라고 하면 바꿔도 됩니다(아직 테스트가 없습니다).\n"
+        f"- 의견과 무관한 부분은 그대로 두세요. 전부 다시 짜면 CEO 가 이미 본\n"
+        f"  부분을 처음부터 다시 봐야 합니다."
+    )
+
+
 def finalize(criteria: list[Criterion], files: dict[str, str], report: dict) -> str:
     return (
         f"# 인수기준\n{_criteria(criteria)}\n\n"

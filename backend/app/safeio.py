@@ -34,8 +34,34 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
+import time
 from pathlib import Path
+
+# 윈도우에서 이름 바꾸기가 막힐 때 다시 해보는 횟수와 간격(초).
+REPLACE_TRIES = 20
+REPLACE_WAIT = 0.01
+
+
+def _replace(src: str, dst: Path) -> None:
+    """`os.replace` — 윈도우에서는 잠깐 막혀도 다시 한다 (DAY 25).
+
+    윈도우는 **다른 스레드가 읽으려고 열어 둔 파일**을 덮어쓰는 이름 바꾸기를
+    `PermissionError`(WinError 5)로 거절한다. 리눅스는 그냥 된다. 태스크가
+    동시에 돌고(병렬 실행) 사무실 화면이 메타를 자주 읽기 시작하자, 메타를
+    읽는 순간과 쓰는 순간이 겹쳐 실행 하나가 "PermissionError" 로 멈췄다 —
+    시험을 여러 번 돌리다 한 번 잡혔다. 읽는 쪽은 금방 닫으므로, 아주 잠깐
+    기다렸다 다시 하면 된다. 끝내 안 되면 그대로 올린다.
+    """
+    for attempt in range(REPLACE_TRIES):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if sys.platform != "win32" or attempt == REPLACE_TRIES - 1:
+                raise
+            time.sleep(REPLACE_WAIT * (attempt + 1))
 
 
 def write_text(path: Path | str, text: str, *, encoding: str = "utf-8") -> None:
@@ -52,7 +78,7 @@ def write_text(path: Path | str, text: str, *, encoding: str = "utf-8") -> None:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        _replace(tmp, path)
         tmp = None
     finally:
         if tmp is not None:

@@ -133,10 +133,19 @@ class OpenAIProvider(AIProvider):
                 raise RefusedError(lang.t("prov.cutOff", detail=reason),
                                    provider=self.name)
 
+        # 거절은 **메시지 안의 내용 조각**(`content[].type == "refusal"`)으로
+        # 온다. DAY 24 까지는 바깥 항목(`output[].type`)만 봐서 거절을 못 알아
+        # 봤고, 빈 글이 JSON 파서로 넘어가 "형식 오류 → 다시 시킴 → 포기"로
+        # 돈만 한 번 더 쓰고 엉뚱한 사유로 멈췄다. 가짜 서버로 SDK 를 태워보고
+        # 잡았다(DAY 25 · tests/test_wire_providers.py). 바깥 항목도 계속 본다.
         for item in getattr(resp, "output", None) or []:
-            if getattr(item, "type", "") == "refusal":
-                raise RefusedError(lang.t("prov.refused", detail=""),
-                                   provider=self.name)
+            parts = [item, *(getattr(item, "content", None) or [])]
+            for part in parts:
+                if getattr(part, "type", "") == "refusal":
+                    raise RefusedError(
+                        lang.t("prov.refused",
+                               detail=getattr(part, "refusal", "") or ""),
+                        provider=self.name)
 
         return GenerateResult(
             text=self._text_of(resp).strip(),

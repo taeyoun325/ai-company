@@ -289,7 +289,9 @@ def test_resume_continues_from_the_checkpoint_instead_of_restarting(monkeypatch)
     checkpoint = m["checkpoint"]
     # t1 이 통과한 라운드(4) 다음, t2 의 가드 검사가 라운드를 5로 올리고
     # 나서야 상한을 넘겨 멈춘다 — 그 시도 자체가 라운드로 세진다.
-    assert checkpoint["rounds"] == 5
+    # DAY 25 부터 t2(작가)·t3(디자이너)는 **동시에** 뜬다. 둘 다 시도하면
+    # 6, 한 줄이 먼저 쓰러져 다른 줄이 경계에서 접히면 5 다.
+    assert checkpoint["rounds"] in (5, 6)
     assert len(checkpoint["done"]) == 1, "t1 하나만 끝나고 멈춰야 한다"
     developer_calls_before = m["usage"]["developer"]["calls"]
 

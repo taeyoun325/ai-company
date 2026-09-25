@@ -72,13 +72,23 @@ def root() -> Path:
 
 
 def _areas(employee_id: str, write: bool) -> tuple[str, ...]:
+    """이 프로젝트에서의 **실효** 권한 (DAY 25 · agents/permissions.py).
+
+    직원 표의 기본값에 프로젝트별 조정을 덧씌운 값이다. 조정이 없으면
+    직원 표 그대로다 — 지금까지의 동작.
+    """
     if employee_id == "SYSTEM":
         return store.AREAS
-    try:
-        e = roles.get(employee_id)
-    except KeyError:
+    if not roles.exists(employee_id):
         return ()
-    return e.writes if write else e.reads
+    from app.agents import permissions
+    writes, reads = permissions.effective(current(), employee_id)
+    return writes if write else reads
+
+
+def areas(employee_id: str, write: bool) -> tuple[str, ...]:
+    """밖에서 실효 권한을 물을 때 (MANUAL 의 요청문 · 병렬 충돌 검사)."""
+    return _areas(employee_id, write)
 
 
 def _resolve(path: str, employee_id: str, write: bool) -> Path:

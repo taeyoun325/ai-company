@@ -25,7 +25,10 @@ from app import byok
 from app import config
 from app import deploy
 from app import lang
+from app import metrics
 from app import narrator
+from app import office
+from app import secretary
 from app.api import auth as auth_api
 from app.api import local_tools
 from app.auth import deps as auth
@@ -36,13 +39,14 @@ from app import scheduler
 from app import screen
 from app import secrets_broker
 from app.agents import employee as employees
+from app.agents import permissions
 from app.agents import roles
 from app.agents import staff
 from app.agents import subagents
 from app.database import index as project_index
 from app.database import store
 from app import orchestrator
-from app.orchestrator import manual
+from app.orchestrator import gates, manual
 from app import tenant
 from app import timeline
 from app import usage
@@ -144,6 +148,33 @@ class TopUpReq(BaseModel):
 class RunReq(BaseModel):
     requirement: str
     attachments: list[str] = []
+    # 승인 게이트 (DAY 25 · HITL) — "plan" · "task" · "task:<직원>" · "confidence"
+    gates: list[str] = []
+    # 이 프로젝트만의 권한 조정 (DAY 25) — {직원: {writes: [...], reads: [...]}}
+    permissions: dict | None = None
+    acknowledge_risk: bool = False
+
+
+class DecideReq(BaseModel):
+    decision: str                 # approve | reject | stop
+    comment: str = ""
+
+
+class GatesReq(BaseModel):
+    gates: list[str] = []
+
+
+class AskReq(BaseModel):
+    text: str
+    run: str | None = None
+    # JS 의 `new Date().getTimezoneOffset()` — 보고의 "몇 시 기준"을 화면
+    # 시간대로 말하려고 받는다. 서버 시계로 말하면 SaaS 에서는 UTC 가 된다.
+    tz_offset: int | None = None
+
+
+class PermissionsReq(BaseModel):
+    overrides: dict = {}
+    acknowledge_risk: bool = False
 
 
 class InstructReq(BaseModel):
@@ -405,8 +436,18 @@ def start_run(req: RunReq, request: Request):
     if not requirement:
         raise HTTPException(400, lang.t("err.emptyRequirement"))
     owner = auth.owner_of(request)
+    # 게이트와 권한은 **시작하기 전에** 검사한다. 실행을 띄운 뒤에 틀린
+    # 값을 발견하면 이미 계획 한 번 값을 치른 뒤다.
     try:
-        slug = orchestrator.start(requirement, req.attachments, owner=owner)
+        gate_list = gates.normalize(req.gates)
+        perms = _checked_permissions(req.permissions, req.acknowledge_risk)
+    except (gates.GateError, permissions.PolicyError) as e:
+        raise HTTPException(400, str(e))
+    except permissions.RiskNotAcknowledged as e:
+        raise HTTPException(409, str(e))
+    try:
+        slug = orchestrator.start(requirement, req.attachments, owner=owner,
+                                  gate_list=gate_list, permissions=perms)
     except tenant.NoPlan as e:
         # 이건 진짜로 결제 문제다 — 무료 요금제가 없으므로, 고르기 전에는
         # 아무것도 시작할 수 없다.
@@ -458,6 +499,129 @@ def resume_run(slug: str, request: Request):
     return {"slug": slug, "running": True, "mock": is_mock}
 
 
+def _checked_permissions(overrides: dict | None, acknowledge: bool) -> dict | None:
+    """권한 조정을 검사해서 메타에 넣을 모양으로 돌려준다. 없으면 None."""
+    if not overrides:
+        return None
+    clean, risks = permissions.validate(overrides, acknowledge_risk=acknowledge)
+    return {"overrides": clean, "risks": risks,
+            "acknowledged_at": time.time() if risks else None}
+
+
+def _mine(request: Request, slug: str) -> dict:
+    m = store.meta(slug)
+    if not m:
+        raise HTTPException(404, lang.t("err.noProject"))
+    auth.require_owner(request, m.get("owner"))
+    return m
+
+
+# ── 승인 게이트 (DAY 25 · HITL) ─────────────────────────────────────
+@app.get("/api/runs/{slug}/approvals")
+def list_approvals_of(slug: str, request: Request):
+    m = _mine(request, slug)
+    return {"gates": m.get("gates") or [], "approvals": m.get("approvals") or [],
+            "confidence_gate": gates.CONFIDENCE_GATE,
+            "status": m.get("status")}
+
+
+@app.post("/api/runs/{slug}/approvals/{approval_id}")
+def decide_approval(slug: str, approval_id: str, req: DecideReq,
+                    request: Request):
+    """CEO 의 결정. 실행이 승인을 기다리며 쉬고 있으면 여기서 깨운다.
+
+    멈춘(`stopped`) 실행에 내린 결정도 기록한다 — 재개하면 그 결정부터
+    반영한다. 응답의 `resumed` 가 지금 깨웠는지, `note` 가 못 깨운 이유
+    (좌석·잔액)를 말한다.
+    """
+    _mine(request, slug)
+    user = auth.current_user(request)
+    try:
+        return orchestrator.decide(
+            slug, approval_id, req.decision, req.comment,
+            owner=auth.owner_of(request),
+            by=(getattr(user, "email", "") if user else ""))
+    except gates.ApprovalNotFound as e:
+        raise HTTPException(404, str(e))
+    except gates.AlreadyDecided as e:
+        raise HTTPException(409, str(e))
+    except gates.GateError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.put("/api/runs/{slug}/gates")
+def set_run_gates(slug: str, req: GatesReq, request: Request):
+    """실행 도중에도 바꿀 수 있다 — 다음 게이트 지점부터 적용된다.
+
+    "이 다음 태스크부터는 내가 보겠다"가 실제로 자주 생기는 요구다.
+    """
+    _mine(request, slug)
+    try:
+        return {"gates": gates.set_gates(slug, req.gates)}
+    except gates.GateError as e:
+        raise HTTPException(400, str(e))
+
+
+# ── 프로젝트별 권한 (DAY 25) ────────────────────────────────────────
+@app.get("/api/projects/{slug}/permissions")
+def get_permissions(slug: str, request: Request):
+    _mine(request, slug)
+    return permissions.describe(slug)
+
+
+@app.put("/api/projects/{slug}/permissions")
+def set_permissions(slug: str, req: PermissionsReq, request: Request):
+    """이 프로젝트에서만 직원 권한을 넓히거나 좁힌다.
+
+    바닥(tests/ 쓰기 등)은 어떤 값으로도 못 푼다 — 400. 위험한 조정
+    (구현자의 tests/ 읽기)은 `acknowledge_risk` 가 있어야 한다 — 409.
+    실행이 **돌고 있는** 동안은 막는다 — 409. 이유는 permissions.py.
+    """
+    _mine(request, slug)
+    if orchestrator.is_running(slug):
+        raise HTTPException(409, lang.t("err.permsWhileRunning"))
+    try:
+        perms = _checked_permissions(req.overrides, req.acknowledge_risk)
+    except permissions.PolicyError as e:
+        raise HTTPException(400, str(e))
+    except permissions.RiskNotAcknowledged as e:
+        raise HTTPException(409, str(e))
+    store.save_meta(slug, {"permissions": perms or {}})
+    return permissions.describe(slug)
+
+
+# ── 사무실 · 대표 지시창 (DAY 25 · 사규) ────────────────────────────
+@app.get("/api/office")
+def office_state(request: Request, run: str | None = None):
+    """사무실 한 장 — 직원별 상태 5종·이유·자리, 회의실, 결재함, 연동 대기
+    항목, 하루 시나리오. 모델을 부르지 않는다(app/office.py).
+
+    남의 `run` 을 넣으면 조용히 빈 사무실이 된다(`_my_run`).
+    """
+    owner = auth.owner_of(request)
+    return office.snapshot(owner, _my_run(request, run))
+
+
+@app.post("/api/office/ask")
+def office_ask(req: AskReq, request: Request):
+    """대표 지시창. 정해진 질문에 정해진 사람이 기록을 읽어 답한다
+    (app/secretary.py). "승인할게"는 결재가 한 건일 때만 실제로 처리한다."""
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(400, lang.t("err.emptyRequirement"))
+    owner = auth.owner_of(request)
+    return secretary.answer(text[:500], owner, _my_run(request, req.run),
+                            tz_offset=req.tz_offset)
+
+
+# ── 관측성 (DAY 25) ─────────────────────────────────────────────────
+@app.get("/api/runs/{slug}/metrics")
+def run_metrics(slug: str, request: Request):
+    """누가·어느 단계에서·얼마나 오래 걸렸나. 지금 몇 초째 기다리는가."""
+    _mine(request, slug)
+    return metrics.of(slug)
+
+
 @app.get("/api/runs")
 def list_runs(request: Request):
     """**내** 실행만. 진행 중 목록도 걸러야 한다 — 남의 slug 가 보이면
@@ -487,7 +651,7 @@ def cancel_run(slug: str, request: Request):
     스레드를 강제로 죽이지 않는다 — 파일을 반쯤 쓴 상태로 끊기면 산출물이
     깨진다. 다음 단계 경계에서 스스로 멈춘다.
     """
-    auth.require_owner(request, store.meta(slug).get("owner"))
+    _mine(request, slug)
     if not orchestrator.cancel(slug):
         raise HTTPException(404, lang.t("err.notRunning"))
     return {"ok": True}
@@ -1030,4 +1194,6 @@ if __name__ == "__main__":
     cur = workspace.current()
     print("\n  http://127.0.0.1:8000")
     print(f"  작업 폴더: {cur or '(설정에서 열기)'}\n")
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
+    # timeout_keep_alive 는 backend/run.py 의 설명과 같은 이유다.
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning",
+                timeout_keep_alive=75)

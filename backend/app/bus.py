@@ -61,7 +61,16 @@ RUN_HISTORY_LIMIT = int(os.getenv("RUN_HISTORY_LIMIT", "24"))
 
 _lock = threading.RLock()
 _local = threading.local()
-_seq = itertools.count(1)
+# 일련번호는 **프로세스가 뜬 시각(밀리초)부터** 센다 (DAY 25).
+#
+# 1 부터 세면 서버를 다시 켤 때마다 번호가 처음으로 돌아간다. 그러면
+# (1) 같은 실행의 트레이스 파일에서 재시작 **뒤의** 이벤트가 앞의 것보다
+# 작은 번호를 달아, 번호순으로 읽으면 옛 상태가 "마지막"이 된다 — 승인하고
+# 재개한 실행을 사무실이 0/3 으로 보여줬다. (2) 브라우저가 들고 있던
+# `Last-Event-ID` 보다 작은 번호만 오므로 재연결해도 새 이벤트를 못 받는다.
+# 시각에서 시작하면 재시작 뒤의 번호가 항상 더 크다(초당 1000건을 넘게
+# 내지 않는 한). 자바스크립트 정수 한도(2^53) 안이다.
+_seq = itertools.count(int(time.time() * 1000))
 
 # run -> 최근 이벤트. **삽입 순서가 곧 오래된 순서**다(파이썬 dict 성질).
 # 새 이벤트가 올 때마다 그 실행을 맨 뒤로 옮기므로, 앞쪽이 가장 오래
@@ -283,7 +292,8 @@ PHASE_OWNER: dict[str, str | None] = {
 }
 
 
-def phase(name: str, detail: str = "", owner: str | None = None) -> None:
+def phase(name: str, detail: str = "", owner: str | None = None,
+          lane: str | None = None) -> None:
     """단계가 바뀌었다.
 
     로그를 쭉 읽으면 "지금 무슨 일이 벌어지고 있나"가 대화 중간에 묻힌다.
@@ -323,7 +333,11 @@ def phase(name: str, detail: str = "", owner: str | None = None) -> None:
     # 끝나고 REVIEW 로 진짜 넘어간 것인데, 그 사이에 자동화가 한 번
     # 끼었다는 이유로 인계 정보가 사라지면 안 된다.
 
-    emit("phase", name=name, detail=detail, headline=headline)
+    # `lane` 은 병렬로 도는 태스크 중 **어느 줄의** 단계인가 (DAY 25).
+    # 태스크가 둘 이상 동시에 돌면 단계 이벤트가 섞여 온다 — 화면과 지표가
+    # "지금 무슨 단계인가"를 줄마다 따로 접으려면 이게 있어야 한다.
+    extra = {"lane": lane} if lane is not None else {}
+    emit("phase", name=name, detail=detail, headline=headline, **extra)
 
 
 def state(**kw: Any) -> None:

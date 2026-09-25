@@ -104,10 +104,20 @@ def meta(slug: str) -> dict:
     p = dir_of(slug) / META
     if not p.exists():
         return {}
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+    # 윈도우에서는 **다른 스레드가 이름 바꾸기로 덮어쓰는 찰나**에 열면
+    # PermissionError 가 난다(safeio._replace 와 같은 이유 · DAY 25). 잠깐
+    # 기다렸다 다시 읽는다. 여기서 빈 딕셔너리를 돌려주면 안 된다 —
+    # `save_meta` 가 그 빈 값에 패치만 얹어 **메타 전체를 지운다.**
+    for attempt in range(20):
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.01 * (attempt + 1))
+    return {}
 
 
 def touched_at(slug: str) -> float:
@@ -137,6 +147,28 @@ def save_meta(slug: str, patch: dict) -> dict:
         m.update(patch)
         # 원자적으로 쓴다 (app/safeio.py). 여기서 잘리면 프로젝트 하나가
         # 통째로 "없는 프로젝트"가 된다 — 산출물은 멀쩡한데 메타만 깨져서.
+        safeio.write_json(d / META, m)
+    _reindex(m)
+    return m
+
+
+def update_meta(slug: str, fn) -> dict:
+    """읽고-고치고-쓰기를 **잠금 안에서 한 번에** 한다 (DAY 25).
+
+    `save_meta` 는 최상위 키를 덮어쓴다. 목록 안의 한 칸(승인 기록 하나의
+    상태)을 고치려면 목록을 읽어서 고쳐 다시 써야 하는데, 그 사이에 다른
+    스레드가 같은 목록에 한 줄을 더하면 둘 중 하나가 사라진다 — 승인 버튼을
+    눌렀는데 실행이 그 결정을 못 보는 사고가 된다.
+
+    `fn(meta)` 는 잠금 안에서 불리고, 돌려준 딕셔너리가 패치로 합쳐진다.
+    `fn` 안에서 `save_meta` 를 부르면 안 된다(같은 잠금을 다시 잡는다).
+    """
+    d = dir_of(slug)
+    d.mkdir(parents=True, exist_ok=True)
+    with _meta_lock(slug):
+        m = meta(slug)
+        patch = fn(m) or {}
+        m.update(patch)
         safeio.write_json(d / META, m)
     _reindex(m)
     return m

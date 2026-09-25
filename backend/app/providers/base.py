@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import itertools
 import random
 import time
 from collections.abc import AsyncIterator, Iterator
@@ -164,6 +165,33 @@ def backoff_delay(attempt: int, retry_after: float | None = None) -> float:
     return min(BASE_DELAY * (2 ** attempt), MAX_DELAY) * (0.5 + random.random() / 2)
 
 
+# ── 호출 기록 (DAY 25 · 관측성) ────────────────────────────────────
+_call_seq = itertools.count(1)
+
+
+def _next_call_id() -> int:
+    return next(_call_seq)
+
+
+def _emit_call(stage: str, call_id: int, agent: str, provider: str,
+               model: str, **detail) -> None:
+    """모델 호출 하나의 시작·끝을 버스에 남긴다.
+
+    실행 밖의 호출(설정 화면의 키 확인 등)은 버스에 run 이 없다 — 그런
+    호출까지 로그에 섞지 않는다. 기록에 실패해도 호출은 계속된다: 관측은
+    증거물이지 실행의 전제가 아니다.
+    """
+    if bus.current() is None:
+        return
+    try:
+        rounded = {k: (round(v, 1) if isinstance(v, float) else v)
+                   for k, v in detail.items()}
+        bus.emit("call", call_id=call_id, stage=stage, agent=agent,
+                 provider=provider, model=model, **rounded)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
 # ── 인터페이스 ──────────────────────────────────────────────────────
 class AIProvider(abc.ABC):
     """모든 AI 제공자의 공통 표면.
@@ -192,18 +220,44 @@ class AIProvider(abc.ABC):
         return req.model or self.default_model
 
     def generate(self, req: GenerateRequest) -> GenerateResult:
-        """재시도·백오프·사용량 기록을 붙여 호출한다.
+        """재시도·백오프·사용량 기록·**걸린 시간**을 붙여 호출한다.
 
         재시도 상한은 `config.MAX_RETRY`(§18). 상한에 닿으면 마지막 오류를
         그대로 올린다 — 조용히 빈 결과를 돌려주면 위에서 성공으로 오해한다.
+
+        ## 시간을 여기서 재는 이유 (DAY 25)
+
+        비용은 보였지만 "왜 느린가"는 안 보였다. 느린 이유는 셋 중 하나다 —
+        모델이 오래 생각했다(`model_ms`), 한도에 걸려 기다렸다(`wait_ms`),
+        실패하고 다시 불렀다(`attempts`). 셋을 **따로** 재야 대응이 갈린다:
+        첫째는 모델·effort 를 낮추고, 둘째는 요청 한도를 올리고, 셋째는
+        제공자 상태를 본다. 한 숫자로 뭉치면 셋 다 "느리다"로 보인다.
+
+        호출 시작과 끝에 `call` 이벤트를 낸다. 시작을 따로 내는 이유는,
+        끝난 호출만 보이면 **지금 3분째 응답을 기다리는 중**이라는 사실이
+        끝날 때까지 안 보이기 때문이다 — 가장 답답한 순간에 화면이 조용하다.
         """
+        call_id = _next_call_id()
+        model = self.model_for(req)
+        _emit_call("start", call_id, req.agent, self.name, model)
+        started = time.perf_counter()
+        model_ms = 0.0
+        wait_ms = 0.0
         last: ProviderError | None = None
         for attempt in range(config.MAX_RETRY + 1):
+            t0 = time.perf_counter()
             try:
                 result = self._generate(req)
             except ProviderError as e:
+                model_ms += (time.perf_counter() - t0) * 1000
                 last = e
                 if not e.retryable or attempt >= config.MAX_RETRY:
+                    total = (time.perf_counter() - started) * 1000
+                    usage.record_failure(req.agent, total)
+                    _emit_call("end", call_id, req.agent, self.name, model,
+                               ok=False, ms=total, model_ms=model_ms,
+                               wait_ms=wait_ms, attempts=attempt + 1,
+                               error=type(e).__name__)
                     raise
                 delay = backoff_delay(attempt, getattr(e, "retry_after", None))
                 bus.say("SYSTEM",
@@ -211,10 +265,19 @@ class AIProvider(abc.ABC):
                                n=attempt + 1, max=config.MAX_RETRY,
                                why=type(e).__name__),
                         kind="error")
+                w0 = time.perf_counter()
                 _sleep(delay)
+                wait_ms += (time.perf_counter() - w0) * 1000
                 continue
+            model_ms += (time.perf_counter() - t0) * 1000
+            total = (time.perf_counter() - started) * 1000
             result = replace(result, attempts=attempt + 1)
-            self._bill(req, result)
+            self._bill(req, result, latency_ms=total, wait_ms=wait_ms)
+            u = result.usage
+            _emit_call("end", call_id, req.agent, self.name, result.model,
+                       ok=True, ms=total, model_ms=model_ms, wait_ms=wait_ms,
+                       attempts=attempt + 1, input=u.input_tokens,
+                       output=u.output_tokens, cached=u.cached_tokens)
             return result
         raise last or TransientError(lang.t("prov.retries"), provider=self.name)
 
@@ -239,11 +302,14 @@ class AIProvider(abc.ABC):
                 return
             yield chunk  # type: ignore[misc]
 
-    def _bill(self, req: GenerateRequest, result: GenerateResult) -> None:
+    def _bill(self, req: GenerateRequest, result: GenerateResult, *,
+              latency_ms: float = 0.0, wait_ms: float = 0.0) -> None:
         u = result.usage
         usage.record(req.agent, result.model,
                      input_tokens=u.input_tokens, output_tokens=u.output_tokens,
-                     cached_tokens=u.cached_tokens, cache_written=u.cache_written)
+                     cached_tokens=u.cached_tokens, cache_written=u.cache_written,
+                     latency_ms=latency_ms, wait_ms=wait_ms,
+                     retries=max(0, result.attempts - 1))
 
     def info(self) -> dict:
         return {"name": self.name, "model": self.default_model,

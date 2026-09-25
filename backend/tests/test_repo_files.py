@@ -164,7 +164,10 @@ def test_the_open_list_does_not_hide_finished_work():
     아래 "찾아서 고친 것"으로 옮긴다.
     """
     text = io.open(STATUS_DOC, encoding="utf-8").read()
-    open_part = text.split("## 아직 안 한 것", 1)[1].split("## DAY 22 에 찾아서", 1)[0]
+    # "찾아서 고친 것" 절은 날마다 하나씩 생긴다(DAY 22 · DAY 25 …). 처음 나오는
+    # 것에서 "아직 안 한 것" 이 끝난다.
+    open_part = re.split(r"\n## DAY \d+ 에 찾아서",
+                         text.split("## 아직 안 한 것", 1)[1], maxsplit=1)[0]
     stale = [line.strip() for line in open_part.splitlines()
              if line.startswith("### ") and "(DAY " in line]
     assert not stale, (

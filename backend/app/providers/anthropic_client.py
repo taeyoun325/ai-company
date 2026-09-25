@@ -18,11 +18,25 @@ def _fp(key: str) -> str:
 
 
 def client() -> anthropic.Anthropic:
-    """키는 환경이 아니라 브로커에서 온다. 환경에는 이미 남아 있지 않다."""
+    """키는 환경이 아니라 브로커에서 온다. 환경에는 이미 남아 있지 않다.
+
+    ## `max_retries=0` (DAY 25)
+
+    SDK 는 기본으로 **스스로 2번 더** 재시도한다. 우리 재시도(`base.AIProvider
+    .generate`, `MAX_RETRY`)가 그 바깥에 한 겹 더 있으므로, 429 하나에 실제로는
+    (MAX_RETRY+1)×3 번 요청이 나갔다 — 한도에 걸린 제공자를 18번 두드린다.
+    가짜 서버로 SDK 를 태워 요청 수를 세어보고 알았다
+    (`tests/test_wire_providers.py`). 재시도는 한 곳에서만 한다.
+    """
+    from app import config
     key = secrets_broker.require("anthropic")
-    fp = _fp(key)
+    base = config.base_url("anthropic")
+    fp = _fp(key + "|" + (base or ""))
     if fp not in _clients:
-        _clients[fp] = anthropic.Anthropic(api_key=key)
+        kw = {"base_url": base} if base else {}
+        _clients[fp] = anthropic.Anthropic(
+            api_key=key, max_retries=0,
+            timeout=config.PROVIDER_TIMEOUT, **kw)
     return _clients[fp]
 
 

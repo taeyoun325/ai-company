@@ -342,11 +342,32 @@ def _calc_good() -> str:
         "    return a / b\n")
 
 
+def _assignee_of(text: str) -> str | None:
+    """AUTO 요청문 맨 위의 '맡은 태스크' 블록에서 담당자를 읽는다.
+
+    DAY 24 까지는 요청문 **어디에든** "design/" 이 있으면 디자이너 대본을
+    골랐다. 태스크가 한 번에 하나씩 돌 때는 작가가 디자인 파일을 볼 일이
+    없어서 우연히 맞았다. 태스크가 동시에 돌자(DAY 25) 디자이너가 먼저 쓴
+    `design/screen.md` 가 작가의 요청문 '지금까지의 산출물'에 실렸고, 작가가
+    디자이너 대본을 읽어 design/ 에 쓰려다 거부당했다 — 순서에 따라 문서가
+    생기기도 하고 안 생기기도 했다.
+    """
+    head = text.split("# 인수기준", 1)[0]
+    if "# 맡은 태스크" not in head:
+        return None
+    for who in ("designer", "writer", "developer"):
+        if f'"assignee": "{who}"' in head:
+            return who
+    return None
+
+
 def _work(req: GenerateRequest) -> dict:
     text = req.last_user_text
     fixed = _REWORK_MARK in text
+    who = _assignee_of(text)
 
-    if "designer" in text or "design/" in text:
+    if who == "designer" or (who is None and ("designer" in text
+                                              or "design/" in text)):
         return {
             "message_to_team": _s("design.msg"),
             "files": [{"path": "design/screen.md", "content": (
@@ -360,7 +381,7 @@ def _work(req: GenerateRequest) -> dict:
             "self_check": _s("design.check"),
         }
 
-    if "writer" in text or "docs/" in text:
+    if who == "writer" or (who is None and ("writer" in text or "docs/" in text)):
         return {
             "message_to_team": _s("docs.msg"),
             "files": [{"path": "docs/README.md", "content": (

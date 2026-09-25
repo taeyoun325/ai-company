@@ -101,6 +101,28 @@ MAX_REPLANS = int(os.getenv("MAX_REPLANS", "3"))         # 전체 재기획 허�
 MAX_AGENT_STEPS = int(os.getenv("MAX_AGENT_STEPS", "20"))  # 에이전트 루프 상한
 MAX_RETRY = int(os.getenv("MAX_RETRY", "5"))             # API 오류 재시도 상한
 
+# --- 제공자 주소 (DAY 25) ---
+# 비워두면 각 SDK 의 기본 주소다. 채우는 경우는 둘이다:
+#   1. 회사 프록시·게이트웨이(LiteLLM 등)를 거쳐야 할 때
+#   2. **키 없이 실제 SDK 를 태워보는 시험** — tests/fakes/provider_server.py
+#      가 세 회사의 프로토콜을 흉내 내는 로컬 서버를 띄우고 여기로 돌린다.
+# 키가 아니므로 브로커가 거두지 않는다(환경에 그대로 남아도 된다).
+BASE_URLS = {
+    "anthropic": os.getenv("ANTHROPIC_BASE_URL") or None,
+    "openai": os.getenv("OPENAI_BASE_URL") or None,
+    "gemini": os.getenv("GEMINI_BASE_URL") or None,
+}
+# 한 번의 모델 호출을 기다리는 상한(초). SDK 기본값(10분)에 맡기면 멈춘
+# 연결 하나가 실행 하나를 10분씩 붙잡는다.
+PROVIDER_TIMEOUT = float(os.getenv("PROVIDER_TIMEOUT", "600"))
+
+
+def base_url(provider: str) -> str | None:
+    """실행 중에 바뀔 수 있게(시험이 서버를 띄운 뒤 주소를 넣는다) 매번 읽는다."""
+    env = {"anthropic": "ANTHROPIC_BASE_URL", "openai": "OPENAI_BASE_URL",
+           "gemini": "GEMINI_BASE_URL"}[provider]
+    return os.getenv(env) or BASE_URLS.get(provider)
+
 BUDGET_USD = float(os.getenv("BUDGET_USD", "5.0"))       # 누적 비용 상한(1회 실행)
 MAX_PROJECT_COST = float(os.getenv("MAX_PROJECT_COST", "5.0"))
 MAX_DAILY_COST = float(os.getenv("MAX_DAILY_COST", "50.0"))

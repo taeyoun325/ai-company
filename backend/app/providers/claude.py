@@ -129,9 +129,27 @@ class ClaudeProvider(AIProvider):
                      cache_written=g("cache_creation_input_tokens"))
 
     def _generate(self, req: GenerateRequest) -> GenerateResult:
+        """한 번 호출한다 — **안에서는 스트리밍으로** 받는다 (DAY 25).
+
+        ## 왜 `messages.create` 가 아닌가
+
+        anthropic SDK 는 스트리밍이 아닌 호출에서 `max_tokens` 가 크면
+        (128k 토큰에 한 시간 비례로 10분을 넘으면) **요청을 보내기도 전에**
+        `ValueError("Streaming is required …")` 를 던진다. 개발자의
+        `max_tokens` 는 32000 이다 — 900초짜리 요청으로 계산되어 첫 실물
+        호출에서 개발자만 즉시 실패했을 것이다. 네트워크에 닿기 전에 터지므로
+        DAY 14 의 "가짜 키로 401 까지" 시험으로는 보이지 않았다(그 시험은
+        max_tokens 64 였다). 가짜 서버로 직원 설정 그대로 SDK 를 태워보고
+        잡았다(`tests/test_wire_providers.py`).
+
+        스트림을 끝까지 받아 `get_final_message()` 로 한 덩어리를 얻으면
+        돌려받는 모양(`Message`)은 `create` 와 같다. 긴 생성 중에 연결이
+        조용해서 프록시가 끊는 문제도 같이 사라진다.
+        """
         client = self._client()
         try:
-            resp = client.messages.create(**self._payload(req))
+            with client.messages.stream(**self._payload(req)) as s:
+                resp = s.get_final_message()
         except ProviderError:
             raise
         except Exception as e:                          # noqa: BLE001 — 번역해서 올린다

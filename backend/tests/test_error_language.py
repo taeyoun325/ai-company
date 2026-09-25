@@ -35,7 +35,11 @@ GUARDED = ("main.py", "auth/deps.py", "api/auth.py", "api/projects.py",
            "attachments.py", "orchestrator/manual.py", "usage/credits.py",
            "auth/mail.py",
            "tools/project_fs.py", "agents/json_io.py",
-           "agents/employee.py")
+           "agents/employee.py",
+           # DAY 25 — 결재 · 권한 · 사무실 · 비서실 · 비용 검사. 전부 화면이
+           # 그대로 보여주는 문장을 만든다.
+           "orchestrator/gates.py", "orchestrator/guard.py",
+           "agents/permissions.py", "office.py", "secretary.py", "metrics.py")
 
 KOREAN = re.compile(r"[가-힣]")
 # 따옴표 안의 한국어. 주석은 위에서 지웠고, 번역된 호출의 인자는 키라
@@ -56,7 +60,8 @@ RAISE = re.compile(r"HTTPException\(|Delivery\(|AuthError\(|out\.append\("
 # 잔뜩 쓰인다 — 거기는 DEPLOY_MODE=local 전용이라 번역 대상이 아니다.
 # 그래서 SaaS 경로로 열리는 파일에서만 본다.
 SAY_FILES = ("orchestrator/engine.py", "orchestrator/manual.py",
-             "providers/anthropic_client.py", "providers/base.py")
+             "providers/anthropic_client.py", "providers/base.py",
+             "orchestrator/gates.py")
 # 프로젝트 화면의 "중단 사유"도 사용자가 읽는다. 그 자리는 `save_meta`
 # 로 들어간다 — DAY 22 에 한국어 한 줄이 거기 남아 있었다.
 META = re.compile(r"save_meta" + chr(92) + "(")

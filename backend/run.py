@@ -39,7 +39,17 @@ def main() -> None:
     print(f"  단가표: {config.PRICING_FILE.name} "
           f"({len(config.PRICES)}개 모델, 검증={'예' if config.PRICES_VERIFIED else '아니오'})")
     print(f"  작업 폴더: {workspace.current() or '(미지정)'}\n")
-    uvicorn.run(app_main.app, host="127.0.0.1", port=port, log_level="warning")
+    # 쉬는 연결을 **프록시보다 오래** 붙잡아 둔다 (DAY 25).
+    #
+    # uvicorn 은 기본으로 5초 쉰 연결을 닫는다. Next 의 프록시(Node http
+    # 에이전트)는 그 연결을 재사용하려다 서버가 막 닫은 것을 집어
+    # `ECONNRESET` 을 내고, 화면에는 500 이 뜬다. 사무실 화면이 5초·15초
+    # 간격으로 묻기 시작하자 정확히 그 틈에 걸렸다 — 백엔드를 직접 300번
+    # 두드리면 0번, 프록시를 거치면 가끔 났다. 서버 쪽 유지 시간을 클라이언트
+    # 쪽(Node 기본 5초 · 브라우저 수십 초)보다 길게 두면 닫는 쪽이 항상
+    # 클라이언트가 되어 경쟁이 사라진다.
+    uvicorn.run(app_main.app, host="127.0.0.1", port=port, log_level="warning",
+                timeout_keep_alive=75)
 
 
 if __name__ == "__main__":

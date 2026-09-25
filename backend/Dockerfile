@@ -60,6 +60,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request,sys; \
 sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/deploy', timeout=4).status==200 else 1)"
 
+# --timeout-keep-alive 75: 프론트의 프록시(Node)가 서버가 막 닫은 연결을
+# 재사용해 ECONNRESET(화면에는 500)을 내던 경쟁을 없앤다 — backend/run.py 참고.
 CMD ["python", "-m", "uvicorn", "app.main:app", \
-     "--host", "0.0.0.0", "--port", "8000", \
+     "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "75", \
      "--app-dir", "backend", "--proxy-headers", "--forwarded-allow-ips", "*"]

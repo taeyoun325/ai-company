@@ -19,7 +19,13 @@ _lock = threading.RLock()
 _local = threading.local()
 
 _EMPTY = {"input": 0, "output": 0, "cached": 0, "cache_written": 0,
-          "cost": 0.0, "credits": 0.0, "calls": 0}
+          "cost": 0.0, "credits": 0.0, "calls": 0,
+          # 걸린 시간 (DAY 25). 비용만으로는 "왜 느린가"가 안 보인다.
+          # latency_ms 는 성공한 호출의 벽시계 합(재시도·대기 포함),
+          # wait_ms 는 그중 백오프로 **기다리기만 한** 몫, failed_ms 는
+          # 끝내 실패한 호출이 태운 시간이다 — 실패도 시간은 먹는다.
+          "latency_ms": 0.0, "max_latency_ms": 0.0, "wait_ms": 0.0,
+          "retries": 0, "failures": 0, "failed_ms": 0.0}
 
 # run_id(프로젝트 slug) -> {에이전트 -> 사용량}
 _runs: dict[str, dict[str, dict]] = {}
@@ -103,13 +109,28 @@ def agents_of(run_id: str | None = None) -> dict[str, dict]:
         return {a: dict(r) for a, r in _runs.get(rid, _blank()).items()}
 
 
+def _row(rid: str, agent: str) -> dict:
+    """집계 칸. 디스크에서 올라온 옛 칸(DAY 25 이전)에는 시간 칸이 없다 —
+    없는 칸은 0 으로 채운다. 안 채우면 `+=` 에서 KeyError 로 실행이 죽는다."""
+    row = _runs.setdefault(rid, _blank()).setdefault(agent, dict(_EMPTY))
+    for k, v in _EMPTY.items():
+        row.setdefault(k, v)
+    return row
+
+
 def record(agent: str, model: str, input_tokens: int, output_tokens: int,
-           cached_tokens: int = 0, cache_written: int = 0) -> None:
+           cached_tokens: int = 0, cache_written: int = 0, *,
+           latency_ms: float = 0.0, wait_ms: float = 0.0,
+           retries: int = 0) -> None:
     rid = current()
     if rid is None:
         return                      # 실행 밖의 호출은 집계하지 않는다
     with _lock:
-        row = _runs.setdefault(rid, _blank()).setdefault(agent, dict(_EMPTY))
+        row = _row(rid, agent)
+        row["latency_ms"] += latency_ms
+        row["max_latency_ms"] = max(row["max_latency_ms"], latency_ms)
+        row["wait_ms"] += wait_ms
+        row["retries"] += retries
         row["input"] += input_tokens
         row["output"] += output_tokens
         row["cached"] += cached_tokens
@@ -125,6 +146,18 @@ def record(agent: str, model: str, input_tokens: int, output_tokens: int,
     push()
 
 
+def record_failure(agent: str, ms: float) -> None:
+    """끝내 실패한 호출. 돈은 안 나갔어도(대개) **시간은** 나갔다."""
+    rid = current()
+    if rid is None:
+        return
+    with _lock:
+        row = _row(rid, agent)
+        row["failures"] += 1
+        row["failed_ms"] += ms
+    push()
+
+
 def totals(run_id: str | None = None) -> dict:
     rows = agents_of(run_id).values()
     return {
@@ -134,6 +167,10 @@ def totals(run_id: str | None = None) -> dict:
         "cost": sum(r["cost"] for r in rows),
         "credits": sum(r.get("credits", 0.0) for r in rows),
         "calls": sum(r["calls"] for r in rows),
+        "latency_ms": sum(r.get("latency_ms", 0.0) for r in rows),
+        "wait_ms": sum(r.get("wait_ms", 0.0) for r in rows),
+        "retries": sum(r.get("retries", 0) for r in rows),
+        "failures": sum(r.get("failures", 0) for r in rows),
     }
 
 

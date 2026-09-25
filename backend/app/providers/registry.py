@@ -126,8 +126,13 @@ def _mock_provider(name: str) -> MockProvider:
             real_model = config.default_model(name) or name
             # 모델 이름을 실제와 같게 둔다 — 화면과 사용량 집계가 실제와 같은
             # 모양으로 움직여야 마지막 날 바꿔 끼울 때 차이가 안 난다.
-            _mocks[name] = MockProvider(name=f"mock:{name}", model=real_model,
-                                        responder=_mock_responder())
+            # `MOCK_LATENCY`(초) — 시연용. Mock 은 0초에 끝나서 사무실에서
+            # 누가 동시에 일하는지·몇 초째 기다리는지가 한 번도 안 보인다
+            # (DAY 25). 기본은 0 이다 — 시험을 느리게 만들지 않는다.
+            _mocks[name] = MockProvider(
+                name=f"mock:{name}", model=real_model,
+                latency=float(os.getenv("MOCK_LATENCY", "0") or 0),
+                responder=_mock_responder())
         return _mocks[name]
 
 

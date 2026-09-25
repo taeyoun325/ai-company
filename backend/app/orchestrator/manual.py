@@ -49,11 +49,11 @@ import json
 import os
 import threading
 
-from app import bus, config, lang, safeio, tenant, usage
+from app import bus, lang, safeio, tenant, usage
 from app.agents import employee, roles
 from app.agents.schemas import Verdict, WorkResult
 from app.database import index, store
-from app.orchestrator import prompts, runner
+from app.orchestrator import guard, prompts, runner
 from app.providers.base import Message
 from app.tools import project_fs as pfs
 from app.usage import credits
@@ -229,22 +229,13 @@ class _Session:
 def _guard(employee_id: str, slug: str, owner: str = "local") -> None:
     """호출 전 예산 검사. MANUAL 이라고 상한을 비켜가지 않는다.
 
-    요금제 상한과 전역 하드 상한 중 **작은 쪽**을 쓴다 — AUTO 의
-    `_spend_guard` 와 같은 규칙이다. 두 경로가 다른 상한을 쓰면, 싼
-    요금제로 MANUAL 만 돌리는 것이 상한 우회가 된다.
+    AUTO 와 **같은 함수**를 부른다(`orchestrator/guard.py`). 두 경로가
+    다른 상한을 쓰면, 싼 요금제로 MANUAL 만 돌리는 것이 상한 우회가 된다.
+    지시 하나가 시작될 때 부르므로 아직 청구 안 된 몫(`unbilled`)은 0 이다
+    — 앞의 지시는 끝날 때 이미 청구됐다(`_Session.__exit__`).
     """
-    limit = min(config.MAX_PROJECT_COST,
-                float(credits.plan(credits.wallet(owner).plan)
-                      .get("max_project_cost", config.MAX_PROJECT_COST)))
-    about_to_spend = employee.worst_case_cost(employee_id)
-    projected = usage.total_cost(slug) + about_to_spend
-    if projected > limit:
-        raise RuntimeError(
-            lang.t("manual.cost", limit=limit,
-                   projected=f"{projected:.2f}"))
-    # 프로젝트 상한 위의 두 번째 벽(§18) — AUTO 의 `_spend_guard` 와 같은 검사.
-    # MANUAL 이라고 비켜가면, 싼 요금제로 MANUAL 만 돌리는 것이 우회가 된다.
-    credits.check_global_caps(owner, about_to_spend)
+    guard.check_spend(slug, owner, employee.worst_case_cost(employee_id),
+                      cost_key="manual.cost")
 
 
 def _persist(slug: str) -> None:
@@ -279,7 +270,10 @@ def instruct(slug: str, employee_id: str, message: str,
                   owner=e.id)
         hist = history(slug, employee_id)
 
-        if not e.writes:
+        # 쓸 수 있는 곳은 **이 프로젝트의 실효 권한**이다 (DAY 25) — 직원
+        # 표만 보면 프로젝트에서 넓혀준 권한을 요청문이 모른다.
+        writes = pfs.areas(employee_id, write=True)
+        if not writes:
             text = employee.ask_text(employee_id, message, hist)
             employee.say(e, text)
             _remember(slug, employee_id, message, text)
@@ -292,7 +286,7 @@ def instruct(slug: str, employee_id: str, message: str,
             + prompts.files_block(pfs.snapshot(employee_id))
             + "\n\n# 할 일\n지시된 것만 처리하세요. 파일은 전문으로 내보냅니다.\n"
               "`...생략...` 은 그대로 저장되어 코드를 지웁니다.\n"
-              f"쓸 수 있는 폴더는 {', '.join(a + '/' for a in e.writes)} 뿐입니다."
+              f"쓸 수 있는 폴더는 {', '.join(a + '/' for a in writes)} 뿐입니다."
         )
         work: WorkResult = employee.ask(employee_id, ask, WorkResult)
         employee.say(e, work.message_to_team)
@@ -350,7 +344,8 @@ def verify(slug: str, owner: str = "local") -> dict:
             Verdict)
         icon = (lang.t("verdict.pass") if v.verdict == "pass"
                     else lang.t("verdict.fail", severity=v.severity))
-        bus.say(roles.VERIFIER, f"**{icon}** — {v.message_to_team}", kind="verdict")
+        bus.emit("message", agent=roles.VERIFIER, kind="verdict",
+                 text=f"**{icon}** — {v.message_to_team}", confidence=v.confidence)
         for f in v.findings:
             bus.say(roles.VERIFIER, f"`{f.file}` · {f.issue}", kind="tool")
         store.save_meta(slug, {"last_verdict": v.model_dump(),

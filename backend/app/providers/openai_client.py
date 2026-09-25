@@ -21,11 +21,17 @@ def _fp(key: str) -> str:
 
 
 def client():
+    """`max_retries=0` 인 이유는 `anthropic_client.client()` 와 같다 — SDK 가
+    스스로 2번 더 재시도해서, 우리 재시도와 곱해졌다."""
     from openai import OpenAI
+    from app import config
     key = secrets_broker.require("openai")
-    fp = _fp(key)
+    base = config.base_url("openai")
+    fp = _fp(key + "|" + (base or ""))
     if fp not in _clients:
-        _clients[fp] = OpenAI(api_key=key)
+        kw = {"base_url": base} if base else {}
+        _clients[fp] = OpenAI(api_key=key, max_retries=0,
+                              timeout=config.PROVIDER_TIMEOUT, **kw)
     return _clients[fp]
 
 

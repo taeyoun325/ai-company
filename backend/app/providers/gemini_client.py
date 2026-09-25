@@ -14,11 +14,19 @@ def _fp(key: str) -> str:
 
 
 def client():
+    """genai 는 기본으로 재시도하지 않는다(`retry_options=None`). 그대로 둔다 —
+    재시도는 `base.AIProvider.generate` 한 곳에서만 한다."""
     from google import genai
+    from app import config
     key = secrets_broker.require("gemini")
-    fp = _fp(key)
+    base = config.base_url("gemini")
+    fp = _fp(key + "|" + (base or ""))
     if fp not in _clients:
-        _clients[fp] = genai.Client(api_key=key)
+        # genai 의 timeout 은 **밀리초**다. 초로 넣으면 0.6초에 끊긴다.
+        opts = {"timeout": int(config.PROVIDER_TIMEOUT * 1000)}
+        if base:
+            opts["base_url"] = base
+        _clients[fp] = genai.Client(api_key=key, http_options=opts)
     return _clients[fp]
 
 
