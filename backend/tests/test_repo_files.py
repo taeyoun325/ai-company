@@ -172,3 +172,18 @@ def test_the_open_list_does_not_hide_finished_work():
              if line.startswith("### ") and "(DAY " in line]
     assert not stale, (
         "끝난 항목이 '아직 안 한 것'에 남아 있습니다:\n" + "\n".join(stale))
+
+
+def test_the_guide_page_states_the_real_write_areas():
+    """설명 탭(DAY 26)이 직원마다 "쓰는 곳"을 적는다. 권한 표(roles.py)를 바꾸고
+    설명을 안 고치면, 설명이 **틀린 권한**을 약속한다 — 사용자가 제일 믿는 문장이다."""
+    import sys
+    sys.path.insert(0, str(ROOT / "backend"))
+    from app.agents import roles
+    src = (ROOT / "frontend" / "src" / "app" / "guide" / "page.tsx").read_text(encoding="utf-8")
+    rows = dict(re.findall(r'\{ id: "(\w+)", who: "\w+", writes: (null|"[^"]*") \}', src))
+    assert set(rows) == set(roles.ids()), f"설명 탭의 직원 목록이 다르다: {sorted(rows)}"
+    for who, raw in rows.items():
+        claimed = () if raw == "null" else (raw.strip('"').rstrip("/"),)
+        assert tuple(roles.get(who).writes) == claimed, (
+            f"{who}: 설명은 {claimed}, 코드는 {roles.get(who).writes}")

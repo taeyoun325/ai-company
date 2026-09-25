@@ -31,10 +31,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { PipelineFigure } from "./PipelineFigure";
 import { Icon, iconOfAgent } from "./icons";
-import { Button, Panel } from "./ui";
+import { Button, Filled, Panel } from "./ui";
 import { api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
-import { T, animate, onScroll, revealFrom, stagger, withScope }
+import { T, animate, onScroll, revealFrom, scrollParent, stagger, withScope }
   from "@/lib/motion";
 import type { PlanRow } from "@/lib/types";
 
@@ -97,7 +97,7 @@ export function Landing({ children }: { children: ReactNode }) {
         animate(bar, {
           scaleX: [0, 1],
           ease: "linear",
-          autoplay: onScroll({ target: el, sync: true,
+          autoplay: onScroll({ target: el, sync: true, container: scrollParent(el),
                               enter: "top top", leave: "bottom bottom" }),
         });
       }
@@ -110,6 +110,7 @@ export function Landing({ children }: { children: ReactNode }) {
           translateY: [0, -18],
           ease: "linear",
           autoplay: onScroll({ target: figure, sync: 0.35,
+                              container: scrollParent(figure),
                               enter: "top top", leave: "bottom top" }),
         });
       }
@@ -306,23 +307,5 @@ export function Landing({ children }: { children: ReactNode }) {
         {t("landing.reducedMotion")}
       </p>
     </div>
-  );
-}
-
-/**
- * `{strong}` 자리에 굵은 조각을 끼운다.
- *
- * 번역문마다 강조할 조각의 **위치가 다르다** — 한국어는 뒤쪽, 영어는
- * 가운데다. 문장을 앞뒤로 쪼개 두면 언어마다 어순이 어긋나므로, 자리
- * 표시를 문장 안에 두고 여기서 갈라 끼운다.
- */
-function Filled({ text, strong }: { text: string; strong: string }) {
-  const [before, after = ""] = text.split("{strong}");
-  return (
-    <>
-      {before}
-      <strong className="text-fg">{strong}</strong>
-      {after}
-    </>
   );
 }

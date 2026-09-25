@@ -9,7 +9,7 @@ import { horizontalOverflow } from "./helpers";
 
 test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
 
-for (const url of ["/", "/pricing", "/settings", "/projects"]) {
+for (const url of ["/", "/guide", "/pricing", "/settings", "/projects"]) {
   test(`${url} — 가로로 넘치지 않는다`, async ({ page }) => {
     await page.goto(url);
     await page.waitForLoadState("networkidle");

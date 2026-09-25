@@ -39,6 +39,31 @@ export const T = {
   pop: "spring(1, 80, 12, 0)",
 } as const;
 
+/**
+ * `el` 을 실제로 스크롤하는 조상. 없으면 `document.body`.
+ *
+ * anime.js 의 `onScroll` 은 container 를 안 주면 **body** 를 본다. 그런데 이
+ * 앱은 body 가 스크롤되지 않는다(레이아웃이 창 높이에 고정 · DAY 22) — 화면마다
+ * 안쪽 div 가 스크롤된다. 그래서 스크롤에 묶인 움직임이 스크롤을 못 보고,
+ * 등장 애니메이션은 4초 안전망이 드러낼 때까지 숨어 있었다(DAY 26 설명 탭을
+ * 만들며 찾음). 가까운 스크롤 조상을 찾아 넘긴다.
+ */
+export function scrollParent(el: Element | null): HTMLElement {
+  let cur = el?.parentElement ?? null;
+  while (cur && cur !== document.body) {
+    const oy = getComputedStyle(cur).overflowY;
+    if (oy === "auto" || oy === "scroll") return cur;
+    cur = cur.parentElement;
+  }
+  return document.body;
+}
+
+function firstOf(targets: string | Element | Element[] | NodeList): Element | null {
+  if (typeof targets === "string") return document.querySelector(targets);
+  if (targets instanceof Element) return targets;
+  return (targets as ArrayLike<Element>)[0] ?? null;
+}
+
 export function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || !window.matchMedia) return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -80,6 +105,7 @@ export function revealFrom(
     // 방해받는다.
     autoplay: scrollRoot
       ? onScroll({ target: scrollRoot as Element, enter: "bottom-=60 top",
+                   container: scrollParent(scrollRoot ?? firstOf(targets)),
                    repeat: false })
       : true,
     onComplete: () => {
@@ -114,17 +140,110 @@ export function withScope(
     scope = createScope({ root }).add((s) => {
       build(s);
     });
-  } catch {
+  } catch (e) {
     // 애니메이션이 못 돌더라도 **내용은 보여야 한다.** 여기서 조용히
     // 끝내면 사용자는 고장난 화면이 아니라 빈 화면을 본다.
     revealAll(root);
+    // 다만 조용히 삼키지는 않는다 — 삼키면 "움직임이 왜 없지"를 아무도 모른다
+    // (DAY 26: 스크롤 등장이 통째로 안 돌던 것을 여기서 찾았다).
+    console.warn("[motion] 애니메이션을 세우지 못해 내용만 보여줍니다:", e);
   }
   // 어떤 이유로든 타임라인이 끝까지 못 갈 수 있다(탭 전환, 느린 기기).
-  // 마지막 안전망: 일정 시간이 지나면 남은 것을 전부 드러낸다.
-  const net = window.setTimeout(() => revealAll(root), 4000);
+  // 마지막 안전망 — **화면에 들어와 있는데** 한참 지나도 숨어 있는 것만
+  // 드러낸다 (DAY 26).
+  //
+  // 전에는 4초 뒤 **전부** 드러냈다. 그러면 스크롤해야 보이는 절은 4초가
+  // 지나면 이미 다 나와 있어서, "그 자리에 왔을 때 올라온다"가 첫 4초 안에
+  // 스크롤한 사람에게만 일어났다. 보는 사람에게 안 보이는 것만 막으면 된다.
+  const net = watchStragglers(root);
+  pendingReveal.get(root)?.();         // 방금 되감긴 같은 화면을 다시 세운다
+  pendingReveal.delete(root);
   return () => {
-    window.clearTimeout(net);
+    net();
     scope?.revert();
-    revealAll(root);
+    // 되감자마자 **곧바로** 드러내지 않는다. 개발 모드의 리액트는 effect 를
+    // 한 번 걷었다가 바로 다시 세우는데(StrictMode), 여기서 드러내면 다시 세울
+    // 때 숨길 것이 남지 않아 등장이 통째로 사라졌다(DAY 26). 다음 틱까지
+    // 아무도 다시 세우지 않으면 — 진짜로 떠난 것이면 — 그때 드러낸다.
+    const t = window.setTimeout(() => {
+      pendingReveal.delete(root);
+      revealAll(root);
+    }, 0);
+    pendingReveal.set(root, () => window.clearTimeout(t));
   };
+}
+
+/** 되감긴 뒤 "곧 드러낼" 예약. 같은 화면이 다시 세워지면 취소한다. */
+const pendingReveal = new WeakMap<HTMLElement, () => void>();
+
+/** 화면 안에 1.8초 넘게 있는데도 숨어 있는 요소를 드러낸다. 끄는 함수를 돌려준다. */
+function watchStragglers(root: HTMLElement): () => void {
+  if (typeof IntersectionObserver === "undefined") {
+    const t = window.setTimeout(() => revealAll(root), 4000);
+    return () => window.clearTimeout(t);
+  }
+  const timers = new Map<Element, number>();
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      const el = e.target as HTMLElement;
+      if (e.isIntersecting && !timers.has(el)) {
+        timers.set(el, window.setTimeout(() => {
+          el.removeAttribute("data-reveal");
+          io.unobserve(el);
+        }, 1800));
+      } else if (!e.isIntersecting && timers.has(el)) {
+        window.clearTimeout(timers.get(el));
+        timers.delete(el);
+      }
+    }
+  });
+  root.querySelectorAll("[data-reveal]").forEach((el) => io.observe(el));
+  return () => {
+    io.disconnect();
+    timers.forEach((t) => window.clearTimeout(t));
+  };
+}
+
+
+/**
+ * 손을 놓은 자리에서 점이 튄다 (DAY 26 · 설명 탭).
+ *
+ * 끌던 카드를 놓는 순간에만 한 번 — 계속 움직이는 장식이 아니라 **손에
+ * 대한 대답**이다. 점은 `body` 위의 고정 층에 잠깐 그렸다가 끝나면 지운다.
+ * 움직임을 줄인 사람에게는 아무것도 안 그린다.
+ */
+export function burst(x: number, y: number, color = "var(--accent)", n = 14): void {
+  if (typeof document === "undefined" || prefersReducedMotion()) return;
+  const layer = document.createElement("div");
+  layer.setAttribute("aria-hidden", "true");
+  layer.style.cssText =
+    `position:fixed;left:${x}px;top:${y}px;width:0;height:0;pointer-events:none;z-index:60`;
+  const dots: HTMLElement[] = [];
+  for (let i = 0; i < n; i++) {
+    const d = document.createElement("span");
+    const size = utils.random(4, 9);
+    d.style.cssText = `position:absolute;left:${-size / 2}px;top:${-size / 2}px;` +
+      `width:${size}px;height:${size}px;border-radius:9999px;background:${color}`;
+    layer.appendChild(d);
+    dots.push(d);
+  }
+  document.body.appendChild(layer);
+  // 고르게 퍼지되 똑같지는 않게 — 각도는 나눠 주고 거리만 흔든다.
+  let left = dots.length;
+  dots.forEach((d, i) => {
+    const angle = (i / n) * Math.PI * 2;
+    const dist = utils.random(40, 96);
+    animate(d, {
+      x: Math.cos(angle) * dist,
+      y: Math.sin(angle) * dist,
+      scale: [1, 0],
+      opacity: [1, 0],
+      duration: utils.random(520, 860),
+      ease: "out(3)",
+      onComplete: () => {
+        left -= 1;
+        if (left === 0) layer.remove();
+      },
+    });
+  });
 }

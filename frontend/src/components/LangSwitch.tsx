@@ -125,6 +125,7 @@ export function Nav() {
   return (
     <>
       <NavLink href="/" active={at("/")}>{t("nav.office")}</NavLink>
+      <NavLink href="/guide" active={at("/guide")}>{t("nav.guide")}</NavLink>
       <NavLink href="/pricing" active={at("/pricing")}>{t("nav.pricing")}</NavLink>
       <NavLink href="/settings" active={at("/settings")}>{t("nav.settings")}</NavLink>
     </>

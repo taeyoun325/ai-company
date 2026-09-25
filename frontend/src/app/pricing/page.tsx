@@ -26,7 +26,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
-  Button, ErrorBox, MockBadge, Panel, Screen, Skeleton, SkeletonCards,
+  Button, ErrorBox, Filled, MockBadge, Panel, Screen, Skeleton, SkeletonCards,
   Warning, money,
 } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -352,17 +352,5 @@ export default function PricingPage() {
       </p>
     </div>
     </Screen>
-  );
-}
-
-/** `{strong}` 자리에 굵은 조각을 끼운다. 번역문마다 위치가 다르다. */
-function Filled({ text, strong }: { text: string; strong: string }) {
-  const [before, after = ""] = text.split("{strong}");
-  return (
-    <>
-      {before}
-      <strong className="text-fg">{strong}</strong>
-      {after}
-    </>
   );
 }

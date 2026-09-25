@@ -9,7 +9,7 @@ import { expect, test } from "./fixtures";
 
 import { EMPLOYEES, i18nKeys, unique, visibleText, waitStatus } from "./helpers";
 
-const PAGES = ["/", "/pricing", "/settings", "/projects"];
+const PAGES = ["/", "/guide", "/pricing", "/settings", "/projects"];
 const keys = i18nKeys();
 
 // 끝난 프로젝트가 하나는 있어야 점수판·결과 목록 같은 **기록을 그리는 칸**이

@@ -63,6 +63,7 @@ const S = {
   "nav.projects": { ko: "프로젝트", en: "Projects", ja: "プロジェクト" },
   "nav.pricing": { ko: "요금제", en: "Pricing", ja: "料金" },
   "nav.settings": { ko: "설정", en: "Settings", ja: "設定" },
+  "nav.guide": { ko: "설명", en: "Guide", ja: "説明" },
   "nav.language": { ko: "언어", en: "Language", ja: "言語" },
   "footer.note": {
     ko: "당신은 CEO 입니다. 직원에게 직접 지시하거나 AUTO 로 맡기세요.",
@@ -1217,6 +1218,169 @@ const S = {
   "metrics.retries": { ko: "재시도", en: "Retries", ja: "再試行" },
   "metrics.slowest": { ko: "가장 오래 걸린 호출", en: "Slowest calls", ja: "最も時間のかかった呼び出し" },
   "metrics.attempts": { ko: "{n}번 시도", en: "{n} attempts", ja: "{n}回試行" },
+  // ── 설명 탭 (DAY 26 · app/guide) ──────────────────────────────────
+  // 로그인한 사람이 "이 제품이 무엇을 어떻게 하나"를 읽는 곳. 랜딩은 로그인
+  // 전에만 보이고(로컬에서는 아예 안 보인다), 사무실은 설명하지 않는다.
+  // 역할·상태·승인 지점·지시 문구는 **새로 쓰지 않고** 사무실의 키를 그대로
+  // 쓴다 — 설명과 화면의 말이 어긋나면 설명이 거짓말이 된다.
+  "guide.badge": { ko: "처음 오셨다면 여기부터", en: "New here? Start here", ja: "初めての方はここから" },
+  "guide.title": { ko: "AI COMPANY 는 이렇게 일합니다", en: "How AI COMPANY works", ja: "AI COMPANY の働き方" },
+  "guide.lead": {
+    ko: "당신은 대표이고, AI 직원 다섯이 한 팀으로 일합니다. 요구사항 한 줄을 맡기면 {strong} 만든 것은 파일로 남고, 누가 몇 번째에 왜 고쳤는지까지 따라갈 수 있습니다.",
+    en: "You're the CEO, and five AI employees work as one team. Hand over a one-line requirement and {strong} Everything they make is saved as files, and you can trace who changed what, in which round, and why.",
+    ja: "あなたは社長で、AI 社員 5 名が一つのチームとして働きます。要件を一行渡せば{strong}作ったものはファイルとして残り、誰が何回目に、なぜ直したかまで追えます。",
+  },
+  "guide.lead.strong": {
+    ko: "기획 → 테스트 선작성 → 구현 → 교차검증 → 최종 검수까지 끝까지 돕니다.",
+    en: "it runs all the way through planning → tests first → building → cross-checking → final review.",
+    ja: "企画 → テスト先行 → 実装 → クロス検証 → 最終検収まで最後まで進みます。",
+  },
+  "guide.toc": { ko: "이 페이지", en: "On this page", ja: "このページ" },
+  "guide.dragHint": {
+    ko: "카드와 제목 낱말을 끌어 보세요 — 놓으면 튕겨서 제자리로 돌아갑니다.",
+    en: "Try dragging the cards and the title words — they spring back when you let go.",
+    ja: "カードや見出しの単語をドラッグしてみてください — 離すと弾んで元に戻ります。",
+  },
+  "guide.flow.title": { ko: "일이 흘러가는 순서", en: "How a job flows", ja: "仕事の流れ" },
+  "guide.flow.lead": {
+    ko: "순서는 모델이 아니라 코드가 정합니다. 그래서 '왜 저 직원을 불렀나'에 언제나 답할 수 있고, 끝없이 돌지 않습니다.",
+    en: "Code — not a model — decides the order. You can always answer 'why was that employee called?', and it never loops forever.",
+    ja: "順序はモデルではなくコードが決めます。だから「なぜその社員を呼んだのか」にいつでも答えられ、終わりなく回ることもありません。",
+  },
+  "guide.step.1": { ko: "기획", en: "Plan", ja: "企画" },
+  "guide.step.1.body": {
+    ko: "전략가가 요구사항을 기계가 판정할 수 있는 인수기준과 태스크로 나눕니다. 태스크마다 담당자와 쓸 파일이 정해집니다.",
+    en: "The strategist turns the requirement into acceptance criteria a machine can check, and splits the work into tasks — each with an owner and the files it will write.",
+    ja: "ストラテジストが要件を機械で判定できる受け入れ基準とタスクに分けます。タスクごとに担当者と書くファイルが決まります。",
+  },
+  "guide.step.2": { ko: "테스트 먼저", en: "Tests first", ja: "テスト先行" },
+  "guide.step.2.body": {
+    ko: "분석가가 구현보다 먼저 테스트를 씁니다. 개발자는 이 테스트를 읽을 수 없습니다 — 테스트에 맞춘 코드가 아니라 기준을 만족하는 코드를 쓰게 하려고요.",
+    en: "The analyst writes the tests before anything is built. The developer can't read them — so the code meets the criteria instead of just passing the tests.",
+    ja: "アナリストが実装より先にテストを書きます。開発者はこのテストを読めません — テストに合わせたコードではなく、基準を満たすコードを書かせるためです。",
+  },
+  "guide.step.3": { ko: "구현", en: "Build", ja: "実装" },
+  "guide.step.3.body": {
+    ko: "개발자·작가·디자이너가 맡은 태스크를 합니다. 서로 기대지 않고 쓰는 파일도 겹치지 않는 태스크는 동시에 돕니다.",
+    en: "The developer, writer and designer do their tasks. Tasks that don't depend on each other and don't touch the same files run at the same time.",
+    ja: "開発者・ライター・デザイナーが担当タスクを行います。互いに依存せず、書くファイルも重ならないタスクは同時に進みます。",
+  },
+  "guide.step.4": { ko: "테스트 실행", en: "Run the tests", ja: "テスト実行" },
+  "guide.step.4.body": {
+    ko: "오케스트레이터가 격리된 환경에서 pytest 를 직접 돌립니다. 결과는 직원의 말이 아니라 실행 기록입니다.",
+    en: "The orchestrator runs pytest itself in an isolated environment. The result is an execution record, not an employee's claim.",
+    ja: "オーケストレーターが隔離環境で pytest を自ら実行します。結果は社員の言葉ではなく実行記録です。",
+  },
+  "guide.step.5": { ko: "교차검증", en: "Cross-check", ja: "クロス検証" },
+  "guide.step.5.body": {
+    ko: "구현한 쪽과 다른 회사의 모델이 원문과 기준만 보고 판정합니다. 반려되면 사유와 함께 담당자에게 돌아가고, 세 번 넘게 반려되면 되돌린 뒤 계획을 다시 세웁니다.",
+    en: "A model from a different company than the builder judges the work from the source and the criteria alone. A rejection goes back to the owner with reasons; after three, the work is rolled back and re-planned.",
+    ja: "実装側とは別の会社のモデルが、原文と基準だけを見て判定します。差し戻しは理由とともに担当者へ戻り、3 回を超えると元に戻して計画し直します。",
+  },
+  "guide.step.6": { ko: "최종 검수", en: "Final review", ja: "最終検収" },
+  "guide.step.6.body": {
+    ko: "전략가가 인수기준을 하나씩 대조해 무엇이 충족됐고 무엇이 남았는지 보고합니다.",
+    en: "The strategist checks each acceptance criterion and reports what was met and what wasn't.",
+    ja: "ストラテジストが受け入れ基準を一つずつ照合し、何が満たされ何が残ったかを報告します。",
+  },
+  "guide.modes.title": { ko: "일을 맡기는 두 가지 방법", en: "Two ways to hand over work", ja: "仕事の任せ方は二つ" },
+  "guide.auto.body": {
+    ko: "요구사항 한 줄이면 위 순서를 끝까지 돕니다. 멈춰서 직접 보고 싶은 지점만 켜 두세요.",
+    en: "One line and it runs the whole flow above. Just turn on the points where you want it to stop for you.",
+    ja: "要件一行で上の流れを最後まで進めます。止めて自分で確認したい所だけオンにしてください。",
+  },
+  "guide.manual.body": {
+    ko: "직원을 골라 한 마디씩 직접 시킵니다. 원할 때 검증을 부탁할 수 있고, 권한 경계는 AUTO 와 같습니다.",
+    en: "Pick an employee and give instructions one at a time. Ask for a review whenever you like; the permission limits are the same as in AUTO.",
+    ja: "社員を選んで一言ずつ直接指示します。必要な時に検証を頼め、権限の境界は AUTO と同じです。",
+  },
+  "guide.writes": { ko: "쓰는 곳", en: "Writes to", ja: "書き込み先" },
+  "guide.writes.none": { ko: "쓰지 않음 — 계획만", en: "nothing — plans only", ja: "書かない — 計画のみ" },
+  "guide.teams": {
+    ko: "사무실에서 직원을 끌어 다른 팀 칸에 놓으면 팀을 옮길 수 있습니다.",
+    en: "On the office floor you can drag an employee onto another team's area to move them.",
+    ja: "オフィスでは社員を別のチームの区画にドラッグすると異動できます。",
+  },
+  "guide.gates.title": { ko: "대표가 끼어드는 지점", en: "Where the CEO steps in", ja: "社長が介入するポイント" },
+  "guide.gates.lead": {
+    ko: "켜 둔 지점에서만 멈춥니다. 기다리는 동안 실행은 쉬고 동시 실행 좌석도 쓰지 않으며, 결정하면 멈춘 곳에서 이어갑니다.",
+    en: "It stops only at the points you turn on. While it waits, the run rests and doesn't hold a concurrent-run seat; once you decide, it continues from where it stopped.",
+    ja: "オンにしたポイントでのみ止まります。待つ間、実行は休み同時実行枠も使いません。決定すると止まった所から続きます。",
+  },
+  "guide.decide.title": { ko: "결정은 네 가지", en: "Four decisions", ja: "決定は四つ" },
+  "guide.decide.approve": { ko: "다음으로 넘어갑니다.", en: "Moves on to the next step.", ja: "次へ進みます。" },
+  "guide.decide.reject": {
+    ko: "의견을 반려 사유로 담당자에게 돌려줍니다. 의견 없이는 할 수 없습니다.",
+    en: "Sends your comment back to the owner as the reason for rework. A comment is required.",
+    ja: "意見を差し戻し理由として担当者へ返します。意見なしではできません。",
+  },
+  "guide.decide.hold": {
+    ko: "아무것도 하지 않고 열어 둡니다. 비서실이 따로 챙깁니다.",
+    en: "Does nothing and leaves it open. The secretary keeps track of it.",
+    ja: "何もせず開いたままにします。秘書室が別途管理します。",
+  },
+  "guide.decide.discard": {
+    ko: "계획이면 실행을 멈추고, 태스크면 그 태스크가 건드린 파일을 되돌리고 뺀 뒤 나머지를 계속합니다.",
+    en: "For a plan, stops the run. For a task, rolls back the files it touched, drops it, and carries on with the rest.",
+    ja: "計画なら実行を止め、タスクならそのタスクが触ったファイルを戻して外し、残りを続けます。",
+  },
+  "guide.office.title": { ko: "사무실 읽는 법", en: "Reading the office", ja: "オフィスの見方" },
+  "guide.office.lead": {
+    ko: "직원마다 상태 하나와 그 이유 한 줄이 붙습니다. 상태는 기록을 보고 서버가 정합니다.",
+    en: "Every employee shows one status and a one-line reason. The server decides the status from the records.",
+    ja: "社員ごとに状態が一つと理由が一行付きます。状態は記録をもとにサーバーが決めます。",
+  },
+  "guide.state.done": { ko: "맡은 일을 끝냈습니다.", en: "Finished the assigned work.", ja: "担当の仕事を終えました。" },
+  "guide.state.working": {
+    ko: "지금 모델이 일하는 중입니다 — 몇 초째인지 보입니다.",
+    en: "A model is working right now — you can see for how many seconds.",
+    ja: "今モデルが作業中です — 何秒目かが見えます。",
+  },
+  "guide.state.approval": {
+    ko: "대표의 결정을 기다리며 회의실에 있습니다.",
+    en: "Waiting in the meeting room for your decision.",
+    ja: "社長の決定を待って会議室にいます。",
+  },
+  "guide.state.integration": {
+    ko: "키가 연결되지 않아 Mock 대본이 대신 일합니다.",
+    en: "No key is connected, so a Mock script works in its place.",
+    ja: "キーが未接続のため Mock の台本が代わりに働きます。",
+  },
+  "guide.state.idle": {
+    ko: "할 일이 없습니다 — 가끔 휴게실에 들릅니다.",
+    en: "Nothing to do — sometimes drops by the lounge.",
+    ja: "やることがありません — ときどき休憩室に寄ります。",
+  },
+  "guide.office.commands": {
+    ko: "대표 지시창에서 이렇게 물어보세요",
+    en: "Ask the office like this",
+    ja: "社長の指示窓でこう聞いてみてください",
+  },
+  "guide.money.title": { ko: "돈은 이렇게 셉니다", en: "How money is counted", ja: "お金の数え方" },
+  "guide.money.credits": {
+    ko: "모델을 부를 때마다 실제로 쓴 토큰만큼 크레딧이 줄어듭니다. 직원별로 얼마를 썼는지 보입니다.",
+    en: "Every model call takes credits for the tokens actually used. You can see how much each employee spent.",
+    ja: "モデルを呼ぶたびに実際に使ったトークン分のクレジットが減ります。社員ごとの使用額が見えます。",
+  },
+  "guide.money.before": {
+    ko: "상한은 호출하기 전에 검사합니다 — 다음 호출의 최악 비용까지 더해서 넘으면 부르기 전에 멈춥니다.",
+    en: "Limits are checked before each call — if the worst-case cost of the next call would go over, it stops before calling.",
+    ja: "上限は呼び出しの前に確認します — 次の呼び出しの最悪コストを足して超えるなら、呼ぶ前に止まります。",
+  },
+  "guide.money.plans": {
+    ko: "요금제를 올리면 차이만큼 크레딧이 더해지고, 내리거나 되돌아가면 더해지지 않습니다.",
+    en: "Upgrading your plan adds only the difference in credits; downgrading or switching back adds nothing.",
+    ja: "プランを上げると差額分だけクレジットが増え、下げたり戻したりしても増えません。",
+  },
+  "guide.money.byok": {
+    ko: "자체 키(BYOK) 요금제에서는 여러분의 키로 부르고 비용은 제공자가 직접 청구합니다 — 크레딧이 줄지 않습니다.",
+    en: "On the bring-your-own-key plan, calls use your key and the provider bills you directly — no credits are spent.",
+    ja: "自前キー（BYOK）プランではあなたのキーで呼び出し、費用はプロバイダーが直接請求します — クレジットは減りません。",
+  },
+  "guide.cta.title": { ko: "시작해 볼까요?", en: "Ready to start?", ja: "始めてみましょうか？" },
+  "guide.cta.office": { ko: "사무실로 가기", en: "Go to the office", ja: "オフィスへ" },
+  "guide.cta.pricing": { ko: "요금제 보기", en: "See pricing", ja: "料金を見る" },
+  "guide.cta.keys": { ko: "API 키 연결하기", en: "Connect API keys", ja: "API キーを接続" },
 } satisfies Record<string, Entry>;
 
 export type Key = keyof typeof S;

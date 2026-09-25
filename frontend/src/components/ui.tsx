@@ -333,3 +333,22 @@ export function clock(ts: number | undefined, lang = "ko") {
     minute: "2-digit",
   });
 }
+
+
+/**
+ * `{strong}` 자리에 굵은 조각을 끼운다.
+ *
+ * 번역문마다 강조할 조각의 **위치가 다르다** — 한국어는 뒤쪽, 영어는
+ * 가운데다. 문장을 앞뒤로 쪼개 두면 언어마다 어순이 어긋나므로, 자리
+ * 표시를 문장 안에 두고 여기서 갈라 끼운다. (랜딩·요금제·설명이 함께 쓴다.)
+ */
+export function Filled({ text, strong }: { text: string; strong: string }) {
+  const [before, after = ""] = text.split("{strong}");
+  return (
+    <>
+      {before}
+      <strong className="text-fg">{strong}</strong>
+      {after}
+    </>
+  );
+}
