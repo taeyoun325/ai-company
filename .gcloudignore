@@ -1,0 +1,27 @@
+# Cloud Build 로 올리는 것에서 뺀다. 비밀값·로컬 DB·산출물은 절대 올라가면 안 된다.
+.git/
+.gitignore
+.claude/
+.venv/
+**/node_modules/
+**/__pycache__/
+frontend/.next*/
+frontend/e2e/
+frontend/test-results/
+frontend/playwright-report/
+*.zip
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+.byok*
+.secrets.json
+.staff.json
+.credits.json
+/projects/
+/logs/
+/attachments/
+backend/tests/
+docs/
+scripts/

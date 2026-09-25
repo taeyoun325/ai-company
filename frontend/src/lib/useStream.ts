@@ -30,6 +30,7 @@ import type { BusEvent, Roster } from "./types";
 
 const KEEP = 600;
 const POLL_MS = 1500;
+const OPEN_TIMEOUT_MS = 6000;
 
 export interface StreamState {
   events: BusEvent[];
@@ -134,8 +135,16 @@ export function useStream(run?: string): StreamState {
     }`;
     const es = new EventSource(url);
     let failures = 0;
+    // 응답을 **모았다가 한꺼번에** 넘기는 프록시 뒤에서는 onopen 도 onerror 도
+    // 오지 않은 채 연결이 매달린다 (DAY 27 — Firebase Hosting 이 그렇다. 헤더
+    // 한 줄 없이 60초를 기다린다). 오류를 세는 것만으로는 폴링으로 못 내려간다.
+    const openTimer = setTimeout(() => {
+      es.close();
+      setPolling(true);
+    }, OPEN_TIMEOUT_MS);
 
     const onMessage = (ev: MessageEvent) => {
+      clearTimeout(openTimer);
       setConnected(true);
       setPolling(false);
       failures = 0;
@@ -167,6 +176,7 @@ export function useStream(run?: string): StreamState {
     types.forEach((t) => es.addEventListener(t, onMessage as EventListener));
 
     es.onopen = () => {
+      clearTimeout(openTimer);
       setConnected(true);
       setPolling(false);
     };
@@ -179,6 +189,7 @@ export function useStream(run?: string): StreamState {
     };
 
     return () => {
+      clearTimeout(openTimer);
       types.forEach((t) => es.removeEventListener(t, onMessage as EventListener));
       es.close();
     };

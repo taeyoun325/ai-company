@@ -29,12 +29,16 @@ DAY 14까지 이 코드는 `owner` 를 쿼리 파라미터로 받았다:
 """
 from __future__ import annotations
 
+import os
+
 from fastapi import HTTPException, Request, Response
 
 from app import deploy, lang
 from app.auth import service, store
 
-COOKIE = "ai_company_session"
+# Firebase Hosting 뒤에서는 `__session` 이외의 쿠키가 **전부 지워진 채**
+# 백엔드에 닿는다. 그 배치에서는 SESSION_COOKIE=__session 으로 바꿔 끼운다.
+COOKIE = os.getenv("SESSION_COOKIE", "").strip() or "ai_company_session"
 
 # 로컬 모드에서 쓰는 고정 사용자. 실제 계정이 아니다.
 LOCAL_OWNER = "local"

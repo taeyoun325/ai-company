@@ -1,0 +1,12 @@
+{
+  "hosting": {
+    "public": "deploy/hosting",
+    "ignore": ["**/.*"],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": { "serviceId": "ai-company", "region": "asia-northeast3" }
+      }
+    ]
+  }
+}

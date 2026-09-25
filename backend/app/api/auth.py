@@ -11,6 +11,9 @@ main.py 가 800줄을 넘어서 여기로 뺐다 — `app/api/__init__.py` 에
 """
 from __future__ import annotations
 
+import ipaddress
+import os
+
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
@@ -46,8 +49,43 @@ def _client_ip(request: Request) -> str:
     if deploy.is_saas():
         fwd = request.headers.get("x-forwarded-for", "")
         if fwd:
-            return fwd.split(",")[0].strip()
+            hops = [h.strip() for h in fwd.split(",") if h.strip()]
+            trusted = _trusted_proxies()
+            if trusted is None:
+                return hops[0] if hops else ""
+            # 맨 앞 값은 **클라이언트가 적어 보낸 값**일 수 있다 — 프록시는 뒤에
+            # 덧붙일 뿐 지우지 않는다(Cloud Run 이 그렇다). 그래서 오른쪽부터
+            # 읽으며 믿는 프록시를 건너뛰고, 처음 만나는 남의 주소를 쓴다.
+            # DAY 27 에 실제로 잰 모양:
+            #   run.app 직접   '6.6.6.6(위조), 실제'           → 실제
+            #   web.app 경유   '실제, 66.249.82.103(Hosting)' → 실제
+            for h in reversed(hops):
+                if not _in(h, trusted):
+                    return h
+            return hops[0] if hops else ""
     return request.client.host if request.client else ""
+
+
+def _trusted_proxies() -> list | None:
+    """TRUSTED_PROXY_CIDRS — 쉼표로 가른 대역. 없으면 None (옛 동작)."""
+    raw = os.getenv("TRUSTED_PROXY_CIDRS", "").strip()
+    if not raw:
+        return None
+    nets = []
+    for part in raw.split(","):
+        try:
+            nets.append(ipaddress.ip_network(part.strip(), strict=False))
+        except ValueError:
+            continue
+    return nets
+
+
+def _in(host: str, nets: list) -> bool:
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return any(ip in n for n in nets)
 
 
 @router.get("/me")
