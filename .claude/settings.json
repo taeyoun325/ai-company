@@ -6,9 +6,31 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/claims.py\" hook pre-tool-use",
+            "command": "p=\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\"; [ -x \"$p\" ] || p=\"$CLAUDE_PROJECT_DIR/.venv/bin/python\"; [ -x \"$p\" ] || p=python; \"$p\" \"$CLAUDE_PROJECT_DIR/scripts/claims.py\" hook pre-tool-use",
             "timeout": 15,
             "statusMessage": "Checking other sessions' claims"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "p=\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\"; [ -x \"$p\" ] || p=\"$CLAUDE_PROJECT_DIR/.venv/bin/python\"; [ -x \"$p\" ] || p=python; \"$p\" \"$CLAUDE_PROJECT_DIR/scripts/claims.py\" hook pre-tool-use",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "p=\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\"; [ -x \"$p\" ] || p=\"$CLAUDE_PROJECT_DIR/.venv/bin/python\"; [ -x \"$p\" ] || p=python; \"$p\" \"$CLAUDE_PROJECT_DIR/scripts/claims.py\" hook post-tool-use",
+            "timeout": 15
           }
         ]
       }
@@ -18,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/claims.py\" hook session-start",
+            "command": "p=\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\"; [ -x \"$p\" ] || p=\"$CLAUDE_PROJECT_DIR/.venv/bin/python\"; [ -x \"$p\" ] || p=python; \"$p\" \"$CLAUDE_PROJECT_DIR/scripts/claims.py\" hook session-start",
             "timeout": 15
           }
         ]
@@ -29,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/claims.py\" hook session-end",
+            "command": "p=\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\"; [ -x \"$p\" ] || p=\"$CLAUDE_PROJECT_DIR/.venv/bin/python\"; [ -x \"$p\" ] || p=python; \"$p\" \"$CLAUDE_PROJECT_DIR/scripts/claims.py\" hook session-end",
             "timeout": 15
           }
         ]

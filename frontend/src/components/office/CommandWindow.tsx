@@ -79,7 +79,10 @@ export function CommandWindow({
         <span className="text-[11px] text-dim">{t("cmd.hint")}</span>
       </header>
 
-      <div ref={box} className="max-h-72 min-h-24 flex-1 space-y-2 overflow-y-auto px-4 py-3">
+      {/* 답은 버튼을 누른 **뒤에** 온다 — 화면 낭독기가 알려주지 않으면 누른
+          사람은 답이 왔는지 모른다 (DAY 26). */}
+      <div ref={box} role="log" aria-live="polite" aria-label={t("cmd.title")}
+        className="max-h-72 min-h-24 flex-1 space-y-2 overflow-y-auto px-4 py-3">
         {rows.length === 0 && (
           <p className="py-4 text-center text-xs text-dim">{t("cmd.empty")}</p>
         )}
@@ -131,6 +134,7 @@ export function CommandWindow({
         )}
         <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void ask(text); }}>
           <input value={text} onChange={(e) => setText(e.target.value)}
+            aria-label={t("cmd.title")}
             placeholder={t("cmd.placeholder")} maxLength={500}
             className="min-w-0 flex-1 rounded-xl border border-line bg-[color:var(--panel-2)]
               px-3 py-1.5 text-sm outline-none placeholder:text-dim focus:border-accent" />

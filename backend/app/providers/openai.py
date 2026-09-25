@@ -26,7 +26,8 @@ from app import config, lang, secrets_broker
 from app.providers.base import (AIProvider, AuthError, GenerateRequest,
                                 GenerateResult, ProviderError,
                                 ProviderUnavailable, RateLimited,
-                                RefusedError, TransientError, Usage)
+                                RefusedError, StreamEnd, TransientError,
+                                Usage)
 
 _RETRYABLE = ("APIConnectionError", "APITimeoutError", "InternalServerError",
               "APIConnectionTimeoutError")
@@ -155,16 +156,35 @@ class OpenAIProvider(AIProvider):
             stop_reason=status,
         )
 
-    def _stream(self, req: GenerateRequest) -> Iterator[str]:
+    def _stream(self, req: GenerateRequest) -> Iterator[str | StreamEnd]:
+        """조각을 흘리고, 끝나면 최종 응답의 사용량을 알린다 (DAY 26).
+
+        거절은 `response.refusal.delta` 로 온다(`_generate` 가 내용 조각에서
+        찾는 것과 같은 것). 글 없이 거절만 왔으면 빈 글을 성공으로 올리지
+        않고 거절로 올린다 — 같은 이유로 DAY 25 에 `_generate` 를 고쳤다.
+        """
         client = self._client()
+        refusal: list[str] = []
+        wrote = False
         try:
             with client.responses.stream(**self._payload(req)) as s:
                 for event in s:
-                    if getattr(event, "type", "") == "response.output_text.delta":
+                    kind = getattr(event, "type", "")
+                    if kind == "response.output_text.delta":
                         delta = getattr(event, "delta", "")
                         if delta:
+                            wrote = True
                             yield delta
+                    elif kind == "response.refusal.delta":
+                        refusal.append(getattr(event, "delta", "") or "")
+                final = s.get_final_response()
         except ProviderError:
             raise
         except Exception as e:                          # noqa: BLE001
             raise translate(e, self.name) from e
+        yield StreamEnd(usage=self._usage_of(getattr(final, "usage", None)),
+                        model=getattr(final, "model", None),
+                        stop_reason=getattr(final, "status", None))
+        if refusal and not wrote:
+            raise RefusedError(lang.t("prov.refused", detail="".join(refusal)),
+                               provider=self.name)

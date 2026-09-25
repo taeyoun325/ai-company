@@ -220,8 +220,10 @@ export function OfficeFloor({
   return (
     <>
       {/* 넓은 화면 — 평면도 */}
-      <div className="glass glass-lit relative hidden aspect-[16/10] min-h-[380px] w-full
-        overflow-hidden sm:block" role="group" aria-label={t("office.floor.alt")}>
+      {/* `@container` — 말풍선이 자리 폭(17%)을 넘지 않게 `cqw` 로 잰다 (DAY 26).
+          고정 132px 이면 1280px 화면에서 옆자리 말풍선과 겹쳤다. */}
+      <div className="@container glass glass-lit relative hidden aspect-[16/10] min-h-[380px]
+        w-full overflow-hidden sm:block" role="group" aria-label={t("office.floor.alt")}>
         <Rooms approval={!!approval} t={t} />
 
         {/* 회의실 탁자와 지금 말하는 한 줄 */}
@@ -451,7 +453,7 @@ function Token({ e, at, mode, line, self, now, snapNow, selected, onClick,
       )}
       {mode !== "away" && !speech && !quiet && (
         <span key={bubble}
-          className={`bubble absolute -top-9 left-1/2 max-w-[132px] truncate rounded-lg border
+          className={`bubble absolute -top-9 left-1/2 max-w-[min(132px,16cqw)] truncate rounded-lg border
             px-2 py-0.5 text-[10px] shadow ${self ? "italic" : "font-medium"}`}
           style={{
             background: "var(--panel-solid)",
@@ -471,7 +473,9 @@ function Token({ e, at, mode, line, self, now, snapNow, selected, onClick,
         {e.mock && <span className="text-[9px] font-bold" style={{ color: "var(--mock)" }}>M</span>}
       </span>
       {mode !== "away" && e.state === "working" && e.task?.title && (
-        <span className="max-w-[118px] truncate text-[10px] text-dim">{e.task.title}</span>
+        <span className="max-w-[min(118px,16cqw)] truncate text-[10px] text-dim">
+          {e.task.title}
+        </span>
       )}
       {waited != null && (
         <span className="text-[10px] tabular-nums" style={{ color: "var(--st-working)" }}>

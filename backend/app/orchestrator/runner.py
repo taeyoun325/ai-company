@@ -5,7 +5,8 @@
 막는 것:
   - API 키 유출: 환경변수를 세탁해서 넘긴다 (KEY/TOKEN/SECRET/PASSWORD 계열 제거)
   - 자동 로딩 우회: PYTHONNOUSERSITE로 usercustomize, -p no:cacheprovider,
-    고정 pytest.ini(-c)로 프로젝트 내 설정 파일 무시, PYTHONDONTWRITEBYTECODE
+    고정 pytest.ini(-c)로 프로젝트 내 설정 파일 무시, PYTHONDONTWRITEBYTECODE,
+    PYTEST_DISABLE_PLUGIN_AUTOLOAD로 서버 venv 의 pytest 플러그인
   - 좀비 프로세스: 프로세스 그룹/작업 단위로 트리 전체 종료
   - 무한 루프: 타임아웃
 
@@ -52,6 +53,11 @@ def _clean_env() -> dict:
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["PYTHONNOUSERSITE"] = "1"        # usercustomize.py 자동 import 차단
     env["PYTHONUNBUFFERED"] = "1"
+    # 서버 venv 에 **우연히** 깔린 pytest 플러그인(anyio 등)을 생성된 코드의
+    # 시험에 싣지 않는다 (DAY 26). 싣으면 시험 결과가 서버에 무엇이 깔렸는지에
+    # 따라 달라지고, 남의 코드가 도는 프로세스에 우리 쪽 코드가 하나 더 올라간다.
+    # 덤으로 실행마다 ~90ms 빨라진다 — Mock 실행 시간의 85% 가 이 pytest 다.
+    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     env.pop("PYTHONSTARTUP", None)
     env.pop("PYTHONPATH", None)          # pytest.ini의 pythonpath만 쓰게 한다
     return env

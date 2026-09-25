@@ -511,6 +511,12 @@ const S = {
   "task.rounds": { ko: "{n}라운드", en: "{n} rounds", ja: "{n} ラウンド" },
   "task.k.tasks": { ko: "태스크", en: "Tasks", ja: "タスク" },
   "task.k.tests": { ko: "테스트", en: "Tests", ja: "テスト" },
+  "task.v.notRun": { ko: "미실행", en: "not run", ja: "未実行" },
+  "task.v.testsCounts": {
+    ko: "{passed}통과·{failed}실패",
+    en: "{passed} passed · {failed} failed",
+    ja: "{passed} 成功 · {failed} 失敗",
+  },
   "task.k.coverage": { ko: "기준 커버리지", en: "Criteria covered", ja: "基準カバレッジ" },
   "task.k.criteria": { ko: "인수기준", en: "Criteria", ja: "受け入れ基準" },
   "task.k.reworks": { ko: "반려", en: "Rejections", ja: "差し戻し" },

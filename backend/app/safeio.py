@@ -92,3 +92,93 @@ def write_text(path: Path | str, text: str, *, encoding: str = "utf-8") -> None:
 
 def write_json(path: Path | str, data: object, *, indent: int = 2) -> None:
     write_text(path, json.dumps(data, ensure_ascii=False, indent=indent))
+
+
+# ── 프로세스를 넘는 잠금 (DAY 26) ──────────────────────────────────
+#
+# ## 왜 필요한가
+#
+# 원자적 쓰기는 "잘리지 않음"만 보장한다. **읽고-고치고-쓰기**는 여전히
+# 두 프로세스 사이에서 섞인다 — A 가 읽고, B 가 읽고, A 가 쓰고, B 가
+# 쓰면 A 의 갱신이 사라진다. 스레드 잠금(`threading.Lock`)은 프로세스를
+# 못 넘는다. 서버를 두 대로 띄우면 승인 결정과 "쉬러 들어가는 실행"이
+# 서로를 못 본 채 지나가, 결정이 기록돼 있는데 아무도 실행을 깨우지 않았다.
+#
+# ## 왜 운영체제 잠금인가
+#
+# `O_CREAT | O_EXCL` 로 잠금 파일을 만드는 방식은 잡은 프로세스가 죽으면
+# 파일이 남는다 — 오래됐는지 시각으로 짐작해야 하고, 짐작은 틀린다.
+# `fcntl.flock` · `msvcrt.locking` 은 프로세스가 죽으면 **운영체제가 푼다.**
+#
+# 잠금 파일은 따로 둔다(`.<이름>.lock`). 데이터 파일 자체를 잠그면 원자적
+# 쓰기(이름 바꾸기)가 그 파일을 갈아치우는 순간 잠금이 엉뚱한 파일에 남는다.
+LOCK_TIMEOUT = float(os.getenv("FILE_LOCK_TIMEOUT", "15"))
+
+if sys.platform == "win32":                                    # pragma: no cover - 플랫폼별
+    import msvcrt
+
+    def _try_lock(fd: int) -> bool:
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            return True
+        except OSError:
+            return False
+
+    def _unlock(fd: int) -> None:
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _try_lock(fd: int) -> bool:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            return False
+
+    def _unlock(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+class LockTimeout(TimeoutError):
+    """다른 프로세스가 너무 오래 쥐고 있다."""
+
+
+class file_lock:
+    """`path` 옆의 잠금 파일을 **프로세스를 넘어** 배타적으로 잡는다.
+
+    스레드 잠금과 **함께** 쓴다 — 스레드 잠금을 먼저 잡고 이것을 잡는다.
+    같은 프로세스의 스레드들은 스레드 잠금에서 줄을 서므로, 잠금 파일을
+    두고 헛돌며 기다리는 것은 다른 프로세스뿐이다.
+    """
+
+    def __init__(self, path: Path | str, timeout: float | None = None):
+        path = Path(path)
+        self.lock = path.with_name(f".{path.name}.lock")
+        self.timeout = LOCK_TIMEOUT if timeout is None else timeout
+        self.fd: int | None = None
+
+    def __enter__(self) -> "file_lock":
+        self.lock.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.lock, os.O_RDWR | os.O_CREAT, 0o644)
+        deadline = time.monotonic() + self.timeout
+        wait = 0.001
+        while not _try_lock(fd):
+            if time.monotonic() > deadline:
+                os.close(fd)
+                raise LockTimeout(f"lock busy: {self.lock}")
+            time.sleep(wait)
+            wait = min(wait * 2, 0.05)
+        self.fd = fd
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        fd, self.fd = self.fd, None
+        if fd is not None:
+            try:
+                _unlock(fd)
+            finally:
+                os.close(fd)
+        return False

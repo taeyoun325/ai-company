@@ -30,6 +30,7 @@ import itertools
 import random
 import time
 from collections.abc import AsyncIterator, Iterator
+from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
@@ -98,6 +99,20 @@ class GenerateResult:
     usage: Usage = field(default_factory=Usage)
     stop_reason: str | None = None
     attempts: int = 1
+
+
+@dataclass(frozen=True)
+class StreamEnd:
+    """스트림 끝에 제공자가 알려주는 사용량 (DAY 26).
+
+    `_stream()` 은 글 조각(`str`)을 흘리고, 제공자가 사용량을 알려주면
+    **마지막에** 이것을 하나 낸다. 호출부에는 나가지 않는다 — `stream()` 이
+    받아서 청구한다. 조각과 한 통로로 흘리는 이유: 사용량은 스트림이 끝나야
+    알 수 있고, 따로 돌려받는 길을 두면 제공자마다 그 길을 빠뜨린다.
+    """
+    usage: Usage
+    model: str | None = None
+    stop_reason: str | None = None
 
 
 # ── 오류 ────────────────────────────────────────────────────────────
@@ -212,8 +227,12 @@ class AIProvider(abc.ABC):
         """한 번 호출한다. 실패는 ProviderError 로 올린다."""
 
     @abc.abstractmethod
-    def _stream(self, req: GenerateRequest) -> Iterator[str]:
-        """조각을 흘린다. 조각을 다 이으면 `_generate` 의 text 와 같아야 한다."""
+    def _stream(self, req: GenerateRequest) -> Iterator[str | StreamEnd]:
+        """조각을 흘린다. 조각을 다 이으면 `_generate` 의 text 와 같아야 한다.
+
+        제공자가 사용량을 알려주면 마지막에 `StreamEnd` 를 하나 낸다. 안
+        내면 `stream()` 이 글자 수로 어림해 청구한다 — 0 으로 두지 않는다.
+        """
 
     # --- 공통 ---
     def model_for(self, req: GenerateRequest) -> str:
@@ -282,12 +301,144 @@ class AIProvider(abc.ABC):
         raise last or TransientError(lang.t("prov.retries"), provider=self.name)
 
     def stream(self, req: GenerateRequest) -> Iterator[str]:
-        """스트리밍은 재시도하지 않는다.
+        """조각을 흘린다 — `generate()` 와 **똑같이** 청구·기록한다 (DAY 26).
 
-        조각을 이미 내보낸 뒤에 재시도하면 사용자는 같은 문장을 두 번 본다.
-        끊기면 호출부가 판단해서 `generate()` 로 다시 받게 한다.
+        ## 왜 여기서 청구하나
+
+        DAY 25 까지 이 메서드는 `_stream()` 을 그대로 돌려줬다. 재시도도,
+        사용량도, 시간도 없었다 — 스트리밍으로 부른 호출은 **청구되지
+        않았다.** 쓰는 곳이 없어서 드러나지 않았을 뿐, 화면에 스트리밍을
+        붙이는 날 그 호출은 공짜가 된다(우리 키로 나가는데 고객 크레딧은
+        안 깎인다).
+
+        ## 재시도는 첫 조각 전까지만
+
+        조각을 이미 내보낸 뒤에 다시 부르면 사용자는 같은 문장을 두 번
+        본다. 첫 조각이 나오기 **전**의 실패(연결 거절·429)는 `generate()`
+        와 같은 규칙으로 다시 한다 — 아무것도 보여준 적이 없으니 겹칠 것도
+        없다.
+
+        ## 중간에 끊겨도 청구한다
+
+        소비자가 도중에 그만 읽거나(`close()`), 조각을 내보낸 뒤 연결이
+        끊기면 제공자는 **이미 만든 만큼 청구한다.** 사용량을 끝까지 못
+        받으므로 글자 수로 어림해서 남긴다. 0 으로 두면 끊는 것이 곧
+        공짜로 쓰는 법이 된다.
+
+        ## 실행 범위를 **지금** 잡는다
+
+        이 함수는 제너레이터가 아니다 — 부르는 순간 실행(`bus`·`usage`)을
+        기억한다. `astream()` 은 조각마다 스레드 풀의 아무 스레드에서
+        `next()` 를 부르는데, 그 스레드에는 실행이 묶여 있지 않다. 몸통이
+        처음 도는 순간에 잡으면 이미 늦다.
         """
-        return self._stream(req)
+        return self._open_stream(req, bus.current(), usage.current())
+
+    def _open_stream(self, req: GenerateRequest, bus_run: str | None,
+                     usage_run: str | None) -> Iterator[str]:
+        return self._billed_stream(req, bus_run, usage_run)
+
+    def _billed_stream(self, req: GenerateRequest, bus_run: str | None,
+                       usage_run: str | None) -> Iterator[str]:
+        def scope() -> ExitStack:
+            st = ExitStack()
+            st.enter_context(bus.scoped(bus_run))
+            st.enter_context(usage.scoped(usage_run))
+            return st
+
+        call_id = _next_call_id()
+        model = self.model_for(req)
+        with scope():
+            _emit_call("start", call_id, req.agent, self.name, model,
+                       stream=True)
+        started = time.perf_counter()
+        wait_ms = 0.0
+        parts: list[str] = []
+        end: StreamEnd | None = None
+        attempt = 0
+        settled = False
+
+        def settle(*, ok: bool, error: str | None = None) -> None:
+            """한 번만 청구·기록한다. 예외 경로가 겹쳐도 두 번은 없다."""
+            nonlocal settled
+            if settled:
+                return
+            settled = True
+            total = (time.perf_counter() - started) * 1000
+            with scope():
+                if not parts and not (ok and end is not None):
+                    usage.record_failure(req.agent, total)
+                    _emit_call("end", call_id, req.agent, self.name, model,
+                               ok=False, ms=total, wait_ms=wait_ms,
+                               attempts=attempt + 1, stream=True,
+                               error=error or "Empty")
+                    return
+                u = end.usage if end is not None else self._estimate(req, parts)
+                result = GenerateResult(
+                    text="".join(parts), provider=self.name,
+                    model=(end.model if end and end.model else model),
+                    usage=u, attempts=attempt + 1,
+                    stop_reason=end.stop_reason if end else None)
+                self._bill(req, result, latency_ms=total, wait_ms=wait_ms)
+                extra = {"error": error} if error else {}
+                _emit_call("end", call_id, req.agent, self.name, result.model,
+                           ok=ok, ms=total, wait_ms=wait_ms,
+                           attempts=attempt + 1, stream=True,
+                           estimated=end is None, input=u.input_tokens,
+                           output=u.output_tokens, cached=u.cached_tokens,
+                           **extra)
+
+        try:
+            while True:
+                it = self._stream(req)
+                try:
+                    for item in it:
+                        if isinstance(item, StreamEnd):
+                            end = item
+                            continue
+                        if item:
+                            parts.append(item)
+                            yield item
+                    break
+                except ProviderError as e:
+                    if parts or not e.retryable or attempt >= config.MAX_RETRY:
+                        settle(ok=False, error=type(e).__name__)
+                        raise
+                    delay = backoff_delay(attempt, getattr(e, "retry_after", None))
+                    with scope():
+                        bus.say("SYSTEM",
+                                lang.t("log.retry", who=self.name,
+                                       delay=f"{delay:.1f}", n=attempt + 1,
+                                       max=config.MAX_RETRY,
+                                       why=type(e).__name__),
+                                kind="error")
+                    w0 = time.perf_counter()
+                    _sleep(delay)
+                    wait_ms += (time.perf_counter() - w0) * 1000
+                    attempt += 1
+                finally:
+                    close = getattr(it, "close", None)
+                    if close is not None:
+                        close()
+            settle(ok=True)
+        except GeneratorExit:
+            # 소비자가 도중에 그만 읽었다. 만든 만큼은 이미 나갔다.
+            settle(ok=False, error="Closed")
+            raise
+        except BaseException as e:
+            settle(ok=False, error=type(e).__name__)
+            raise
+
+    @staticmethod
+    def _estimate(req: GenerateRequest, parts: list[str]) -> Usage:
+        """제공자가 사용량을 안 알려줬을 때의 어림 (4글자 ≈ 1토큰).
+
+        실제보다 적게 잡힐 수 있다는 것을 안다. 그래도 0 보다는 진실에
+        가깝고, 호출 기록에 `estimated` 로 남으므로 어림인 줄 안다.
+        """
+        prompt = req.system + "".join(m.content for m in req.messages)
+        return Usage(input_tokens=max(1, len(prompt) // 4),
+                     output_tokens=max(1, len("".join(parts)) // 4))
 
     async def agenerate(self, req: GenerateRequest) -> GenerateResult:
         """FastAPI 쪽 표면. 스레드로 넘겨서 스레드 로컬을 지킨다."""
@@ -359,15 +510,48 @@ class FallbackProvider(AIProvider):
                                           provider=self.name)
 
     def stream(self, req: GenerateRequest) -> Iterator[str]:
+        """앞이 **첫 조각 전에** 쓰러지면 뒤로 넘긴다.
+
+        조각을 이미 내보낸 뒤라면 넘기지 않는다 — 다른 모델이 이어 쓰면
+        한 답에 두 목소리가 섞인다. 청구는 각 제공자의 `stream()` 이 한다.
+        """
         usable = self._usable()
         if not usable:
             raise ProviderUnavailable(
                 lang.t("prov.none", name=self.name), provider=self.name)
-        return usable[0].stream(req)
+        # 실행 범위는 **지금** 이 스레드에서 잡는다 — 제너레이터 안에서
+        # 각 제공자의 `stream()` 을 부르면 늦다(`AIProvider.stream` 참조).
+        return self._open_stream(req, bus.current(), usage.current())
+
+    def _open_stream(self, req: GenerateRequest, bus_run: str | None,
+                     usage_run: str | None) -> Iterator[str]:
+        return self._fallback_stream(req, self._usable(), bus_run, usage_run)
+
+    def _fallback_stream(self, req: GenerateRequest, usable: list[AIProvider],
+                         bus_run: str | None,
+                         usage_run: str | None) -> Iterator[str]:
+        last: ProviderError | None = None
+        for p in usable:
+            started = False
+            try:
+                for chunk in p._open_stream(req, bus_run, usage_run):
+                    started = True
+                    yield chunk
+                return
+            except ProviderError as e:
+                if started:
+                    raise
+                last = e
+                with bus.scoped(bus_run):
+                    bus.say("SYSTEM",
+                            lang.t("log.fallback", who=p.name,
+                                   why=type(e).__name__), kind="error")
+        raise last or ProviderUnavailable(lang.t("prov.allFailed"),
+                                          provider=self.name)
 
     # 추상 메서드 충족용 — 이 클래스는 위임만 하므로 직접 호출되지 않는다.
     def _generate(self, req: GenerateRequest) -> GenerateResult:
         raise NotImplementedError
 
-    def _stream(self, req: GenerateRequest) -> Iterator[str]:
+    def _stream(self, req: GenerateRequest) -> Iterator[str | StreamEnd]:
         raise NotImplementedError

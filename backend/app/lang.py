@@ -172,6 +172,11 @@ _M: dict[str, dict[str, str]] = {
         "en": "`{path}` refused — {why}",
         "ja": "`{path}` 拒否 — {why}",
     },
+    "log.reserved": {
+        "ko": "`{path}` 거부됨 — 지금 '{task}' 태스크가 잡고 있는 파일입니다",
+        "en": "`{path}` refused — the task '{task}' holds this file right now",
+        "ja": "`{path}` 拒否 — 現在「{task}」タスクが確保しているファイルです",
+    },
     "log.testDenied": {
         "ko": "테스트 파일 거부됨 — `{path}` ({why})",
         "en": "Test file refused — `{path}` ({why})",
@@ -314,6 +319,7 @@ _M: dict[str, dict[str, str]] = {
         "ja": "テスト実行はブロックされました（サンドボックスではありません）",
     },
     "test.none": {"ko": "테스트 없음", "en": "no tests", "ja": "テストなし"},
+    "test.notRun": {"ko": "미실행", "en": "not run", "ja": "未実行"},
     "test.timeout": {
         "ko": "타임아웃 ({n}초)", "en": "timed out ({n}s)", "ja": "タイムアウト（{n} 秒）",
     },

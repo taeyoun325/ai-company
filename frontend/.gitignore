@@ -12,6 +12,12 @@
 
 # testing
 /coverage
+# 화면 시험(Playwright · DAY 26) — 결과·흔적·전용 빌드 폴더
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/.next-e2e/
 
 # next.js
 /.next/

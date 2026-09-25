@@ -196,12 +196,117 @@ def test_backoff_honours_retry_after():
     assert base.backoff_delay(0, retry_after=3.0) == 3.0
 
 
-def test_stream_is_not_retried():
-    """조각을 이미 내보낸 뒤 재시도하면 사용자는 같은 문장을 두 번 본다."""
+class _BreaksMidStream(MockProvider):
+    """첫 조각을 낸 **뒤에** 연결이 끊기는 제공자."""
+
+    def _stream(self, req):
+        self.calls.append(req)
+        yield "첫 조각 "
+        raise TransientError("연결 끊김", provider=self.name)
+
+
+def test_stream_retries_before_the_first_chunk(monkeypatch):
+    """아무것도 보여주기 전의 실패는 다시 해도 겹칠 것이 없다 (DAY 26)."""
+    monkeypatch.setattr(config, "MAX_RETRY", 3)
     p = MockProvider(failure=Failure(TransientError, times=1))
+    assert "".join(p.stream(_req())) == MockProvider().generate(_req()).text
+    assert len(p.calls) == 2
+
+
+def test_stream_is_not_retried_after_the_first_chunk(monkeypatch):
+    """조각을 이미 내보낸 뒤 재시도하면 사용자는 같은 문장을 두 번 본다."""
+    monkeypatch.setattr(config, "MAX_RETRY", 3)
+    p = _BreaksMidStream()
+    got: list[str] = []
     with pytest.raises(TransientError):
+        for chunk in p.stream(_req()):
+            got.append(chunk)
+    assert got == ["첫 조각 "]
+    assert len(p.calls) == 1
+
+
+def test_non_retryable_stream_error_is_not_retried(monkeypatch):
+    monkeypatch.setattr(config, "MAX_RETRY", 3)
+    p = MockProvider(failure=Failure(AuthError, times=99))
+    with pytest.raises(AuthError):
         list(p.stream(_req()))
     assert len(p.calls) == 1
+
+
+# ── 스트리밍도 청구된다 (DAY 26) ────────────────────────────────────
+def test_stream_is_billed_exactly_like_generate():
+    """DAY 25 까지 `stream()` 은 사용량을 한 줄도 안 남겼다 — 청구되지 않았다."""
+    usage.bind("stream-a")
+    MockProvider().generate(_req())
+    by_generate = usage.agents_of("stream-a")["TEST"]
+    usage.bind("stream-b")
+    "".join(MockProvider().stream(_req()))
+    by_stream = usage.agents_of("stream-b")["TEST"]
+    for k in ("calls", "input", "output", "cost"):
+        assert by_stream[k] == by_generate[k], k
+    assert by_stream["calls"] == 1 and by_stream["latency_ms"] >= 0
+    usage.drop("stream-a")
+    usage.drop("stream-b")
+
+
+def test_stream_abandoned_midway_is_still_billed():
+    """소비자가 도중에 그만 읽어도 제공자는 만든 만큼 청구한다.
+    0 으로 두면 끊는 것이 곧 공짜로 쓰는 법이 된다."""
+    before = usage.totals()["calls"]
+    it = MockProvider().stream(_req())
+    next(it)
+    it.close()
+    after = usage.totals()
+    assert after["calls"] == before + 1
+    assert after["output"] >= 1
+
+
+def test_stream_broken_after_chunks_is_billed_by_estimate(monkeypatch):
+    monkeypatch.setattr(config, "MAX_RETRY", 0)
+    before = usage.totals()["calls"]
+    with pytest.raises(TransientError):
+        list(_BreaksMidStream().stream(_req()))
+    assert usage.totals()["calls"] == before + 1
+
+
+def test_stream_failing_before_any_chunk_is_not_billed(monkeypatch):
+    monkeypatch.setattr(config, "MAX_RETRY", 0)
+    before = usage.totals()
+    with pytest.raises(TransientError):
+        list(MockProvider(failure=Failure(TransientError, times=9)).stream(_req()))
+    after = usage.totals()
+    assert after["calls"] == before["calls"]
+    assert after["failures"] == before["failures"] + 1
+
+
+def test_astream_bills_the_run_that_started_it():
+    """`astream` 은 조각마다 스레드 풀의 아무 스레드에서 돈다. 그 스레드에는
+    실행이 묶여 있지 않으므로, 부른 쪽의 실행을 기억하지 않으면 그 호출의
+    원가가 어느 실행에도 안 잡힌다."""
+    import asyncio
+
+    async def consume():
+        return "".join([c async for c in MockProvider().astream(_req())])
+
+    usage.bind("astream-run")
+    text = asyncio.run(consume())
+    assert text
+    assert usage.agents_of("astream-run")["TEST"]["calls"] == 1
+    usage.drop("astream-run")
+
+
+def test_stream_emits_call_events_into_its_run():
+    from app import bus
+    bus.bind("stream-events")
+    try:
+        "".join(MockProvider().stream(_req()))
+        calls = [e for e in bus.history("stream-events") if e["type"] == "call"]
+    finally:
+        bus.release()
+        bus.reset("stream-events")
+    assert [e["stage"] for e in calls] == ["start", "end"]
+    assert calls[-1]["stream"] is True and calls[-1]["ok"] is True
+    assert calls[-1]["estimated"] is False, "Mock 은 사용량을 알려준다 — 어림이 아니다"
 
 
 # ── 대체 제공자 (§18) ──────────────────────────────────────────────
@@ -223,6 +328,21 @@ def test_fallback_skips_unavailable_provider():
     r = FallbackProvider(no_key, alive).generate(_req())
     assert r.provider == "alive"
     assert not no_key.calls, "쓸 수 없는 제공자를 호출했다"
+
+
+def test_fallback_stream_moves_on_before_the_first_chunk():
+    dead = MockProvider(name="dead", failure=Failure(AuthError, times=99))
+    alive = MockProvider(name="alive")
+    text = "".join(FallbackProvider(dead, alive).stream(_req()))
+    assert text == alive.generate(_req()).text
+
+
+def test_fallback_stream_does_not_switch_voices_midway():
+    """조각을 낸 뒤에 다른 모델이 이어 쓰면 한 답에 두 목소리가 섞인다."""
+    alive = MockProvider(name="alive")
+    with pytest.raises(TransientError):
+        list(FallbackProvider(_BreaksMidStream(name="flaky"), alive).stream(_req()))
+    assert alive.calls == []
 
 
 def test_fallback_raises_when_all_dead():

@@ -13,6 +13,18 @@
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": ["backend/run.py"],
       "port": 8000
+    },
+    {
+      "name": "e2e-backend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["frontend/e2e/serve.mjs", "backend"],
+      "port": 8765
+    },
+    {
+      "name": "e2e-frontend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["frontend/e2e/serve.mjs", "frontend"],
+      "port": 3765
     }
   ]
 }

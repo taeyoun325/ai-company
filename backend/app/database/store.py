@@ -19,6 +19,7 @@ import json
 import re
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -30,19 +31,29 @@ AREAS = ("src", "tests", "docs", "design")
 
 # 프로젝트당 잠금 하나. 실행 스레드가 태스크마다 메타를 쓰는 동안,
 # 20초 심장박동(engine.py BEAT_EVERY)이 같은 파일에 끼어들면 읽고-고치고-
-# 쓰는 사이에 한쪽의 갱신이 사라진다 — 나중에 쓴 쪽이 이긴다. 잠금은
-# 한 프로세스 안에서만 유효하다; 여러 인스턴스가 같은 프로젝트를 동시에
-# 쓰는 경우는 여전히 이 잠금의 범위 밖이다.
+# 쓰는 사이에 한쪽의 갱신이 사라진다 — 나중에 쓴 쪽이 이긴다.
+#
+# DAY 26 부터는 **프로세스도 넘는다**(`safeio.file_lock`). 그 전에는 한
+# 프로세스 안에서만 유효해서, 서버를 두 대로 띄우면 한쪽이 쓴 승인 결정을
+# 다른 쪽이 "쉬러 들어가며" 덮거나 못 보고 지나갈 수 있었다.
 _meta_locks_guard = threading.Lock()
 _meta_locks: dict[str, threading.Lock] = {}
 
 
-def _meta_lock(slug: str) -> threading.Lock:
+def _thread_lock(slug: str) -> threading.Lock:
     with _meta_locks_guard:
         lock = _meta_locks.get(slug)
         if lock is None:
             lock = _meta_locks[slug] = threading.Lock()
         return lock
+
+
+@contextmanager
+def _meta_lock(slug: str):
+    """스레드 잠금 → 파일 잠금 순서로 잡는다. 순서를 바꾸면 같은 프로세스의
+    스레드들이 파일 잠금을 두고 헛돈다."""
+    with _thread_lock(slug), safeio.file_lock(dir_of(slug) / META):
+        yield
 
 
 def _slug(text: str) -> str:
@@ -162,12 +173,18 @@ def update_meta(slug: str, fn) -> dict:
 
     `fn(meta)` 는 잠금 안에서 불리고, 돌려준 딕셔너리가 패치로 합쳐진다.
     `fn` 안에서 `save_meta` 를 부르면 안 된다(같은 잠금을 다시 잡는다).
+
+    `fn` 이 아무것도 안 돌려주면 **쓰지 않는다** (DAY 26). 실행은 0.5초마다
+    "새 결정이 있나"를 이것으로 묻는데(`gates.take_decided`), 대개 답은
+    "없다"다. 그때마다 메타 전체를 fsync 로 다시 쓰고 색인을 갱신하고 있었다.
     """
     d = dir_of(slug)
     d.mkdir(parents=True, exist_ok=True)
     with _meta_lock(slug):
         m = meta(slug)
-        patch = fn(m) or {}
+        patch = fn(m)
+        if not patch:
+            return m
         m.update(patch)
         safeio.write_json(d / META, m)
     _reindex(m)

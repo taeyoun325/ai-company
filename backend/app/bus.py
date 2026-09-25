@@ -39,6 +39,7 @@ import os
 import threading
 import time
 from collections import defaultdict, deque
+from contextlib import contextmanager
 from typing import Any
 
 from app import config
@@ -182,6 +183,30 @@ def release() -> None:
     _local.run = None
     _local.phase_owner = None
     _local.phase_display = None
+
+
+@contextmanager
+def scoped(run_id: str | None):
+    """잠깐 `run_id` 로 묶었다가 **원래대로** 되돌린다.
+
+    `bind()` 와 달리 단계 담당자(`phase_owner`)를 지우지 않는다 — 같은
+    실행이면 아무것도 바꾸지 않는다. 스트리밍처럼 한 호출이 여러 스레드를
+    거쳐 이어질 때(`astream` 은 조각마다 스레드 풀의 아무 스레드에서 돈다)
+    그 조각 동안만 실행을 세운다.
+    """
+    prev = current()
+    if prev == run_id:
+        yield
+        return
+    owner = getattr(_local, "phase_owner", None)
+    display = getattr(_local, "phase_display", None)
+    _local.run = run_id
+    try:
+        yield
+    finally:
+        _local.run = prev
+        _local.phase_owner = owner
+        _local.phase_display = display
 
 
 # ── 구독 ────────────────────────────────────────────────────────────

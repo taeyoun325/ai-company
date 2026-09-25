@@ -24,7 +24,8 @@ from app import config, lang, secrets_broker
 from app.providers.base import (AIProvider, AuthError, GenerateRequest,
                                 GenerateResult, ProviderError,
                                 ProviderUnavailable, RateLimited,
-                                RefusedError, TransientError, Usage)
+                                RefusedError, StreamEnd, TransientError,
+                                Usage)
 
 # 5xx·연결 끊김·과부하 — 기다렸다 다시 하면 되는 것들
 _RETRYABLE = ("APIConnectionError", "APITimeoutError", "InternalServerError",
@@ -170,12 +171,27 @@ class ClaudeProvider(AIProvider):
             stop_reason=getattr(resp, "stop_reason", None),
         )
 
-    def _stream(self, req: GenerateRequest) -> Iterator[str]:
+    def _stream(self, req: GenerateRequest) -> Iterator[str | StreamEnd]:
+        """조각을 흘리고, 끝나면 최종 메시지의 사용량을 알린다 (DAY 26).
+
+        `text_stream` 을 다 읽은 뒤의 `get_final_message()` 는 새로 부르지
+        않는다 — 이미 받은 이벤트로 만든 덩어리다. 그 안의 `usage` 가
+        `_generate` 와 같은 값이므로 스트리밍도 같은 금액으로 청구된다.
+        """
         client = self._client()
         try:
             with client.messages.stream(**self._payload(req)) as s:
                 yield from s.text_stream
+                final = s.get_final_message()
         except ProviderError:
             raise
         except Exception as e:                          # noqa: BLE001
             raise translate(e, self.name) from e
+        stop = getattr(final, "stop_reason", None)
+        yield StreamEnd(usage=self._usage_of(getattr(final, "usage", None)),
+                        model=getattr(final, "model", None), stop_reason=stop)
+        if stop == "refusal":
+            raise RefusedError(
+                lang.t("prov.refused",
+                       detail=getattr(final, "stop_details", "")),
+                provider=self.name)

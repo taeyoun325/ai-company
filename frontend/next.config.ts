@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   // 홈 디렉터리의 package-lock.json 을 집어 경고를 낸다.
   turbopack: { root: path.resolve(__dirname) },
 
+  // 화면 시험(e2e/serve.mjs)은 켜둔 개발 서버와 **다른 빌드 폴더**를 쓴다.
+  // 두 dev 서버가 같은 `.next` 를 쓰면 서로의 캐시를 깬다 (DAY 26).
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+
   // 컨테이너 배포용 (DAY 16). 실행에 필요한 것만 추려 `.next/standalone` 에
   // 담아준다 — node_modules 전체를 이미지에 넣지 않아도 된다.
   output: "standalone",

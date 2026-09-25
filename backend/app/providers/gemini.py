@@ -25,7 +25,8 @@ from app import config, lang, secrets_broker
 from app.providers.base import (AIProvider, AuthError, GenerateRequest,
                                 GenerateResult, ProviderError,
                                 ProviderUnavailable, RateLimited,
-                                RefusedError, TransientError, Usage)
+                                RefusedError, StreamEnd, TransientError,
+                                Usage)
 
 # 기다렸다 다시 하면 되는 것들
 _RETRYABLE = ("ServerError", "ServiceUnavailable", "DeadlineExceeded",
@@ -161,10 +162,21 @@ class GeminiProvider(AIProvider):
             stop_reason=finish,
         )
 
-    def _stream(self, req: GenerateRequest) -> Iterator[str]:
+    def _stream(self, req: GenerateRequest) -> Iterator[str | StreamEnd]:
+        """조각을 흘리고, 끝나면 사용량을 알린다 (DAY 26).
+
+        genai 는 사용량을 조각마다 **누적값**으로 싣는다(보통 마지막 조각에만
+        채워진다). 마지막으로 본 값이 전체다 — 더하면 여러 번 센다.
+        """
         client = self._client()
+        last_usage = None
+        finish = None
         try:
             for chunk in client.models.generate_content_stream(**self._payload(req)):
+                meta = getattr(chunk, "usage_metadata", None)
+                if meta is not None:
+                    last_usage = meta
+                finish = self._finish(chunk) or finish
                 piece = getattr(chunk, "text", None)
                 if piece:
                     yield piece
@@ -172,3 +184,9 @@ class GeminiProvider(AIProvider):
             raise
         except Exception as e:                          # noqa: BLE001
             raise translate(e, self.name) from e
+        if last_usage is not None:
+            yield StreamEnd(usage=self._usage_of(last_usage),
+                            model=self.model_for(req), stop_reason=finish)
+        if finish in _BLOCKED_FINISH:
+            raise RefusedError(lang.t("prov.blocked", detail=finish),
+                               provider=self.name)

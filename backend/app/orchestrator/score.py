@@ -13,7 +13,7 @@
 """
 from __future__ import annotations
 
-from app import bus
+from app import bus, lang
 from app.orchestrator import runner
 
 W_TASK, W_TEST = 0.70, 0.30
@@ -61,7 +61,16 @@ class Score:
             "tasks": f"{self.done_tasks}/{self.total_tasks}",
             "tests": (runner.summary_line({"skipped_run": not self.tests_ran,
                                            "timed_out": False, **self.tests})
-                      if self.tests_ran else "미실행"),
+                      # 번역한다 — DAY 26 화면 시험이 영어 점수판에서 찾았다.
+                      if self.tests_ran else lang.t("test.notRun")),
+            # 같은 것을 **데이터로**도 싣는다 (DAY 26). 위 문장은 실행의 언어로
+            # 박제되므로, 한국어로 돌린 프로젝트를 영어 화면에서 보면 점수판에
+            # "2통과·0실패"가 남았다. 점수판은 기록이 아니라 화면이다 — 숫자를
+            # 받아 보는 사람의 언어로 적는다.
+            "tests_state": "counts" if self.tests_ran else "not_run",
+            "tests_passed": int(self.tests.get("passed", 0)),
+            "tests_failed": int(self.tests.get("failed", 0)
+                                + self.tests.get("errors", 0)),
             "ac_coverage": f"{self.ac_covered}/{self.ac_total}" if self.ac_total else "—",
             "review_pass_rate": (round(100 * self.passes / self.reviews)
                                  if self.reviews else 0),

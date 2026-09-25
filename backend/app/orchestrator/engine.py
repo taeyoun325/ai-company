@@ -26,12 +26,26 @@ AUTO(§10)에서 모델이 고르는 것은 딱 하나다: 태스크별 담당 �
 중 실제로 일하는 사람은 늘 한 명이었다. 이제 **의존성이 풀린 태스크들을
 동시에** 돌린다 — 개발자가 끝낸 뒤 작가와 디자이너가 함께 일한다.
 
-같이 돌릴 수 없는 조합이 있다. **쓰기 구역이 겹치는 두 태스크**다. 둘이
+같이 돌릴 수 없는 조합이 있다. **같은 파일을 쓰는 두 태스크**다. 둘이
 같은 파일을 쓰면 나중에 쓴 쪽이 이기고, 되돌리기(§18 자동 롤백)가 남의
-시도까지 지운다. 그래서 같은 직원의 태스크 둘, 또는 실효 쓰기 구역이
-겹치는 두 직원(프로젝트별로 권한을 넓혔을 때)은 같이 돌지 않는다
-(`_conflicts`). 기본 표에서는 직원마다 쓰기 구역이 달라서 파일 충돌이
-구조적으로 불가능하다.
+시도까지 지운다.
+
+## 파일 예약 (DAY 26)
+
+DAY 25 에는 "같은 파일을 쓸지도 모르는" 조합을 통째로 막았다 — 같은 직원의
+태스크 둘, 쓰기 구역이 겹치는 두 직원. 개발자 태스크가 다섯이면 다섯 번
+차례로 돌았다. 이제 **태스크가 계획에 적은 파일(`Task.files`)을 예약**한다:
+
+- 줄을 띄울 때 그 태스크의 파일을 잡는다(`_Run.claims`). 같은 직원이라도
+  예약이 안 겹치면 **같이 돈다.**
+- 적지 않은 파일을 쓰면 **쓰는 순간** 잡는다. 이미 다른 태스크가 잡은
+  파일이면 그 파일만 거부한다(권한 거부와 같은 처리) — 두 줄이 한 파일을
+  쓰는 일은 구조적으로 없다.
+- 예약은 태스크가 **완료**되거나 **버려질** 때 놓는다. 승인을 기다리는
+  태스크는 계속 쥐고 있다 — 대표가 폐기하면 그 파일을 되돌려야 하는데,
+  그 사이 남이 고쳤으면 되돌리기가 남의 일을 지운다.
+- 파일을 하나도 안 적은 태스크는 무엇을 쓸지 모른다. 쓰기 구역이 겹치는
+  태스크와는 예전처럼 같이 돌지 않는다.
 
 pytest 는 한 번에 하나만 돈다(`_Run.test_lock`). 같은 폴더에 설정 파일을
 쓰고 같은 파일을 읽는 두 프로세스가 겹칠 이유가 없다.
@@ -207,6 +221,14 @@ def cancel(slug: str) -> bool:
     승인을 기다리며 쉬는 실행(`awaiting`)에는 스레드가 없다. 그건 여기서
     바로 `stopped` 로 바꾼다. 열려 있던 승인은 그대로 둔다 — 재개하면
     체크포인트에서, 그 사이 내려진 결정부터 이어간다.
+
+    ## 다른 인스턴스가 돌리는 실행 (DAY 26)
+
+    `_cancelled` 는 프로세스 안의 표시라, 서버가 두 대면 실행을 돌리지 않는
+    쪽에 온 정지 버튼은 "돌고 있지 않다"로 거절됐다. 이제 메타에 정지 요청
+    (`cancel_requested`)을 남기고, 돌리는 쪽이 경계에서 그것을 본다
+    (`_check_cancelled`). 판단과 기록은 메타 잠금(프로세스를 넘는다) 안에서
+    한 번에 한다 — 그 사이에 쉬러 들어가거나 끝나는 실행을 놓치지 않게.
     """
     _reap()
     with _runs_lock:
@@ -214,12 +236,29 @@ def cancel(slug: str) -> bool:
             _cancelled.add(slug)
             alive = True
         else:
-            alive = False
-            m = store.meta(slug)
-            if m.get("status") != "awaiting":
+            box: dict = {}
+            now = time.time()
+
+            def fn(m: dict):
+                status = m.get("status")
+                beat = float(m.get("beat") or m.get("created_at") or 0)
+                if status == "awaiting" or (status == "running"
+                                            and now - beat >= BEAT_STALE):
+                    # 쉬는 실행 · 박자가 끊긴 실행 — 멈출 스레드가 없다.
+                    box["stopped"] = True
+                    return {"status": "stopped",
+                            "stopped_reason": lang.t("stop.byCeo")}
+                if status == "running":
+                    box["requested"] = True
+                    return {"cancel_requested": now}
+                return None
+
+            if not store.exists(slug):
                 return False
-            store.save_meta(slug, {"status": "stopped",
-                                   "stopped_reason": lang.t("stop.byCeo")})
+            store.update_meta(slug, fn)
+            if not box:
+                return False
+            alive = "requested" in box
     prev = bus.current()
     bus.bind(slug)
     try:
@@ -236,10 +275,24 @@ def cancel(slug: str) -> bool:
     return True
 
 
+# 다른 인스턴스의 정지 요청을 메타에서 확인하는 간격(초). 경계마다 파일을
+# 읽지 않는다 — 줄이 여럿이면 경계도 여럿이다.
+CANCEL_POLL = float(os.getenv("CANCEL_POLL", "1.0"))
+_cancel_checked: dict[str, float] = {}
+
+
 def _check_cancelled(slug: str) -> None:
     with _runs_lock:
         if slug in _cancelled:
             raise Stop(lang.t("stop.byCeo"))
+        now = time.monotonic()
+        if now - _cancel_checked.get(slug, 0.0) < CANCEL_POLL:
+            return
+        _cancel_checked[slug] = now
+    if store.meta(slug).get("cancel_requested"):
+        with _runs_lock:
+            _cancelled.add(slug)
+        raise Stop(lang.t("stop.byCeo"))
 
 
 def _admit(owner: str) -> None:
@@ -339,6 +392,10 @@ def resume(slug: str, owner: str = "local") -> str:
     확인과 등록을 **한 잠금 안에서** 한다. 승인 버튼과 재개 버튼이 거의
     동시에 눌리면(또는 승인이 두 건 연달아 오면) 둘 다 "멈춰 있다"를 보고
     실행을 두 개 띄울 수 있다 — 같은 폴더를 두 스레드가 쓴다.
+
+    인스턴스가 둘이면 프로세스 잠금은 서로를 못 본다. 그래서 마지막 확인과
+    `running` 표시를 **메타 잠금 안에서 한 번에** 한다(`_claim`) — 두
+    인스턴스에 결정이 하나씩 와서 둘 다 깨우려 해도 하나만 자리를 잡는다.
     """
     with _runs_lock:
         _reap()
@@ -349,10 +406,29 @@ def resume(slug: str, owner: str = "local") -> str:
             raise NotResumable(lang.t("resume.notStopped",
                                       status=m.get("status", "?")))
         _admit(owner)
+        seen = _claim(slug)
+        if seen is not None:
+            raise NotResumable(lang.t("resume.notStopped", status=seen))
         requirement = str(m.get("requirement", ""))
-        checkpoint = m.get("checkpoint") or {}
+        checkpoint = store.meta(slug).get("checkpoint") or {}
         _spawn(requirement, slug, [], owner, checkpoint=checkpoint)
     return slug
+
+
+def _claim(slug: str) -> str | None:
+    """멈춘 실행의 자리를 잡는다. 잡았으면 None, 못 잡았으면 그때의 상태."""
+    box: dict = {}
+
+    def fn(m: dict):
+        status = m.get("status")
+        if status not in RESUMABLE:
+            box["seen"] = status or "?"
+            return None
+        return {"status": "running", "beat": time.time(),
+                "stopped_reason": None, "cancel_requested": None}
+
+    store.update_meta(slug, fn)
+    return box.get("seen")
 
 
 def decide(slug: str, approval_id: str, decision: str, comment: str = "",
@@ -366,15 +442,21 @@ def decide(slug: str, approval_id: str, decision: str, comment: str = "",
     막 쉬려는 순간에 결정이 들어오면, 둘 중 하나는 반드시 상대를 본다 —
     실행이 먼저 잠그면 결정을 보고 쉬지 않고, 결정이 먼저 잠그면 실행이
     이미 쉬었으므로 여기서 깨운다.
+
+    그 "같은 잠금"은 **메타 잠금**이다 (DAY 26). 프로세스 잠금(`_runs_lock`)
+    만으로는 실행이 다른 인스턴스에 있을 때 서로를 못 본다 — 결정은 남는데
+    아무도 깨우지 않아 재개 버튼을 누를 때까지 멈춰 있었다. 결정을 쓰는
+    순간의 상태(`gates.decide_seen`)로 깨울지를 정한다. 나중에 다시 읽으면
+    그 사이에 바뀐다.
     """
     with _runs_lock:
         _reap()
-        rec = gates.decide(slug, approval_id, decision, comment, by=by)
+        rec, status = gates.decide_seen(slug, approval_id, decision, comment,
+                                        by=by)
         alive = slug in _runs
     out = {"approval": rec, "resumed": False, "note": None}
     # 보류는 결정이 아니다 — 깨울 이유가 없다.
-    if decision == "hold" or alive \
-            or store.meta(slug).get("status") != "awaiting":
+    if decision == "hold" or alive or status != "awaiting":
         return out
     try:
         resume(slug, owner=owner)
@@ -441,22 +523,55 @@ def _assignee(task: Task, *, quiet: bool = False) -> str:
     return fallback
 
 
-def _conflicts(a_who: str, b_who: str) -> bool:
-    """두 직원의 태스크를 동시에 돌리면 안 되는가.
+def _norm(path: str) -> str:
+    """예약을 비교할 경로 모양. `./src\\x.py` 와 `src/x.py` 는 같은 파일이다."""
+    p = str(path).replace("\\", "/").strip()
+    while p.startswith("./"):
+        p = p[2:]
+    return p.lstrip("/")
 
-    같은 직원이면 안 된다 — 한 사람이 두 일을 동시에 하면 두 시도가 같은
-    파일을 쓴다. 다른 직원이라도 **실효** 쓰기 구역이 겹치면 안 된다
-    (프로젝트별로 권한을 넓혔을 수 있다).
-    """
-    if a_who == b_who:
+
+def _covers(a: str, b: str) -> bool:
+    """예약 `a` 가 경로 `b` 를 덮는가 — 같은 파일이거나, `a` 가 폴더다."""
+    if a == b:
         return True
-    wa = set(pfs.areas(a_who, write=True))
-    wb = set(pfs.areas(b_who, write=True))
-    return bool(wa & wb)
+    return bool(a) and b.startswith(a.rstrip("/") + "/")
+
+
+def _overlap(fa, fb) -> bool:
+    return any(_covers(a, b) or _covers(b, a) for a in fa for b in fb)
+
+
+def _footprint(task: Task) -> frozenset[str]:
+    """태스크가 계획에 적은 파일. 비어 있으면 무엇을 쓸지 모른다는 뜻이다."""
+    return frozenset(n for f in task.files if (n := _norm(f)))
+
+
+def _conflicts(a: Task, b: Task) -> bool:
+    """두 태스크를 동시에 돌리면 안 되는가.
+
+    쓰기 구역이 아예 안 겹치는 두 직원은 늘 같이 돈다(기본 표의 작가와
+    디자이너). 같은 직원이거나 구역이 겹치면(프로젝트별로 권한을 넓혔을 때)
+    **예약한 파일**로 가른다 — 둘 다 파일을 적었고 겹치지 않으면 같이 돈다.
+    어느 한쪽이라도 안 적었으면 무엇을 쓸지 모르므로 같이 돌리지 않는다.
+    """
+    wa_who = _assignee(a, quiet=True)
+    wb_who = _assignee(b, quiet=True)
+    if wa_who != wb_who:
+        wa = set(pfs.areas(wa_who, write=True))
+        wb = set(pfs.areas(wb_who, write=True))
+        if not wa & wb:
+            return False
+    fa, fb = _footprint(a), _footprint(b)
+    if not fa or not fb:
+        return True
+    return _overlap(fa, fb)
 
 
 def _apply(result: WorkResult, employee_id: str, *,
-           round: int = 0, reason: str = "") -> list[str]:
+           round: int = 0, reason: str = "", run: "_Run | None" = None,
+           sig: str | None = None,
+           baseline: dict[str, str | None] | None = None) -> list[str]:
     """직원이 낸 파일을 실제로 쓴다.
 
     권한 위반은 실행을 죽이지 않는다 — 그 파일만 거부하고 사실을 남긴다.
@@ -465,16 +580,43 @@ def _apply(result: WorkResult, employee_id: str, *,
 
     `round` 와 `reason` 은 파일 이력에 함께 남는다 — 나중에 이 파일을
     짚고 "몇 라운드에서 어떤 지적을 받고 고쳤나"를 따라갈 수 있어야 한다.
+
+    `run` · `sig` 를 주면 **파일 예약**을 지킨다 (DAY 26). 다른 태스크가 잡은
+    파일은 권한 위반처럼 그 파일만 거부하고, 안 잡힌 파일은 쓰는 순간 이
+    태스크가 잡는다. `baseline` 에는 **실제로 쓴** 파일의 쓰기 전 내용만
+    남긴다 — 거부된 파일까지 남기면, 포기해서 되돌릴 때 그 파일을 쓰고 있던
+    다른 태스크의 일을 옛 내용으로 덮는다(병렬로 돌면서 생긴 구멍이다).
     """
     written: list[str] = []
     for f in result.files:
+        key = _norm(f.path)
+        fresh = False
+        if run is not None and sig is not None:
+            with run.lock:
+                other = run.holder(key, exclude=sig)
+                if other is None:
+                    fresh = run.claim(sig, key)
+            if other is not None:
+                bus.say(employee_id,
+                        lang.t("log.reserved", path=f.path,
+                               task=run.title_of(other)), kind="error")
+                continue
+        before = pfs.raw_read(f.path) if baseline is not None else None
         try:
             info = pfs.write(f.path, f.content, employee_id,
                              round=round, reason=reason)
         except pfs.Denied as e:
+            if fresh:
+                with run.lock:
+                    run.unclaim(sig, key)
             bus.say(employee_id, lang.t("log.denied", path=f.path, why=e),
                     kind="error")
             continue
+        if baseline is not None and run is not None:
+            with run.lock:
+                baseline.setdefault(f.path, before)
+        elif baseline is not None:
+            baseline.setdefault(f.path, before)
         written.append(f.path)
         bus.say(employee_id,
                 lang.t("log.created", path=f.path) if info["created"]
@@ -539,6 +681,52 @@ class _Run:
         # 이 실행이 시작할 때 이미 청구돼 있던 원가. 끝날 때 **늘어난 만큼만**
         # 청구한다 — 재개한 실행이 앞 실행의 원가를 다시 청구하지 않게.
         self.billed = 0.0
+        # 파일 예약 (DAY 26). sig -> 그 태스크가 잡은 경로들. 돌고 있거나
+        # 승인을 기다리는 태스크만 쥔다 — 완료·폐기·포기하면 놓는다.
+        self.claims: dict[str, set[str]] = {}
+
+    # ── 파일 예약 ───────────────────────────────────────────────
+    # 아래는 전부 `lock` 을 쥔 채로 부른다.
+    def holder(self, path: str, exclude: str | None = None) -> str | None:
+        """`path` 를 잡고 있는 다른 태스크(sig). 없으면 None."""
+        for s, paths in self.claims.items():
+            if s != exclude and any(_covers(p, path) or _covers(path, p)
+                                    for p in paths):
+                return s
+        return None
+
+    def claim(self, sig: str, path: str) -> bool:
+        """잡는다. 새로 잡았으면 True (이미 쥐고 있었으면 False)."""
+        mine = self.claims.setdefault(sig, set())
+        if path in mine:
+            return False
+        mine.add(path)
+        return True
+
+    def unclaim(self, sig: str, path: str) -> None:
+        self.claims.get(sig, set()).discard(path)
+
+    def reserve(self, task: Task) -> None:
+        self.claims.setdefault(_sig(task), set()).update(_footprint(task))
+
+    def release(self, sig: str) -> None:
+        self.claims.pop(sig, None)
+
+    def blocked_by(self, task: Task) -> str | None:
+        """이 태스크가 예약하려는 파일을 다른 태스크가 쥐고 있나."""
+        s = _sig(task)
+        for path in _footprint(task):
+            other = self.holder(path, exclude=s)
+            if other is not None:
+                return other
+        return None
+
+    def title_of(self, sig: str) -> str:
+        for t in (self.plan.tasks if self.plan else []):
+            if _sig(t) == sig:
+                return t.title
+        held = self.running.get(sig)
+        return held.title if held else sig
 
     # ── 예산 ────────────────────────────────────────────────────
     @contextmanager
@@ -717,6 +905,7 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
             if _runs.get(slug) is threading.current_thread():
                 _runs.pop(slug, None)
                 _cancelled.discard(slug)
+                _cancel_checked.pop(slug, None)
         pfs.release()
 
 
@@ -945,21 +1134,24 @@ def _work(run: _Run, task: Task) -> tuple[str, Verdict]:
                 roles.get(who), task, is_retry=feedback is not None)
             with run.lock:
                 criteria = list(run.criteria)
+                # 지금 다른 줄이 쥐고 있는 파일 — 쓰면 거부된다는 것을 미리
+                # 알려준다. 모르고 쓰면 그 라운드가 통째로 헛돈다.
+                taken = sorted({p for s2, ps in run.claims.items()
+                                if s2 != sig for p in ps})
             work: WorkResult = employee.ask(
-                who, prompts.implement(task, criteria, pfs.snapshot(who), feedback),
+                who, prompts.implement(task, criteria, pfs.snapshot(who),
+                                       feedback, taken=taken),
                 WorkResult, model=routed_model)
-        # 이 태스크가 건드리는 각 파일의 **시작 전** 내용. 처음 손대는
-        # 순간에만 채운다 — 재시도마다 다시 읽으면 반려된 중간 상태가
-        # "시작 전"으로 뒤바뀐다. 반려가 쌓여 태스크를 포기하면 여기로
-        # 되돌린다(§18 자동 롤백).
-        with run.lock:
-            for fw in work.files:
-                baseline.setdefault(fw.path, pfs.raw_read(fw.path))
-        run.save_progress()
         employee.say(roles.get(who), work.message_to_team)
         # 반려를 받고 다시 쓰는 것이면 그 사유를 이력에 남긴다.
+        # 이 태스크가 건드리는 각 파일의 **시작 전** 내용을 `baseline` 에
+        # 남긴다 — 처음 손대는 순간에만. 재시도마다 다시 읽으면 반려된 중간
+        # 상태가 "시작 전"으로 뒤바뀐다. 반려가 쌓여 태스크를 포기하면
+        # 여기로 되돌린다(§18 자동 롤백).
         _apply(work, who, round=rounds,
-               reason=(feedback.message_to_team if feedback else ""))
+               reason=(feedback.message_to_team if feedback else ""),
+               run=run, sig=sig, baseline=baseline)
+        run.save_progress()
         bus.state(files=store.files_of(slug))
         # 검증자의 **프롬프트**에는 여전히 안 넘긴다(교차검증 오염
         # 방지) — 이건 사람이 로그로 보는 감사 기록이지, 다음 모델 호출에
@@ -1036,6 +1228,14 @@ def _schedule(run: _Run) -> None:
                        if a.get("gate") == "task"}
         live = {_sig(t) for t in run.plan.tasks}
         run.awaiting = {s: aid for s, aid in pending_ids.items() if s in live}
+        # 승인을 기다리던 태스크는 재개해도 예약을 쥐고 있어야 한다 —
+        # 계획에 적은 파일과 실제로 손댄 파일(되돌릴 목록) 둘 다.
+        for t in run.plan.tasks:
+            s = _sig(t)
+            if s in run.awaiting:
+                run.reserve(t)
+                for path in (run.progress.get(s) or {}).get("baseline") or {}:
+                    run.claim(s, _norm(path))
     seen_version = run.plan_version
     futures: dict[Future, str] = {}
     abandoned: list[tuple[Task, Verdict]] = []
@@ -1064,6 +1264,7 @@ def _schedule(run: _Run) -> None:
                     s = _sig(t)
                     with run.lock:
                         run.running[s] = t
+                        run.reserve(t)
                     ctx = contextvars.copy_context()
                     futures[pool.submit(ctx.run, _lane, run, t)] = s
                     relax = False
@@ -1092,6 +1293,13 @@ def _schedule(run: _Run) -> None:
                     continue                            # 그 사이 결정이 왔다
                 # 남은 것이 있는데 아무것도 못 띄웠다 — 의존성 순환이다.
                 # 순서를 포기하고 하나씩 돈다(`_topo` 와 같은 판단).
+                # 돌지도 기다리지도 않는 태스크의 예약은 여기서 놓는다 —
+                # 주인 없는 예약이 남으면 순서를 포기해도 아무것도 못 띄우고
+                # 이 자리를 헛돈다.
+                with run.lock:
+                    for s in [s for s in run.claims
+                              if s not in run.running and s not in run.awaiting]:
+                        run.release(s)
                 relax = True
                 continue
 
@@ -1132,7 +1340,7 @@ def _eligible(run: _Run, queue: list[Task], *, relax: bool) -> list[Task]:
     with run.lock:
         ids = {t.id for t in run.plan.tasks}
         done_ids = {t.id for t in run.plan.tasks if _sig(t) in run.done}
-        busy = [_assignee(t, quiet=True) for t in run.running.values()]
+        busy = list(run.running.values())
         out: list[Task] = []
         for t in queue:
             s = _sig(t)
@@ -1143,11 +1351,13 @@ def _eligible(run: _Run, queue: list[Task], *, relax: bool) -> list[Task]:
             deps = [d for d in t.deps if d in ids and d != t.id]
             if not relax and not all(d in done_ids for d in deps):
                 continue
-            who = _assignee(t, quiet=True)
-            if any(_conflicts(who, b) for b in busy):
+            if any(_conflicts(t, b) for b in busy):
+                continue
+            # 승인을 기다리는 태스크가 쥔 파일도 피한다 (DAY 26).
+            if run.blocked_by(t) is not None:
                 continue
             out.append(t)
-            busy.append(who)
+            busy.append(t)
             if relax:
                 break                      # 순환이면 하나씩만
         return out
@@ -1180,6 +1390,7 @@ def _mark_done(run: _Run, sig: str) -> None:
     with run.lock:
         run.done.add(sig)
         run.awaiting.pop(sig, None)
+        run.release(sig)
         run.progress.pop(sig, None)
         run.score.done_tasks = len(run.done & {_sig(t) for t in run.plan.tasks})
     _board(run)
@@ -1244,6 +1455,7 @@ def _discard_task(run: _Run, task: Task) -> None:
         bus.state(files=store.files_of(run.slug))
     with run.lock:
         run.progress.pop(s, None)
+        run.release(s)
         run.plan = run.plan.model_copy(update={
             "tasks": [t for t in run.plan.tasks if _sig(t) != s]})
         run.plan_version += 1
@@ -1273,6 +1485,7 @@ def _replan(run: _Run, abandoned: list[tuple[Task, Verdict]]) -> list[Task]:
             bus.state(files=store.files_of(run.slug))
         with run.lock:
             run.progress.pop(s, None)
+            run.release(s)
             run.score.replans += 1
             over = run.score.replans > config.MAX_REPLANS
         run.save_progress()
@@ -1292,6 +1505,10 @@ def _replan(run: _Run, abandoned: list[tuple[Task, Verdict]]) -> list[Task]:
         run.score.total_tasks = len(plan.tasks)
         live = {_sig(t) for t in plan.tasks}
         run.awaiting = {s: a for s, a in run.awaiting.items() if s in live}
+        # 새 계획에 없는 태스크의 예약은 놓는다 — 쥔 채 두면 새 계획의
+        # 태스크가 그 파일을 영영 못 잡는다.
+        for s in [s for s in run.claims if s not in run.awaiting]:
+            run.release(s)
         run.score.done_tasks = len(run.done & live)
     _board(run)
     run.score.push()
@@ -1334,14 +1551,26 @@ def _park(run: _Run, gate: str) -> bool:
     `gate` 는 지금 무엇을 기다리는가다. 그 종류의 결정만 본다 — 계획 승인을
     기다리는데 태스크 결정이 와 있다고 쉬지 않으면, 계획 게이트는 그
     결정을 반영할 수 없으니 쉬지도 못하고 나아가지도 못한 채 돈다.
+
+    확인과 `awaiting` 쓰기는 **메타 잠금 안에서 한 번에** 한다 (DAY 26) —
+    다른 인스턴스에 온 결정도 이 잠금을 지나므로(`gates.decide_seen`), 결정이
+    먼저면 여기서 보고, 여기가 먼저면 결정 쪽이 `awaiting` 을 보고 깨운다.
     """
     slug = run.slug
+    patch = _persist_patch(run, status="awaiting")
+    patch.update(stopped_reason=None, awaiting_since=time.time())
+    box = {"parked": False}
+
+    def fn(m: dict):
+        if gates.unapplied(m, gate):
+            return None
+        box["parked"] = True
+        return patch
+
     with _runs_lock:
-        if gates.has_unapplied_decisions(slug, gate):
+        store.update_meta(slug, fn)
+        if not box["parked"]:
             return False
-        _persist(run, status="awaiting")
-        store.save_meta(slug, {"stopped_reason": None,
-                               "awaiting_since": time.time()})
         if _runs.get(slug) is threading.current_thread():
             _runs.pop(slug, None)
             _cancelled.discard(slug)
@@ -1354,6 +1583,11 @@ def _park(run: _Run, gate: str) -> bool:
 
 def _persist(run: _Run, status: str = "running",
              report: FinalReport | None = None) -> None:
+    store.save_meta(run.slug, _persist_patch(run, status, report))
+
+
+def _persist_patch(run: _Run, status: str = "running",
+                   report: FinalReport | None = None) -> dict:
     slug = run.slug
     with run.lock:
         plan = run.plan
@@ -1382,7 +1616,7 @@ def _persist(run: _Run, status: str = "running",
         }
     if report is not None:
         patch["report"] = report.model_dump()
-    store.save_meta(slug, patch)
+    return patch
 
 
 def _fail(run: _Run, msg: str) -> None:

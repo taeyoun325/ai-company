@@ -180,6 +180,19 @@ def open_gate(slug: str, gate: str, *, title: str, detail: dict,
 def decide(slug: str, approval_id: str, decision: str, comment: str = "",
            by: str = "") -> dict:
     """CEO 의 결정을 기록한다. 실행에 알리는 것은 호출부(engine)의 몫이다."""
+    return decide_seen(slug, approval_id, decision, comment, by=by)[0]
+
+
+def decide_seen(slug: str, approval_id: str, decision: str, comment: str = "",
+                by: str = "") -> tuple[dict, str | None]:
+    """결정을 기록하고, **기록하는 순간의** 실행 상태를 함께 돌려준다 (DAY 26).
+
+    "결정을 쓰고 → 상태를 다시 읽는" 두 걸음이면 그 사이에 다른 인스턴스의
+    실행이 쉬러 들어갈 수 있다(`engine._park`). 그러면 이쪽은 "돌고 있다"를
+    보고 깨우지 않고, 저쪽은 결정이 오기 전에 쉬었으므로 아무도 안 깨운다.
+    같은 메타 잠금(프로세스를 넘는다) 안에서 쓰고 읽으면 둘 중 하나는
+    반드시 상대를 본다.
+    """
     if decision not in DECISIONS:
         raise GateError(lang.t("gate.badDecision",
                                allowed=", ".join(DECISIONS)))
@@ -200,6 +213,7 @@ def decide(slug: str, approval_id: str, decision: str, comment: str = "",
                                     status=a.get("status"))
                 box["taken"] = True
                 return None
+            box["status"] = m.get("status")
             if decision == "hold":
                 # 보류는 결정이 아니다 — 열린 채로 두고 표시만 한다.
                 a.update(held=True, held_at=time.time(), comment=comment,
@@ -231,13 +245,18 @@ def decide(slug: str, approval_id: str, decision: str, comment: str = "",
             bus.release()
         else:
             bus.bind(prev)
-    return rec
+    return rec, box.get("status")
+
+
+def unapplied(m: dict, gate: str | None = None) -> bool:
+    """이 메타에 실행이 아직 반영하지 않은 결정이 있나. 잠금 안에서 부른다."""
+    return any(a.get("status") != "pending" and not a.get("applied")
+               and (gate is None or a.get("gate") == gate)
+               for a in _all(m))
 
 
 def has_unapplied_decisions(slug: str, gate: str | None = None) -> bool:
-    return any(a.get("status") != "pending" and not a.get("applied")
-               and (gate is None or a.get("gate") == gate)
-               for a in all_of(slug))
+    return unapplied(store.meta(slug), gate)
 
 
 def take_decided(slug: str, gate: str) -> list[dict]:

@@ -155,21 +155,27 @@ export function ChatLog({
   };
 
   return (
-    <div className={`relative flex min-h-0 flex-col ${className}`}>
-      <div className="flex items-center gap-2 border-b border-line px-4 py-2 text-xs">
+    // `data-record` — 이 안의 글은 **기록**이다. 만들 때의 언어로 남는다
+    // (번역이 아니라 이력). 화면 시험이 "영어 화면에 한국어가 남았나"를 볼 때 뺀다.
+    <div data-record className={`relative flex min-h-0 flex-col ${className}`}>
+      {/* 좁은 칸에서는 줄을 바꾼다 — 안 바꾸면 글자가 한 자씩 세로로 쌓인다. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line
+        px-4 py-2 text-xs">
         <span
-          className="inline-block size-2 rounded-full"
+          className="inline-block size-2 shrink-0 rounded-full"
           style={{ background: connected ? "var(--ok)" : "var(--bad)" }}
           aria-hidden
         />
-        <span className="text-muted">
+        <span className="whitespace-nowrap text-muted">
           {connected ? t("log.connected") : t("log.disconnected")}
         </span>
         {polling && (
           // 폴백으로 떨어진 사실을 감추면, 왜 로그가 느린지 아무도 모른다.
-          <span className="text-dim">{t("log.polling")}</span>
+          <span className="whitespace-nowrap text-dim">{t("log.polling")}</span>
         )}
-        <span className="text-dim">{t("log.lines", { n: rows.length })}</span>
+        <span className="whitespace-nowrap text-dim">
+          {t("log.lines", { n: rows.length })}
+        </span>
         {slug && (
           <button
             type="button"

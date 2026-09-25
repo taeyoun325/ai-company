@@ -33,6 +33,7 @@ export function TaskBoard({ tasks }: { tasks?: TaskRow[] }) {
         >
           <Mark status={t.status} />
           <span
+            data-record
             className={`min-w-0 flex-1 truncate ${
               t.status === "done" ? "text-muted line-through" : ""
             }`}
@@ -115,7 +116,7 @@ export function ScorePanel({
       {detail && (
         <dl className="grid grid-cols-2 gap-1.5 text-[11px]">
           <Item k={t("task.k.tasks")} v={String(detail.tasks ?? "—")} />
-          <Item k={t("task.k.tests")} v={String(detail.tests ?? "—")} />
+          <Item k={t("task.k.tests")} v={testsText(detail, t)} />
           <Item k={t("task.k.coverage")} v={String(detail.ac_coverage ?? "—")} />
           <Item k={t("task.k.criteria")} v={String(detail.criteria ?? "—")} />
           <Item k={t("task.k.reworks")} v={String(detail.reworks ?? 0)} />
@@ -154,4 +155,26 @@ function Item({ k, v }: { k: string; v: string }) {
       <dd className="font-medium">{v}</dd>
     </div>
   );
+}
+
+
+/**
+ * 테스트 칸 — 서버가 준 **숫자**를 보는 사람의 언어로 적는다 (DAY 26).
+ *
+ * `detail.tests` 는 실행의 언어로 박제된 문장이라, 한국어로 돌린 프로젝트를
+ * 영어 화면에서 보면 "2통과·0실패"가 남았다. 숫자(`tests_state` ·
+ * `tests_passed` · `tests_failed`)가 있으면 그걸 쓰고, 없는 옛 기록만 문장을
+ * 그대로 쓴다. DAY 25 까지의 "미실행"은 번역되지 않은 채 박혀 있어 옮긴다.
+ */
+function testsText(detail: NonNullable<BusEvent["score_detail"]>,
+                   t: ReturnType<typeof useLang>["t"]): string {
+  if (detail.tests_state === "not_run") return t("task.v.notRun");
+  if (detail.tests_state === "counts") {
+    return t("task.v.testsCounts", {
+      passed: Number(detail.tests_passed ?? 0),
+      failed: Number(detail.tests_failed ?? 0),
+    });
+  }
+  if (detail.tests === "미실행") return t("task.v.notRun");
+  return String(detail.tests ?? "—");
 }

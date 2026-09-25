@@ -112,6 +112,24 @@ def test_stream_through_the_real_sdk(fp, name):
     assert joined == p.generate(_req(who)).text
 
 
+@pytest.mark.parametrize("name", list(PROVIDERS))
+def test_stream_is_billed_from_the_wire(fp, name):
+    """스트리밍도 **제공자가 알려준 사용량**으로 청구한다 (DAY 26) — 실제 SDK 의
+    최종 메시지(Anthropic)·최종 응답(OpenAI)·마지막 조각(Gemini)에서 읽는다."""
+    cls, who = PROVIDERS[name]
+    p = cls(model=roles.get(who).model)
+    "".join(p.stream(_req(who)))
+    streamed = dict(usage.agents_of("wire")[who])
+    p.generate(_req(who))
+    both = usage.agents_of("wire")[who]
+    assert streamed["calls"] == 1 and streamed["cost"] > 0
+    # 같은 요청이면 스트리밍과 한 번에 받기가 같은 토큰을 센다.
+    assert both["output"] == 2 * streamed["output"]
+    ends = [e for e in bus.history("wire")
+            if e["type"] == "call" and e["stage"] == "end" and e.get("stream")]
+    assert ends and ends[-1]["estimated"] is False, "사용량을 어림으로 채웠다"
+
+
 @pytest.mark.parametrize("who", list(roles.EMPLOYEES))
 def test_every_employee_request_goes_through_its_real_sdk(fp, who):
     """직원 설정 **그대로**(max_tokens·effort·temperature) SDK 에 넣는다.

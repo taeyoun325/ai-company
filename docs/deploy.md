@@ -161,6 +161,18 @@ curl https://your-domain/api/preflight?strict=true
 | 로그인 실패 횟수 | SQLite (`login_attempts`) | 문제 없음 (DAY 22 에 옮겼다) |
 | 동시 실행 좌석 | SQLite 색인 (`projects`) | 문제 없음 (DAY 22 에 옮겼다) |
 | MANUAL 점유 | SQLite 색인 (`project_locks`) | 문제 없음 (DAY 22 에 옮겼다) |
+| 프로젝트 메타 읽고-고치고-쓰기 | 파일 + **운영체제 파일 잠금** (`safeio.file_lock`) | 문제 없음 (DAY 26) |
+| 승인 결정 ↔ 쉬러 들어가는 실행 | 위 메타 잠금 안에서 한 번에 (`gates.decide_seen` · `engine._park`) | 문제 없음 (DAY 26) |
+| 재개(자리 잡기) | 위 메타 잠금 안에서 한 번에 (`engine._claim`) | 문제 없음 (DAY 26) |
+| 정지 버튼 | 메타의 `cancel_requested` 를 돌리는 쪽이 경계에서 본다 | 문제 없음 (DAY 26) |
+
+DAY 26 의 넷은 **같은 구멍**이었다. 메타 잠금이 `threading.Lock` 이라
+프로세스를 못 넘었다. 인스턴스 A 가 "결정 없음"을 확인하고, B 가 결정을
+쓰고 상태를 읽고("돌고 있다" — 안 깨움), A 가 `awaiting` 을 쓰면 **아무도
+깨우지 않았다.** 이제 메타 잠금이 운영체제 잠금(`fcntl.flock` ·
+`msvcrt.locking`)이라, 쥔 프로세스가 죽으면 운영체제가 푼다. 실제 다른
+프로세스로 그 순간을 재현하는 시험이 있다(`tests/test_instances.py`) —
+옛 순서로 되돌리면 `'running'` 을 보고 실패한다.
 
 셋 다 DAY 22 에 옮겼다 — 보안(로그인 잠금) · 돈(동시 실행 좌석) ·
 순서(MANUAL 점유). 좌석은 색인에서 세고(실행 중 20초마다 박자가 메타를

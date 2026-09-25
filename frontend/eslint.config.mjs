@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 화면 시험(DAY 26)의 전용 빌드 폴더와 결과물.
+    ".next-e2e/**",
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 

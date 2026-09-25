@@ -135,12 +135,25 @@ def ask_text(employee_id: str, user: str,
 
 def stream_text(employee_id: str, user: str,
                 history: list[Message] | None = None) -> Iterator[str]:
-    """조각을 흘린다. 스트리밍은 재시도하지 않는다(§18) — 같은 문장이 두 번 보인다."""
+    """조각을 흘린다. 첫 조각 뒤로는 재시도하지 않는다(§18) — 같은 문장이 두 번 보인다.
+
+    제너레이터가 아니다 — 스트림을 **지금** 연다. 제공자의 `stream()` 이
+    부르는 순간의 실행을 청구 대상으로 잡으므로, 몸통 안에서 열면 조각을
+    읽는 스레드(`astream` 이면 스레드 풀)의 것을 잡는다 (DAY 26).
+    """
     e = roles.get(employee_id)
     try:
-        yield from provider_of(e).stream(_request(e, user, None, history))
+        it = provider_of(e).stream(_request(e, user, None, history))
     except ProviderError as ex:
         raise EmployeeFailed(e.id, str(ex), cause=ex) from ex
+    return _failing_as_employee(e.id, it)
+
+
+def _failing_as_employee(employee_id: str, it: Iterator[str]) -> Iterator[str]:
+    try:
+        yield from it
+    except ProviderError as ex:
+        raise EmployeeFailed(employee_id, str(ex), cause=ex) from ex
 
 
 def status(run: str | None = None) -> list[dict]:

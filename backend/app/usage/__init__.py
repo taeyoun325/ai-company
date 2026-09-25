@@ -11,6 +11,7 @@ Claude와 Gemini가 각각 다른 SDK를 쓰므로, 사용량을 여기 한 곳�
 읽힌 캐시 토큰이 0이면 "캐싱으로 절감했다"는 말은 근거가 없다.
 """
 import threading
+from contextlib import contextmanager
 
 from app import bus
 from app import config
@@ -93,6 +94,23 @@ def attach(run_id: str) -> None:
 
 def current() -> str | None:
     return getattr(_local, "run", None)
+
+
+@contextmanager
+def scoped(run_id: str | None):
+    """잠깐 `run_id` 앞으로 달았다가 원래대로 되돌린다. 쌓인 값은 건드리지 않는다.
+
+    스트리밍 호출은 조각마다 다른 스레드에서 이어질 수 있다(`astream`).
+    그 스레드에는 실행이 묶여 있지 않으므로, 호출을 **시작한** 스레드의
+    실행을 기억해 두었다가 기록하는 순간에만 세운다 — 안 그러면 그 호출의
+    원가가 어느 실행에도 안 잡힌다(청구되지 않는다).
+    """
+    prev = current()
+    _local.run = run_id
+    try:
+        yield
+    finally:
+        _local.run = prev
 
 
 def reset(run_id: str | None = None) -> None:

@@ -59,6 +59,8 @@ const LOG_WIDTH_KEY = "ai-company.log-width";
 const LOG_WIDTH_DEFAULT = 336; // 21rem, 기존 고정폭과 같다
 const LOG_WIDTH_MIN = 260;
 const LOG_WIDTH_MAX = 560;
+// 이보다 넓어야 로그와 최근 결과를 나란히 둔다. 좁으면 위아래로 쌓는다.
+const LOG_SPLIT_MIN = 440;
 
 /** 사무실을 다시 읽어야 하는 이벤트 — 사람의 자리나 상태가 바뀌는 것들. */
 const PULSE_TYPES = new Set(["phase", "gate", "awaiting", "done", "handoff"]);
@@ -348,6 +350,9 @@ export default function OfficePage() {
                 value={requirement}
                 onChange={(e) => setRequirement(e.target.value)}
                 rows={3}
+                // 자리표시 글은 이름이 아니다 — 쓰기 시작하면 사라지고, 화면
+                // 낭독기는 "편집 가능한 글"로만 읽는다 (DAY 26 화면 시험에서 찾음).
+                aria-label={t("office.ask")}
                 placeholder={t("office.placeholder")}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void start();
@@ -472,9 +477,14 @@ export default function OfficePage() {
           )}
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-line
-          border-t border-line overflow-hidden">
-          <div className="min-h-0 overflow-y-auto">
+        {/* 레일이 좁으면 최근 결과를 로그 **아래**로 내린다 (DAY 26). 기본 폭
+            336px 를 반씩 나누면 로그 칸이 168px 이 되어 "연결됨"이 한 글자씩
+            세로로 줄바꿈됐다 — 화면 시험을 만들며 찾았다. */}
+        <div className={`grid min-h-0 flex-1 border-t border-line overflow-hidden ${
+          logWidth >= LOG_SPLIT_MIN
+            ? "grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] divide-x divide-line"
+            : "grid-rows-[minmax(0,1fr)_auto] divide-y divide-line"}`}>
+          <div className="min-h-0 overflow-y-auto" data-testid="activity-log">
             {stream.events.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-dim">
                 {t("office.logEmpty")}
@@ -485,7 +495,8 @@ export default function OfficePage() {
                 slug={slug} className="h-full" />
             )}
           </div>
-          <div className="min-h-0 overflow-y-auto">
+          <div className={`min-h-0 overflow-y-auto ${
+            logWidth >= LOG_SPLIT_MIN ? "" : "max-h-44"}`}>
             <RecentResults />
           </div>
         </div>

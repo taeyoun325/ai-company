@@ -64,12 +64,21 @@ def write_tests(criteria: list[Criterion], tasks: list[Task]) -> str:
 
 
 def implement(task: Task, criteria: list[Criterion], files: dict[str, str],
-              feedback: Verdict | None) -> str:
+              feedback: Verdict | None, taken: list[str] | None = None) -> str:
+    """`taken` — 지금 다른 태스크가 동시에 쓰고 있는 파일 (DAY 26 · 파일 예약).
+    그 파일을 쓰면 거부된다. 미리 알려주지 않으면 그 라운드가 헛돈다."""
     head = (
         f"# 맡은 태스크\n{task.model_dump_json(indent=2)}\n\n"
         f"# 인수기준 (전체)\n{_criteria(criteria)}\n\n"
         f"# 지금까지의 산출물\n{files_block(files)}\n\n"
     )
+    if taken:
+        head += (
+            "# 다른 태스크가 지금 쓰고 있는 파일 — 쓰지 마세요\n"
+            + "\n".join(f"- `{p}`" for p in taken)
+            + "\n이 파일들을 내보내면 저장되지 않고 거부됩니다. 필요한 변경이\n"
+            "있으면 self_check 에 적으세요.\n\n"
+        )
     if feedback is None:
         return head + (
             "# 할 일\n이 태스크 **하나만** 처리하세요. 다른 태스크를 미리 하지 마세요.\n"

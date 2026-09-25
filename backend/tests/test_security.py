@@ -191,6 +191,8 @@ def test_child_process_cannot_autoload_user_code():
     assert env["PYTHONNOUSERSITE"] == "1"
     assert "PYTHONPATH" not in env
     assert "PYTHONSTARTUP" not in env
+    # 서버 venv 의 pytest 플러그인도 생성된 코드의 시험에 올라가지 않는다 (DAY 26).
+    assert env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
 
 
 def test_project_pytest_config_is_ignored(tmp_path):

@@ -25,7 +25,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
 from app.providers.base import (AIProvider, GenerateRequest, GenerateResult,
-                                ProviderError, Usage)
+                                ProviderError, StreamEnd, Usage)
 
 CHARS_PER_TOKEN = 4          # 거친 어림. 실제 토크나이저가 아니다.
 
@@ -121,7 +121,7 @@ class MockProvider(AIProvider):
             stop_reason="end_turn",
         )
 
-    def _stream(self, req: GenerateRequest) -> Iterator[str]:
+    def _stream(self, req: GenerateRequest) -> Iterator[str | StreamEnd]:
         """조각을 다 이으면 `_generate` 의 text 와 **정확히** 같아야 한다.
 
         계약 테스트가 이것을 확인한다. 어긋나면 화면에 보인 글과 저장된 글이
@@ -134,6 +134,9 @@ class MockProvider(AIProvider):
             if self.latency:
                 time.sleep(self.latency / 8)
             yield text[i:i + step]
+        # 실제 제공자처럼 끝에 사용량을 알린다 — `generate()` 와 같은 값이다.
+        yield StreamEnd(usage=result.usage, model=result.model,
+                        stop_reason=result.stop_reason)
 
     def reset(self) -> None:
         self.calls.clear()
