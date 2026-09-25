@@ -1,110 +1,164 @@
 /**
- * 설명 탭 (DAY 26) — 헤더에서 닿고, 차례의 절이 다 있고, 말이 사무실과 같다.
+ * 설명 탭 (DAY 26) — 한 화면에서 장을 넘긴다. 스크롤하지 않는다.
+ *
+ * 지키는 것: 헤더에서 닿는다 · 여덟 장이 **한 화면에 들어간다** · 탭/키/버튼/끌기로
+ * 넘어간다 · 주소(#장)로 바로 열린다 · 새 장의 조각이 올라온다(anime.js) · 말이
+ * 사무실과 같다 · 세 언어 모두 새지 않는다 · 움직임을 줄여도 쓸 수 있다.
  */
 import { expect, test } from "./fixtures";
+import type { Page } from "@playwright/test";
+
+import { EMPLOYEES, i18nKeys } from "./helpers";
+
+const TABS = ["intro", "flow", "staff", "gates", "office", "money", "safety", "honest"];
+
+const selected = (page: Page) => page.locator("[role=tab][aria-selected=true]");
+const panel = (page: Page) => page.locator("[role=tabpanel]");
+
+async function open(page: Page, id: string) {
+  await page.locator(`#tab-${id}`).click();
+  await expect(page.locator(`#panel-${id}`)).toBeVisible();
+  // 들어오는 움직임(motion.dev 스프링 · anime.js 조각)이 끝날 때까지.
+  await expect(page.locator(`#panel-${id} [data-reveal]`)).toHaveCount(0, { timeout: 5000 });
+  await expect(page.locator("[role=tabpanel]")).toHaveCount(1);
+}
 
 test("헤더의 '설명' 탭에서 열린다", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: "설명", exact: true }).click();
-  await expect(page).toHaveURL(/\/guide$/);
+  await expect(page).toHaveURL(/\/guide/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("AI COMPANY 는 이렇게 일합니다");
+  await expect(page.getByRole("tab")).toHaveCount(TABS.length);
 });
 
-test("차례의 절이 모두 있고, 누르면 그 절로 간다", async ({ page }) => {
+test("여덟 장이 모두 한 화면에 들어간다 — 페이지도 장도 스크롤되지 않는다", async ({ page }) => {
   await page.goto("/guide");
-  const toc = page.getByRole("navigation", { name: "이 페이지" });
-  const links = toc.getByRole("link");
-  await expect(links).toHaveCount(8);
-  for (const href of await links.evaluateAll((els) => els.map((e) => e.getAttribute("href")))) {
-    await expect(page.locator(href!)).toHaveCount(1);
+  for (const id of TABS) {
+    await open(page, id);
+    const fit = await panel(page).evaluate((el) => el.scrollHeight - el.clientHeight);
+    expect(fit, `'${id}' 장이 화면을 넘친다`).toBeLessThanOrEqual(1);
+    const root = await page.evaluate(() => {
+      const el = document.querySelector("main > div")!;
+      return el.scrollHeight - el.clientHeight;
+    });
+    expect(root, "페이지가 스크롤된다").toBeLessThanOrEqual(0);
   }
-  await toc.getByRole("link", { name: "대표가 끼어드는 지점" }).click();
-  await expect(page.locator("#gates")).toBeInViewport();
+});
+
+test("탭 · ←/→ 키 · 다음/이전 버튼으로 넘기고, 주소에 장이 남는다", async ({ page }) => {
+  await page.goto("/guide");
+  await open(page, "staff");
+  await expect(page).toHaveURL(/#staff$/);
+  await page.keyboard.press("ArrowRight");
+  await expect(selected(page)).toHaveAttribute("id", "tab-gates");
+  await page.keyboard.press("ArrowLeft");
+  await expect(selected(page)).toHaveAttribute("id", "tab-staff");
+  await page.getByRole("button", { name: /다음/ }).click();
+  await expect(selected(page)).toHaveAttribute("id", "tab-gates");
+  // 개발 서버에서는 Next 의 왼쪽 아래 배지가 '이전' 버튼 위에 떠 클릭을 가로챈다
+  // (개발 모드에만 있다). 키보드로 누른다 — 버튼이 하는 일은 같다.
+  await page.getByRole("button", { name: /이전/ }).focus();
+  await page.keyboard.press("Enter");
+  await expect(selected(page)).toHaveAttribute("id", "tab-staff");
+  // 탭 목록 안에서는 ARIA 탭 패턴 — End 로 마지막 장.
+  await page.locator("#tab-staff").focus();
+  await page.keyboard.press("End");
+  await expect(selected(page)).toHaveAttribute("id", "tab-honest");
+  await expect(page.locator("#tab-honest")).toBeFocused();
+});
+
+test("주소의 #장 으로 바로 열린다", async ({ page }) => {
+  await page.goto("/guide#gates");
+  await expect(selected(page)).toHaveAttribute("id", "tab-gates");
+});
+
+test("옆으로 끌면 다음 장, 반대로 끌면 이전 장 (motion.dev)", async ({ page }) => {
+  await page.goto("/guide");
+  const box = (await panel(page).boundingBox())!;
+  const y = box.y + box.height - 40;              // 버튼·링크가 없는 아래쪽 빈자리
+  await page.mouse.move(box.x + box.width * 0.8, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.2, y, { steps: 10 });
+  await page.mouse.up();
+  await expect(selected(page)).toHaveAttribute("id", "tab-flow");
+  await expect(page.locator("#panel-flow")).toBeVisible();
+  await page.waitForTimeout(700);
+  await page.mouse.move(box.x + box.width * 0.2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.8, y, { steps: 10 });
+  await page.mouse.up();
+  await expect(selected(page)).toHaveAttribute("id", "tab-intro");
+});
+
+test("조금만 끌면 넘어가지 않고 제자리로 돌아온다", async ({ page }) => {
+  await page.goto("/guide");
+  const box = (await panel(page).boundingBox())!;
+  const y = box.y + box.height - 40;
+  await page.mouse.move(box.x + box.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 30, y, { steps: 20 });
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  await expect(selected(page)).toHaveAttribute("id", "tab-intro");
+});
+
+test("새 장이 서면 그 안의 조각이 차례로 올라온다 (anime.js)", async ({ page }) => {
+  await page.goto("/guide");
+  await page.locator("#tab-staff").click();
+  // 막 선 순간에는 아직 숨은 조각이 있다 — 곧 전부 올라온다.
+  await expect.poll(() => page.locator("#panel-staff [data-reveal]").count(),
+                    { intervals: [30, 30, 30] }).toBeGreaterThan(0);
+  await expect(page.locator("#panel-staff [data-reveal]")).toHaveCount(0, { timeout: 5000 });
+  await expect(page.locator("#panel-staff li")).toHaveCount(6);
 });
 
 test("승인 지점·상태·결정은 사무실과 같은 말을 쓴다", async ({ page }) => {
   await page.goto("/guide");
-  // 사무실의 승인 토글·결재 버튼·상태 이름과 같은 글자여야 한다.
+  await open(page, "gates");
   for (const word of ["계획 승인", "모든 결과 승인", "코드만 승인", "확신 낮을 때만",
-                      "수정 요청", "보류", "폐기", "승인 대기", "연동 대기"]) {
-    // 승인 지점 이름 앞에는 ★ 이 붙는다(사무실 토글과 같다).
+                      "수정 요청", "보류", "폐기"]) {
     await expect(page.getByText(new RegExp(`^(★ )?${word}$`)).first()).toBeVisible();
+  }
+  await open(page, "office");
+  for (const word of ["승인 대기", "연동 대기", "현황 보고", "왜 늦어져?"]) {
+    await expect(page.getByText(word, { exact: true }).first()).toBeVisible();
   }
 });
 
-test("시작 버튼이 사무실로 간다", async ({ page }) => {
-  await page.goto("/guide");
+test("마지막 장의 시작 버튼이 사무실로 간다", async ({ page }) => {
+  await page.goto("/guide#honest");
   await page.getByRole("link", { name: "사무실로 가기" }).click();
   await expect(page.getByRole("textbox", { name: "무엇을 만들까요?" })).toBeVisible();
 });
 
-// ── 움직임 (DAY 26) — motion.dev 끌기 · anime.js 등장/튀는 점 ─────────────
-test("아래 절은 스크롤해서 그 자리에 와야 올라온다", async ({ page }) => {
-  await page.goto("/guide");
-  await page.waitForTimeout(600);
-  expect(await page.locator("#staff [data-reveal]").count(),
-         "스크롤하기 전에 이미 다 나와 있다 — 스크롤 등장이 안 돈다").toBeGreaterThan(0);
-  await page.locator("#staff").scrollIntoViewIfNeeded();
-  await expect(page.locator("#staff [data-reveal]")).toHaveCount(0);
-});
-
-test("카드를 끌면 기울며 따라오고, 놓으면 튕겨 돌아오며 점이 튄다", async ({ page }) => {
-  await page.goto("/guide");
-  const card = page.locator("#staff li").nth(2).locator("> div");
-  await card.scrollIntoViewIfNeeded();
-  await expect(page.locator("#staff [data-reveal]")).toHaveCount(0);
-  const start = (await card.boundingBox())!;
-  const cx = start.x + start.width / 2;
-  const cy = start.y + start.height / 2;
-  await page.mouse.move(cx, cy);
-  await page.mouse.down();
-  await page.mouse.move(cx + 140, cy + 30, { steps: 12 });
-  const moved = (await card.boundingBox())!;
-  expect(moved.x - start.x, "카드가 손을 따라오지 않았다").toBeGreaterThan(40);
-  const rotate = await card.evaluate((e) => getComputedStyle(e).transform);
-  expect(rotate, "끄는 방향으로 기울지 않았다").not.toBe("none");
-  await page.mouse.up();
-  // 놓는 순간 그 자리에 점이 튄다(anime.js) — 잠깐 있다가 사라진다.
-  await expect(page.locator("body > div[aria-hidden=true] > span").first()).toBeAttached();
-  // 스프링으로 제자리. (손을 치운다 — 올려 두면 살짝 커진 채로 있다.)
-  await page.mouse.move(2, 2);
-  await expect.poll(async () => {
-    const b = (await card.boundingBox())!;
-    return Math.max(Math.abs(b.x - start.x), Math.abs(b.y - start.y));
-  }, { timeout: 4000 }).toBeLessThan(2);
-  await expect(page.locator("body > div[aria-hidden=true] > span")).toHaveCount(0,
-                                                                                { timeout: 3000 });
-});
-
-test("제목 낱말도 끌 수 있고 제자리로 돌아온다", async ({ page }) => {
-  await page.goto("/guide");
-  const word = page.locator("h1 .guide-word").nth(1).locator("> span");
-  // 등장(anime.js)이 끝나 제자리에 선 뒤에 잰다 — 도는 중에 재면 "제자리"가 틀린다.
-  let last = "";
-  await expect.poll(async () => {
-    const now = JSON.stringify(await word.boundingBox());
-    const same = now === last;
-    last = now;
-    return same;
-  }, { intervals: [250], timeout: 8000 }).toBe(true);
-  const start = (await word.boundingBox())!;
-  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(start.x + start.width / 2 + 60, start.y + 80, { steps: 8 });
-  expect((await word.boundingBox())!.y - start.y).toBeGreaterThan(20);
-  await page.mouse.up();
-  await page.mouse.move(2, 2);
-  await expect.poll(async () => Math.abs((await word.boundingBox())!.y - start.y),
-                    { timeout: 4000 }).toBeLessThan(2);
-  await expect(page.getByRole("heading", { level: 1 }))
-    .toHaveText("AI COMPANY 는 이렇게 일합니다");
-});
+// 장은 한 번에 하나만 그려지므로, 번역 검사(i18n.spec)는 첫 장만 본다. 여기서
+// 장을 전부 넘기며 본다.
+const KEYS = i18nKeys();
+for (const lang of ["en", "ja"] as const) {
+  test.describe(lang, () => {
+    test.use({ lang });
+    test(`여덟 장 모두 번역 키가 새지 않고 한국어가 남지 않는다`, async ({ page }) => {
+      await page.goto("/guide");
+      for (const id of TABS) {
+        await open(page, id);
+        let text = await panel(page).innerText();
+        expect(KEYS.filter((k) => text.includes(k)), `'${id}' 장에 키가 찍혔다`).toEqual([]);
+        for (const name of EMPLOYEES) text = text.replaceAll(name, "");
+        const hangul = text.split("\n").filter((l) => /[가-힣]/.test(l));
+        expect(hangul, `'${id}' 장에 한국어가 남았다`).toEqual([]);
+      }
+    });
+  });
+}
 
 test.describe("움직임을 줄인 사람", () => {
   test.use({ reducedMotion: "reduce" });
-  test("아무것도 숨기지 않고 끌리지도 않는다", async ({ page }) => {
+  test("넘기기는 되고, 숨는 조각이 없다", async ({ page }) => {
     await page.goto("/guide");
+    await page.waitForLoadState("networkidle");          // 키 처리기가 붙은 뒤에 누른다
     await expect(page.locator("[data-reveal]")).toHaveCount(0);
-    await expect(page.getByText("카드와 제목 낱말을 끌어 보세요", { exact: false })).toHaveCount(0);
+    await page.keyboard.press("ArrowRight");
+    await expect(selected(page)).toHaveAttribute("id", "tab-flow");
+    await expect(page.locator("#panel-flow [data-reveal]")).toHaveCount(0);
   });
 });

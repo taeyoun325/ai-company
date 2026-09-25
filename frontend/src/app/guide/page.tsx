@@ -10,6 +10,19 @@
  * 곳이 아니다 — 처음 들어온 사람은 "테스트를 먼저 쓴다"거나 "승인 지점에서
  * 멈춘다"는 것을 화면에서 짐작해야 했다.
  *
+ * ## 한 화면 — 스크롤하지 않는다
+ *
+ * 긴 문서를 내려 읽는 대신, **한 화면 안에서 장(章)을 넘긴다.** 화면은 움직이지
+ * 않고 내용만 바뀐다. 한 장이 한 화면에 들어가도록 장마다 내용을 나눴다.
+ *
+ * - 넘기는 법: 위의 탭 · 아래 이전/다음 · ←/→ 키 · 옆으로 끌기(손가락도 된다) ·
+ *   마우스 휠. 지금 장은 주소(#staff 등)에 남아 링크로 보낼 수 있다.
+ * - **motion.dev** 가 장 사이를 맡는다: 끄는 대로 따라오며 기울고, 넘기면 옆에서
+ *   살짝 돌아 들어온다(3D 슬라이드). 탭 밑줄이 스프링으로 따라간다.
+ * - **anime.js** 가 장 안을 맡는다: 새 장이 서면 그 안의 조각이 차례로 올라온다.
+ *   흐름 그림은 제 타임라인대로 순서를 그린다.
+ * - 움직임을 줄인 사람에게는 넘기기만 되고 아무것도 날아다니지 않는다.
+ *
  * ## 말은 사무실과 같아야 한다
  *
  * 역할 이름 · 직원 상태 · 승인 지점 · 결정 네 가지 · 지시창 문구는 **새로
@@ -17,42 +30,31 @@
  * 이라고 하는데 버튼이 "결과 승인"이면, 읽은 사람은 둘이 같은 것인지부터
  * 의심한다. 사무실 문구를 바꾸면 여기도 따라 바뀐다.
  *
- * ## 움직임 — 손에 대답한다 (DAY 26)
- *
- * - **스크롤** (motion.dev): 맨 위 진행 막대가 읽은 만큼 차고, 카드 묶음이
- *   스크롤하는 **속도만큼** 살짝 기울었다가 스프링으로 돌아온다. 멈추면 반듯하다.
- * - **등장** (anime.js): 제목 낱말이 하나씩 튀어 오르고, 아래 절들은 그 자리에
- *   왔을 때 차례로 올라온다.
- * - **끌기** (motion.dev + anime.js): 카드·낱말·상태 칩을 끌 수 있다. 끄는
- *   방향으로 기울고, 옆 카드는 물러서고, 놓으면 튕겨 돌아가며 그 자리에서
- *   점이 튄다(`components/Fling.tsx`).
- *
- * 움직임을 줄인 사람에게는 전부 멈춘다 — 막대만 남는다(정보이기 때문이다).
- * 터치 화면에서는 끌기를 끈다(카드를 누르면 페이지가 스크롤돼야 한다).
- *
  * ## 과장하지 않는다
  *
- * 랜딩과 같은 원칙이다. 할 수 있는 것만 쓰고, 못 하는 것은 맨 아래
+ * 랜딩과 같은 원칙이다. 할 수 있는 것만 쓰고, 못 하는 것은 마지막 장
  * "지금 상태"에 그대로 적는다(`honest.*` — 랜딩과 같은 문장).
  */
 import {
-  motion, useReducedMotion, useScroll, useSpring, useTransform, useVelocity,
-  type MotionValue,
+  AnimatePresence, motion, useMotionValue, useReducedMotion, useTransform,
+  type PanInfo,
 } from "motion/react";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import {
+  useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode,
+  type WheelEvent,
+} from "react";
 
-import { Fling, FlingArea, FlingWords, useCanFling } from "@/components/Fling";
 import { PipelineFigure } from "@/components/PipelineFigure";
 import { Icon, iconOfAgent } from "@/components/icons";
 import { STATE_COLOR } from "@/components/office/OfficeFloor";
-import { Filled, Panel } from "@/components/ui";
+import { Filled } from "@/components/ui";
 import { type Key, useLang } from "@/lib/i18n";
-import { T, animate, revealFrom, stagger, utils, withScope } from "@/lib/motion";
+import { T, animate, stagger, utils, withScope } from "@/lib/motion";
 import type { OfficeEmployee } from "@/lib/types";
 
 /** 직원 다섯 — 이름이 아니라 **자리**다. `writes` 는 코드가 강제하는 쓰기
- *  구역(backend/app/agents/roles.py)과 같아야 한다. */
+ *  구역(backend/app/agents/roles.py)과 같아야 한다(test_repo_files 가 본다). */
 const STAFF = [
   { id: "strategist", who: "Claude", writes: null },
   { id: "analyst", who: "Gemini", writes: "tests/" },
@@ -79,137 +81,313 @@ const COMMANDS = ["cmd.status", "cmd.why", "cmd.meeting", "cmd.brief", "cmd.focu
 
 const PROOFS = ["order", "tests", "cross", "cost"] as const;
 
-const SECTIONS = [
-  ["flow", "guide.flow.title"],
-  ["modes", "guide.modes.title"],
-  ["staff", "staff.title"],
-  ["gates", "guide.gates.title"],
-  ["office", "guide.office.title"],
-  ["money", "guide.money.title"],
-  ["safety", "why.title"],
-  ["honest", "honest.title"],
-] as const;
+/** 장 순서. id 는 주소(#id)에 남는다. */
+const TABS = ["intro", "flow", "staff", "gates", "office", "money", "safety", "honest"] as const;
+type Tab = (typeof TABS)[number];
+
+// 넘기기로 칠 끌기 — 이만큼 끌었거나, 이만큼 빠르게 튕겼으면.
+const SWIPE_PX = 90;
+const SWIPE_V = 450;
+// 휠 한 번에 한 장. 트랙패드는 한 번 쓸어도 이벤트가 수십 개 온다.
+const WHEEL_LOCK_MS = 650;
+
+/** motion.dev — 장이 옆에서 살짝 돌아 들어오고, 반대쪽으로 돌아 나간다. */
+const slide = {
+  enter: (dir: number) => ({ x: dir > 0 ? "55%" : "-55%", opacity: 0, scale: 0.92,
+                             rotateY: dir > 0 ? -18 : 18 }),
+  center: { x: 0, opacity: 1, scale: 1, rotateY: 0,
+            transition: { type: "spring" as const, stiffness: 240, damping: 28 } },
+  exit: (dir: number) => ({ x: dir > 0 ? "-40%" : "40%", opacity: 0, scale: 0.92,
+                            rotateY: dir > 0 ? 18 : -18,
+                            transition: { duration: 0.28, ease: "easeIn" as const } }),
+};
+
+function tabFromHash(): Tab {
+  if (typeof window === "undefined") return "intro";
+  const h = window.location.hash.replace("#", "");
+  return (TABS as readonly string[]).includes(h) ? (h as Tab) : "intro";
+}
 
 export default function GuidePage() {
   const { t } = useLang();
-  const scroller = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
-  const canFling = useCanFling();
+  const [[tab, dir], setTab] = useState<[Tab, number]>(["intro", 0]);
+  const index = TABS.indexOf(tab);
+  const wheelLock = useRef(0);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  // ── motion.dev: 스크롤에 묶인 두 가지 ─────────────────────────
-  const { scrollY, scrollYProgress } = useScroll({ container: scroller });
-  const progress = useSpring(scrollYProgress, { stiffness: 140, damping: 24, mass: 0.3 });
-  // 빠르게 내리면 카드 묶음이 아래로, 올리면 위로 살짝 기운다. 멈추면 0.
-  const velocity = useVelocity(scrollY);
-  const tilt = useSpring(useTransform(velocity, [-2400, 0, 2400], [-3.5, 0, 3.5]),
-                         { stiffness: 260, damping: 28, mass: 0.4 });
-
-  // ── anime.js: 등장 ──────────────────────────────────────────
+  // 주소의 #장 에서 시작한다 — 링크로 보낸 장이 바로 열리게. 주소는 렌더 밖의
+  // 값이라 하이드레이션 뒤에 한 번 읽는다(첫 그림은 서버와 같게 "소개").
   useEffect(() => {
-    const el = scroller.current;
+    const first = tabFromHash();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (first !== "intro") setTab([first, 1]);
+  }, []);
+
+  const go = useCallback((to: number, focus = false) => {
+    const next = Math.max(0, Math.min(TABS.length - 1, to));
+    setTab((prev) => {
+      const from = TABS.indexOf(prev[0]);
+      return next === from ? prev : [TABS[next], next > from ? 1 : -1];
+    });
+    if (focus) tabRefs.current[next]?.focus();
+  }, []);
+
+  // 지금 장을 주소에 남긴다 — **렌더 밖에서.** 상태를 고치는 함수 안에서
+  // 주소를 바꾸면 Next 라우터가 렌더 도중에 갱신돼 경고가 난다(DAY 26 에 겪음).
+  useEffect(() => {
+    if (tab === "intro" && !window.location.hash) return;
+    if (window.location.hash !== `#${tab}`) {
+      window.history.replaceState(null, "", `#${tab}`);
+    }
+  }, [tab]);
+
+  // ←/→ 로 넘긴다. 입력칸에 쓰는 중이면 건드리지 않는다.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      if (el?.getAttribute("role") === "tab") return;       // 탭 목록이 따로 처리한다
+      if (e.key === "ArrowRight" || e.key === "PageDown") go(index + 1);
+      else if (e.key === "ArrowLeft" || e.key === "PageUp") go(index - 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [go, index]);
+
+  // 탭 목록의 키보드 — ARIA 탭 패턴(←/→ · Home/End 로 옮기고 바로 연다).
+  const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const map: Record<string, number> = {
+      ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1,
+    };
+    if (e.key in map) {
+      e.preventDefault();
+      go(map[e.key], true);
+    }
+  };
+
+  const onWheel = (e: WheelEvent<HTMLDivElement>) => {
+    // 좁은 화면에서 장이 넘치면 휠은 그 장을 내린다 — 끝에 닿았을 때만 넘긴다.
+    const panel = (e.currentTarget.querySelector("[role=tabpanel]") as HTMLElement | null);
+    if (panel && panel.scrollHeight > panel.clientHeight + 2) {
+      const atTop = panel.scrollTop <= 0;
+      const atEnd = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 2;
+      if ((e.deltaY > 0 && !atEnd) || (e.deltaY < 0 && !atTop)) return;
+    }
+    const d = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+    if (Math.abs(d) < 30 || Date.now() < wheelLock.current) return;
+    wheelLock.current = Date.now() + WHEEL_LOCK_MS;
+    go(index + (d > 0 ? 1 : -1));
+  };
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* ── 장 목록 ─────────────────────────────────────────────── */}
+      <div role="tablist" aria-label={t("guide.toc")} onKeyDown={onTabKey}
+        className="flex shrink-0 justify-start gap-1 overflow-x-auto border-b border-line
+          px-3 py-2 [scrollbar-width:none] sm:justify-center">
+        {TABS.map((id, i) => {
+          const on = id === tab;
+          return (
+            <button key={id} type="button" role="tab" id={`tab-${id}`}
+              ref={(el) => { tabRefs.current[i] = el; }}
+              aria-selected={on} aria-controls={`panel-${id}`} tabIndex={on ? 0 : -1}
+              onClick={() => go(i)}
+              className={`relative shrink-0 whitespace-nowrap rounded-full px-3 py-1.5
+                text-[12px] font-medium transition-colors
+                ${on ? "text-fg" : "text-muted hover:text-fg"}`}>
+              {on && (
+                <motion.span layoutId="guide-tab-pill" aria-hidden
+                  className="absolute inset-0 rounded-full border border-line bg-panel2"
+                  transition={{ type: "spring", stiffness: 420, damping: 32 }} />
+              )}
+              <span className="relative">{t(`guide.tab.${id}` as Key)}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── 무대 — 여기만 바뀐다 ──────────────────────────────────── */}
+      <div className="relative min-h-0 flex-1 overflow-hidden" onWheel={onWheel}
+        style={{ perspective: 1400 }}>
+        <AnimatePresence initial={false} custom={dir} mode="popLayout">
+          <Slide key={tab} tab={tab} dir={dir} reduced={!!reduced}
+            onSwipe={(d) => go(index + d)}>
+            <Chapter tab={tab} go={go} />
+          </Slide>
+        </AnimatePresence>
+      </div>
+
+      {/* ── 아래 — 이전 · 점 · 다음 ─────────────────────────────── */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-line
+        px-4 py-2.5">
+        <NavButton onClick={() => go(index - 1)} disabled={index === 0} dir="prev">
+          {t("guide.prev")}
+        </NavButton>
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="hidden items-center gap-1.5 sm:flex" aria-hidden>
+            {TABS.map((id, i) => (
+              <motion.span key={id} className="h-1.5 rounded-full"
+                animate={{ width: i === index ? 22 : 6,
+                           backgroundColor: i === index ? "var(--accent)" : "var(--line-strong)" }}
+                transition={{ type: "spring", stiffness: 380, damping: 30 }} />
+            ))}
+          </div>
+          <span className="text-[11px] tabular-nums text-dim" aria-live="polite">
+            {index + 1} / {TABS.length}
+          </span>
+          <span className="hidden text-[11px] text-dim lg:inline">{t("guide.navHint")}</span>
+        </div>
+        <NavButton onClick={() => go(index + 1)} disabled={index === TABS.length - 1} dir="next">
+          {t("guide.next")}
+        </NavButton>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 장 하나. 옆으로 끌면 따라오며 기울고(motion.dev), 충분히 끌면 넘어간다.
+ * 서면 그 안의 조각(`data-item`)이 차례로 올라온다(anime.js).
+ */
+function Slide({ tab, dir, reduced, onSwipe, children }: {
+  tab: Tab; dir: number; reduced: boolean; onSwipe: (d: number) => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  const x = useMotionValue(0);
+  const tilt = useTransform(x, [-320, 0, 320], [5, 0, -5]);
+
+  useEffect(() => {
+    const el = ref.current;
     if (!el) return;
     return withScope(el, () => {
-      // 제목 낱말이 하나씩 — 저마다 조금 다른 각도에서 튀어 오른다.
-      animate(el.querySelectorAll(".guide-word"), {
+      const items = el.querySelectorAll("[data-item]");
+      animate(items, {
         opacity: [0, 1],
-        translateY: [34, 0],
-        rotate: () => [utils.random(-14, 14), 0],
-        scale: [0.7, 1],
+        translateY: [26, 0],
+        scale: [0.94, 1],
+        rotate: () => [utils.random(-3, 3), 0],
         duration: T.slow,
-        delay: stagger(80, { start: 120 }),
+        delay: stagger(55, { start: 140 }),
         ease: "out(4)",
-        onComplete: () => el.querySelectorAll(".guide-word")
-          .forEach((w) => w.removeAttribute("data-reveal")),
-      });
-      revealFrom(el.querySelectorAll(".guide-head[data-reveal]"),
-                 { y: 16, delay: stagger(120, { start: 420 }) });
-      // 아래 절은 그 자리에 왔을 때 차례로.
-      el.querySelectorAll<HTMLElement>("[data-reveal-group]").forEach((g) => {
-        revealFrom(g.querySelectorAll("[data-reveal]"),
-                   { y: 22, delay: stagger(T.step), scrollRoot: g });
+        onComplete: () => items.forEach((i) => i.removeAttribute("data-reveal")),
       });
     });
   }, []);
 
   return (
-    <div ref={scroller} className="h-full overflow-y-auto">
-      {/* 읽은 만큼 차는 막대 — 이 페이지는 길다. */}
-      <motion.div aria-hidden
-        className="sticky top-0 z-30 h-0.5 origin-left"
-        style={{ scaleX: progress, background: "var(--accent)" }} />
-      <FlingArea>
-      <article className="mx-auto max-w-3xl px-4 pb-16 pt-5">
-        {/* ── 머리 ─────────────────────────────────────────────── */}
-        <header className="pt-4 text-center">
-          <p className="inline-flex items-center gap-2 rounded-full border border-line
-            bg-panel px-3 py-1 text-[11px] text-muted">
+    <motion.section ref={ref} role="tabpanel" id={`panel-${tab}`}
+      aria-labelledby={`tab-${tab}`} tabIndex={-1}
+      custom={dir} variants={reduced ? undefined : slide}
+      initial={reduced ? false : "enter"} animate="center" exit={reduced ? undefined : "exit"}
+      drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={0.35}
+      dragMomentum={false}
+      onDragEnd={(_: unknown, info: PanInfo) => {
+        if (info.offset.x < -SWIPE_PX || info.velocity.x < -SWIPE_V) onSwipe(1);
+        else if (info.offset.x > SWIPE_PX || info.velocity.x > SWIPE_V) onSwipe(-1);
+      }}
+      style={{ x, rotateZ: reduced ? 0 : tilt }}
+      className="absolute inset-0 cursor-grab overflow-y-auto px-4 py-6 outline-none
+        active:cursor-grabbing sm:px-8">
+      <div className="mx-auto flex min-h-full max-w-5xl flex-col justify-center">
+        {children}
+      </div>
+    </motion.section>
+  );
+}
+
+function NavButton({ onClick, disabled, dir, children }: {
+  onClick: () => void; disabled: boolean; dir: "prev" | "next"; children: ReactNode;
+}) {
+  return (
+    <motion.button type="button" onClick={onClick} disabled={disabled}
+      whileHover={disabled ? undefined : { scale: 1.04 }}
+      whileTap={disabled ? undefined : { scale: 0.96 }}
+      className="flex shrink-0 items-center gap-1 rounded-xl border border-line bg-panel px-3
+        py-1.5 text-xs font-medium disabled:opacity-40">
+      {dir === "prev" && <span aria-hidden>←</span>}
+      {children}
+      {dir === "next" && <span aria-hidden>→</span>}
+    </motion.button>
+  );
+}
+
+// ── 장마다의 내용 ─────────────────────────────────────────────────────
+// `data-item` + `data-reveal`: 장이 서면 차례로 올라오는 조각. 움직임을 줄였거나
+// 애니메이션이 못 돌면 lib/motion 의 안전망이 그대로 드러낸다.
+
+function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
+  const { t } = useLang();
+  switch (tab) {
+    case "intro":
+      return (
+        <div className="text-center">
+          <p data-item data-reveal className="inline-flex items-center gap-2 rounded-full border
+            border-line bg-panel px-3 py-1 text-[11px] text-muted">
             <span className="size-1.5 rounded-full" style={{ background: "var(--ok)" }} />
             {t("guide.badge")}
           </p>
-          <h1 className="mt-4 text-2xl font-bold leading-tight tracking-tight sm:text-4xl">
-            <FlingWords text={t("guide.title")} />
+          <h1 data-item data-reveal
+            className="mt-4 text-3xl font-bold leading-tight tracking-tight sm:text-5xl">
+            {t("guide.title")}
           </h1>
-          <p className="guide-head mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-muted
-            sm:text-base" data-reveal>
+          <p data-item data-reveal
+            className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
             <Filled text={t("guide.lead")} strong={t("guide.lead.strong")} />
           </p>
-          {canFling && (
-            <p className="guide-head mt-3 text-[11px] text-dim" data-reveal>
-              {t("guide.dragHint")}
-            </p>
-          )}
-        </header>
-
-        {/* ── 차례 ─────────────────────────────────────────────── */}
-        <nav aria-label={t("guide.toc")} className="mt-6 flex flex-wrap justify-center gap-1.5">
-          {SECTIONS.map(([id, key]) => (
-            <a key={id} href={`#${id}`}
-              className="rounded-full border border-line bg-panel px-2.5 py-1 text-[11px]
-                text-muted transition hover:border-accent hover:text-fg">
-              {t(key)}
-            </a>
-          ))}
-        </nav>
-
-        {/* ── 흐름 ─────────────────────────────────────────────── */}
-        <Section tilt={reduced ? undefined : tilt} id="flow" title={t("guide.flow.title")} lead={t("guide.flow.lead")}>
-          <div className="rounded-2xl border border-line bg-panel p-4 sm:p-6" data-reveal>
-            <PipelineFigure />
+          <p data-item data-reveal className="mt-8 text-sm font-semibold">
+            {t("guide.modes.title")}
+          </p>
+          <div className="mx-auto mt-3 grid max-w-3xl gap-3 text-left sm:grid-cols-2">
+            <Card title={t("office.auto")} icon="play">{t("guide.auto.body")}</Card>
+            <Card title={t("office.manual")} icon="person">{t("guide.manual.body")}</Card>
           </div>
-          <ol className="mt-4 grid gap-2 sm:grid-cols-2">
-            {STEPS.map((n) => (
-              <Fling key={n} as="li"
-                className="flex gap-3 rounded-xl border border-line bg-panel p-3">
-                <span className="grid size-6 shrink-0 place-items-center rounded-full
-                  text-[11px] font-bold text-white grad-accent">{n}</span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold">
-                    {t(`guide.step.${n}` as Key)}
-                  </span>
-                  <span className="mt-0.5 block text-xs leading-relaxed text-muted">
-                    {t(`guide.step.${n}.body` as Key)}
-                  </span>
-                </span>
-              </Fling>
-            ))}
-          </ol>
-        </Section>
+          <motion.button data-item data-reveal type="button" onClick={() => go(1)}
+            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}
+            className="mt-8 rounded-xl px-4 py-2 text-sm font-medium text-white grad-accent
+              shadow-[0_4px_14px_rgba(109,141,255,0.35)]">
+            {t("guide.tab.flow")} →
+          </motion.button>
+        </div>
+      );
 
-        {/* ── AUTO · MANUAL ────────────────────────────────────── */}
-        <Section tilt={reduced ? undefined : tilt} id="modes" title={t("guide.modes.title")}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Fling><Card title={t("office.auto")} icon="play">{t("guide.auto.body")}</Card></Fling>
-            <Fling><Card title={t("office.manual")} icon="person">
-              {t("guide.manual.body")}
-            </Card></Fling>
+    case "flow":
+      return (
+        <>
+          <Heading title={t("guide.flow.title")} lead={t("guide.flow.lead")} />
+          <div className="grid items-center gap-4 lg:grid-cols-[1.15fr_1fr]">
+            <div data-item data-reveal className="rounded-2xl border border-line bg-panel p-3">
+              <PipelineFigure />
+            </div>
+            <ol className="grid gap-2 sm:grid-cols-2">
+              {STEPS.map((n) => (
+                <li key={n} data-item data-reveal
+                  className="flex gap-2.5 rounded-xl border border-line bg-panel p-2.5">
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full
+                    text-[10px] font-bold text-white grad-accent">{n}</span>
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-semibold">
+                      {t(`guide.step.${n}` as Key)}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-muted">
+                      {t(`guide.step.${n}.body` as Key)}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
           </div>
-        </Section>
+        </>
+      );
 
-        {/* ── 직원 ─────────────────────────────────────────────── */}
-        <Section tilt={reduced ? undefined : tilt} id="staff" title={t("staff.title")} lead={t("staff.note")}>
-          <ul className="grid gap-2 sm:grid-cols-2">
+    case "staff":
+      return (
+        <>
+          <Heading title={t("staff.title")} lead={t("staff.note")} />
+          <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
             {STAFF.map((e) => (
-              <Fling key={e.id} as="li" color={`var(--${e.id})`}
+              <li key={e.id} data-item data-reveal
                 className="rounded-xl border border-line bg-panel p-3">
                 <div className="flex items-center gap-2">
                   <span className="grid size-8 place-items-center rounded-lg" aria-hidden
@@ -227,147 +405,163 @@ export default function GuidePage() {
                     ? <code className="rounded bg-panel2 px-1 py-0.5 text-fg">{e.writes}</code>
                     : t("guide.writes.none")}
                 </p>
-              </Fling>
+              </li>
             ))}
+            <li data-item data-reveal
+              className="flex items-center rounded-xl border border-dashed border-line p-3
+                text-xs leading-relaxed text-muted">
+              {t("guide.teams")} {t("office.card.teamHint")}
+            </li>
           </ul>
-          <p className="mt-3 text-xs leading-relaxed text-muted" data-reveal>
-            {t("guide.teams")} {t("office.card.teamHint")}
-          </p>
-        </Section>
+        </>
+      );
 
-        {/* ── 승인 지점 ────────────────────────────────────────── */}
-        <Section tilt={reduced ? undefined : tilt} id="gates" title={t("guide.gates.title")} lead={t("guide.gates.lead")}>
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {GATES.map(([name, hint]) => (
-              <Fling key={name} as="li" color="var(--st-approval)"
-                className="rounded-xl border border-line bg-panel p-3">
-                <p className="text-sm font-semibold" style={{ color: "var(--st-approval)" }}>
-                  ★ {t(name)}
-                </p>
-                <p className="mt-1 text-xs leading-relaxed text-muted">{t(hint)}</p>
-              </Fling>
-            ))}
-          </ul>
-          <h3 className="mt-5 text-sm font-semibold" data-reveal>{t("guide.decide.title")}</h3>
-          <dl className="mt-2 divide-y divide-line rounded-xl border border-line bg-panel"
-            data-reveal>
-            {DECISIONS.map((d) => (
-              <div key={d} className="flex gap-3 px-3 py-2 text-xs">
-                <dt className="w-20 shrink-0 font-semibold">{t(`approval.${d}` as Key)}</dt>
-                <dd className="text-muted">{t(`guide.decide.${d}` as Key)}</dd>
-              </div>
-            ))}
-          </dl>
-        </Section>
-
-        {/* ── 사무실 ───────────────────────────────────────────── */}
-        <Section tilt={reduced ? undefined : tilt} id="office" title={t("guide.office.title")} lead={t("guide.office.lead")}>
-          <ul className="space-y-1.5">
-            {STATES.map((s) => (
-              <Fling key={s} as="li" color={STATE_COLOR[s]}
-                className="flex items-center gap-3 rounded-xl border border-line
-                bg-panel px-3 py-2 text-xs">
-                <span className="size-3 shrink-0 rounded-full border-[3px]" aria-hidden
-                  style={{ borderColor: STATE_COLOR[s] }} />
-                <span className="w-20 shrink-0 font-semibold" style={{ color: STATE_COLOR[s] }}>
-                  {t(`office.state.${s}` as Key)}
-                </span>
-                <span className="text-muted">{t(`guide.state.${s}` as Key)}</span>
-              </Fling>
-            ))}
-          </ul>
-          <h3 className="mt-5 text-sm font-semibold" data-reveal>{t("guide.office.commands")}</h3>
-          <p className="mt-1 text-[11px] text-dim" data-reveal>{t("cmd.hint")}</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {COMMANDS.map((k) => (
-              <Fling key={k} className="rounded-full border border-line bg-panel px-2.5 py-1
-                text-[11px]">
-                {t(k)}
-              </Fling>
-            ))}
+    case "gates":
+      return (
+        <>
+          <Heading title={t("guide.gates.title")} lead={t("guide.gates.lead")} />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {GATES.map(([name, hint]) => (
+                <li key={name} data-item data-reveal
+                  className="rounded-xl border border-line bg-panel p-3">
+                  <p className="text-sm font-semibold" style={{ color: "var(--st-approval)" }}>
+                    ★ {t(name)}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted">{t(hint)}</p>
+                </li>
+              ))}
+            </ul>
+            <div data-item data-reveal>
+              <h3 className="text-sm font-semibold">{t("guide.decide.title")}</h3>
+              <dl className="mt-2 divide-y divide-line rounded-xl border border-line bg-panel">
+                {DECISIONS.map((d) => (
+                  <div key={d} className="flex gap-3 px-3 py-2.5 text-xs">
+                    <dt className="w-20 shrink-0 font-semibold">{t(`approval.${d}` as Key)}</dt>
+                    <dd className="text-muted">{t(`guide.decide.${d}` as Key)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
           </div>
-        </Section>
+        </>
+      );
 
-        {/* ── 돈 ───────────────────────────────────────────────── */}
-        <Section tilt={reduced ? undefined : tilt} id="money" title={t("guide.money.title")}>
-          <ul className="space-y-2 text-sm leading-relaxed text-muted">
-            {(["credits", "before", "plans", "byok"] as const).map((k) => (
-              <li key={k} className="flex gap-2" data-reveal>
-                <span className="mt-2 size-1.5 shrink-0 rounded-full"
-                  style={{ background: "var(--accent)" }} aria-hidden />
+    case "office":
+      return (
+        <>
+          <Heading title={t("guide.office.title")} lead={t("guide.office.lead")} />
+          <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
+            <ul className="space-y-1.5">
+              {STATES.map((s) => (
+                <li key={s} data-item data-reveal
+                  className="flex items-center gap-3 rounded-xl border border-line bg-panel
+                    px-3 py-2.5 text-xs">
+                  <span className="size-3 shrink-0 rounded-full border-[3px]" aria-hidden
+                    style={{ borderColor: STATE_COLOR[s] }} />
+                  <span className="w-20 shrink-0 font-semibold" style={{ color: STATE_COLOR[s] }}>
+                    {t(`office.state.${s}` as Key)}
+                  </span>
+                  <span className="text-muted">{t(`guide.state.${s}` as Key)}</span>
+                </li>
+              ))}
+            </ul>
+            <div data-item data-reveal className="rounded-xl border border-line bg-panel p-4">
+              <h3 className="text-sm font-semibold">{t("guide.office.commands")}</h3>
+              <p className="mt-1 text-[11px] text-dim">{t("cmd.hint")}</p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {COMMANDS.map((k) => (
+                  <span key={k} className="rounded-full border border-line bg-panel2 px-2.5 py-1
+                    text-[11px]">
+                    {t(k)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      );
+
+    case "money":
+      return (
+        <>
+          <Heading title={t("guide.money.title")} />
+          <ul className="grid gap-2.5 sm:grid-cols-2">
+            {(["credits", "before", "plans", "byok"] as const).map((k, i) => (
+              <li key={k} data-item data-reveal
+                className="flex gap-3 rounded-xl border border-line bg-panel p-4 text-sm
+                  leading-relaxed text-muted">
+                <span className="grid size-6 shrink-0 place-items-center rounded-full text-[11px]
+                  font-bold" style={{ background: "color-mix(in srgb, var(--accent) 18%, transparent)",
+                                      color: "var(--accent)" }}>{i + 1}</span>
                 <span>{t(`guide.money.${k}` as Key)}</span>
               </li>
             ))}
           </ul>
-        </Section>
+        </>
+      );
 
-        {/* ── 안전장치 ─────────────────────────────────────────── */}
-        <Section tilt={reduced ? undefined : tilt} id="safety" title={t("why.title")}>
+    case "safety":
+      return (
+        <>
+          <Heading title={t("why.title")} />
           <div className="grid gap-3 sm:grid-cols-2">
             {PROOFS.map((k) => (
-              <Fling key={k} className="rounded-xl border border-line bg-panel p-4">
+              <div key={k} data-item data-reveal className="rounded-xl border border-line bg-panel p-4">
                 <p className="text-sm font-semibold">{t(`why.${k}` as Key)}</p>
                 <p className="mt-1.5 text-xs leading-relaxed text-muted">
                   {t(`why.${k}.body` as Key)}
                 </p>
-              </Fling>
+              </div>
             ))}
           </div>
-        </Section>
+        </>
+      );
 
-        {/* ── 지금 상태 ────────────────────────────────────────── */}
-        <section id="honest" className="mt-12 scroll-mt-4" data-reveal-group>
-          <Panel title={t("honest.title")} data-reveal>
-            <ul className="space-y-1.5 text-xs leading-relaxed text-muted">
-              <li>· {t("honest.files")}</li>
-              <li>
-                · <Filled text={t("honest.injection")} strong={t("honest.injection.strong")} />
-              </li>
-              <li style={{ color: "var(--warn)" }}>· {t("honest.noRealRun")}</li>
-              <li style={{ color: "var(--warn)" }}>· {t("honest.noBilling")}</li>
-            </ul>
-          </Panel>
-        </section>
-
-        {/* ── 시작 ─────────────────────────────────────────────── */}
-        <section className="mt-12 text-center">
-          <h2 className="text-lg font-semibold">{t("guide.cta.title")}</h2>
-          <div className="mt-3 flex flex-wrap justify-center gap-2">
-            <CtaLink href="/" primary>{t("guide.cta.office")}</CtaLink>
-            <CtaLink href="/pricing">{t("guide.cta.pricing")}</CtaLink>
-            <CtaLink href="/settings">{t("guide.cta.keys")}</CtaLink>
+    case "honest":
+      return (
+        <>
+          <Heading title={t("honest.title")} />
+          <ul data-item data-reveal className="space-y-2 rounded-2xl border border-line bg-panel
+            p-5 text-sm leading-relaxed text-muted">
+            <li>· {t("honest.files")}</li>
+            <li>· <Filled text={t("honest.injection")} strong={t("honest.injection.strong")} /></li>
+            <li style={{ color: "var(--warn)" }}>· {t("honest.noRealRun")}</li>
+            <li style={{ color: "var(--warn)" }}>· {t("honest.noBilling")}</li>
+          </ul>
+          <div data-item data-reveal className="mt-8 text-center">
+            <h2 className="text-lg font-semibold">{t("guide.cta.title")}</h2>
+            <div className="mt-3 flex flex-wrap justify-center gap-2">
+              <CtaLink href="/" primary>{t("guide.cta.office")}</CtaLink>
+              <CtaLink href="/pricing">{t("guide.cta.pricing")}</CtaLink>
+              <CtaLink href="/settings">{t("guide.cta.keys")}</CtaLink>
+            </div>
           </div>
-        </section>
-      </article>
-      </FlingArea>
-    </div>
-  );
+        </>
+      );
+  }
 }
 
-function Section({ id, title, lead, children, tilt }: {
-  id: string; title: string; lead?: string; children: React.ReactNode;
-  /** 스크롤 속도만큼의 기울기(도). 움직임을 줄였으면 없다. */
-  tilt?: MotionValue<number>;
-}) {
+function Heading({ title, lead }: { title: string; lead?: string }) {
   return (
-    <section id={id} className="mt-12 scroll-mt-4" aria-labelledby={`${id}-title`}
-      data-reveal-group>
-      <h2 id={`${id}-title`} className="text-lg font-semibold tracking-tight" data-reveal>
+    <header className="mb-5">
+      <h2 data-item data-reveal className="text-xl font-semibold tracking-tight sm:text-2xl">
         {title}
       </h2>
-      {lead && <p className="mt-1 text-sm leading-relaxed text-muted" data-reveal>{lead}</p>}
-      <motion.div className="mt-4" style={tilt ? { skewY: tilt } : undefined}>
-        {children}
-      </motion.div>
-    </section>
+      {lead && (
+        <p data-item data-reveal className="mt-1.5 max-w-3xl text-sm leading-relaxed text-muted">
+          {lead}
+        </p>
+      )}
+    </header>
   );
 }
 
 function Card({ title, icon, children }: {
-  title: string; icon: "play" | "person"; children: React.ReactNode;
+  title: string; icon: "play" | "person"; children: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-line bg-panel p-4">
+    <div data-item data-reveal className="rounded-xl border border-line bg-panel p-4">
       <p className="flex items-center gap-2 text-sm font-semibold">
         <Icon name={icon} size={16} className="text-accent" />
         {title}
@@ -378,7 +572,7 @@ function Card({ title, icon, children }: {
 }
 
 function CtaLink({ href, primary = false, children }: {
-  href: string; primary?: boolean; children: React.ReactNode;
+  href: string; primary?: boolean; children: ReactNode;
 }) {
   return (
     <Link href={href}
