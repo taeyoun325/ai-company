@@ -111,9 +111,11 @@ class KeysReq(BaseModel):
 
 
 class StaffReq(BaseModel):
-    """이름과 채용 여부. 권한은 여기 없다 — 자리의 것이라 바꿀 수 없다."""
+    """이름 · 채용 여부 · 팀 배치. 권한은 여기 없다 — 자리의 것이라 바꿀 수 없다."""
     name: str | None = None
     active: bool | None = None
+    # 사무실에서 끌어다 옮긴 팀 (DAY 26). 빈 문자열이면 처음 팀으로.
+    team: str | None = None
 
 
 class ByokReq(BaseModel):
@@ -1013,6 +1015,10 @@ def update_employee(employee_id: str, req: StaffReq, request: Request):
             staff.rename(owner, employee_id, req.name)
         if req.active is not None:
             staff.set_active(owner, employee_id, req.active)
+        if req.team is not None:
+            staff.set_team(owner, employee_id, req.team)
+    except staff.UnknownTeam as e:
+        raise HTTPException(400, str(e))
     except ValueError as e:
         # 400 이 아니라 409 다. 형식이 틀린 것이 아니라 **지금 상태에서
         # 할 수 없는 일**이다 — 교차검증을 맡은 자리는 비울 수 없다.

@@ -10,12 +10,14 @@
 import { type Key, useLang } from "@/lib/i18n";
 import type { IntegrationItem, OfficeEmployee } from "@/lib/types";
 import { MockBadge, money } from "../ui";
-import { Avatar, BUBBLE_KEY, STATE_COLOR } from "./OfficeFloor";
+import { Avatar, BUBBLE_KEY, STATE_COLOR, TEAMS } from "./OfficeFloor";
 
-export function EmployeeCard({ e, items, onClose }: {
+export function EmployeeCard({ e, items, onClose, onMove }: {
   e: OfficeEmployee;
   items: IntegrationItem[];
   onClose: () => void;
+  /** 다른 팀으로 옮긴다 — 평면도에서 끄는 것과 같은 일을 키보드로 (DAY 26). */
+  onMove?: (team: string) => void;
 }) {
   const { t } = useLang();
   const blocked = items.filter((i) => i.affects.includes(e.id));
@@ -49,6 +51,25 @@ export function EmployeeCard({ e, items, onClose }: {
         <Cell k={t("office.card.latency")}
           v={e.avg_ms != null ? `${(e.avg_ms / 1000).toFixed(1)}s` : "—"} />
       </dl>
+
+      {onMove && e.hired && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <label className="flex items-center gap-2">
+            <span className="text-dim">{t("office.card.team")}</span>
+            <select value={e.dept} onChange={(ev) => onMove(ev.target.value)}
+              className="rounded-lg border border-line bg-[color:var(--panel-2)] px-2 py-1
+                text-xs outline-none focus:border-accent">
+              {TEAMS.map((d) => (
+                <option key={d} value={d}>
+                  {t(`office.dept.${d}` as Key)}
+                  {d === e.home_dept ? ` (${t("office.card.homeTeam")})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="text-[11px] text-dim">{t("office.card.teamHint")}</span>
+        </div>
+      )}
 
       {blocked.length > 0 && (
         <ul className="mt-3 space-y-1 text-xs">

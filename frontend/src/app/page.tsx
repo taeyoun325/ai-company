@@ -236,6 +236,19 @@ export default function OfficePage() {
   const allMock = providers?.all_mock ?? false;
   const [mockDismissed, dismissMockWarn] = useSessionFlag("mock-warn-dismissed");
   const picked = snap?.employees.find((e) => e.id === selected) ?? null;
+
+  // 팀 배치 (DAY 26) — 평면도에서 끌어다 놓거나 직원 카드에서 고른다.
+  // 실패하면(없는 팀 · 연결 끊김) 다시 읽어 원래 자리로 돌린다.
+  const moveTeam = async (id: string, team: string) => {
+    setError(null);
+    try {
+      await api.updateEmployee(id, { team });
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      await office.reload();
+    }
+  };
   const liveGates = run && run.status !== "done" ? snap?.gates ?? [] : gates;
 
   return (
@@ -328,9 +341,11 @@ export default function OfficePage() {
               <ScenarioStrip steps={snap.scenario} />
               <OfficeFloor snap={snap} events={stream.events} focus={focus}
                 meetingCall={meetingCall} selected={selected} onSelect={setSelected}
+                onMove={moveTeam}
                 arrivalKey={arrivalKey} />
               {picked && (
                 <EmployeeCard e={picked} items={snap.integrations}
+                  onMove={(team) => void moveTeam(picked.id, team)}
                   onClose={() => setSelected(null)} />
               )}
               <IntegrationList items={snap.integrations} />

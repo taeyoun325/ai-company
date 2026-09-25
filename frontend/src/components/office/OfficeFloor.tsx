@@ -23,6 +23,16 @@
  *   것처럼 보이면 안 된다.
  * - 실행이 막 시작되면 전원이 입구에서 각자 자리로 걸어 들어간다(출근).
  *
+ * ## 팀 배치 — 끌어다 놓는다 (DAY 26)
+ *
+ * 직원을 끌어 다른 팀 칸에 놓으면 그 팀으로 옮긴다(`onMove`). 서버의 인사
+ * 기록(`agents/staff.py`)이 바뀌고, 권한은 그대로다 — 개발자를 문서팀에
+ * 앉혀도 `src/` 에만 쓴다. 한 팀에 여럿이면 칸 안에 나눠 앉는다.
+ *
+ * 마우스와 터치 둘 다 되도록 포인터 이벤트로 끈다(HTML5 드래그는 터치에서
+ * 안 된다). 6px 넘게 움직여야 끌기다 — 그보다 적으면 여느 때처럼 누른 것
+ * (선택)이다. 키보드로는 직원 카드의 "소속 팀" 목록에서 고른다.
+ *
  * ## 좁은 화면
  *
  * 폰에서는 평면도의 칸이 너무 좁아 말풍선이 겹친다. 같은 정보를 부서별
@@ -45,21 +55,64 @@ export const STATE_COLOR: Record<OfficeEmployee["state"], string> = {
 
 type Pt = { x: number; y: number };
 
-// 자리 배치 — 평면도 전체를 100×100 으로 본 좌표(%).
-const DESK: Record<string, Pt> = {
-  strategist: { x: 8.5, y: 62 },
-  analyst: { x: 25.5, y: 62 },
-  developer: { x: 42.5, y: 62 },
-  writer: { x: 59.5, y: 62 },
-  designer: { x: 76.5, y: 62 },
-};
-const DEPT_ROOMS = [
+// 팀 칸 — 평면도 전체를 100×100 으로 본 좌표(%). `id` 는 칸 색을 빌려 올
+// 처음 주인(직원)이다. 칸은 y 38–88 에 있다.
+export const DEPT_ROOMS = [
   { id: "strategist", dept: "strategy", x: 0, w: 17 },
   { id: "analyst", dept: "qa", x: 17, w: 17 },
   { id: "developer", dept: "dev", x: 34, w: 17 },
   { id: "writer", dept: "docs", x: 51, w: 17 },
   { id: "designer", dept: "design", x: 68, w: 17 },
 ];
+export const TEAMS = DEPT_ROOMS.map((r) => r.dept);
+const ROOM_TOP = 38;
+const ROOM_BOTTOM = 88;
+
+// w — 이 자리가 쓸 수 있는 폭(평면도 %). crowded — 한 칸에 둘 이상이라
+// 말풍선을 접는다(상태는 테두리 색과 이름표에 남는다).
+type Slot = { pt: Pt; w: number; crowded: boolean };
+
+/**
+ * 팀마다 앉은 사람들의 자리. 한 명이면 칸 가운데(DAY 25 와 같은 자리),
+ * 둘이면 위아래, 셋 이상이면 두 줄로 나눠 앉는다. 말풍선과 이름표 폭도
+ * 그 자리 폭을 넘지 않게 돌려준다 — 넘으면 옆 사람과 겹친다.
+ */
+function deskSlots(employees: OfficeEmployee[],
+                   teamOf: (e: OfficeEmployee) => string): Record<string, Slot> {
+  const groups = new Map<string, OfficeEmployee[]>();
+  for (const e of employees) {
+    const d = TEAMS.includes(teamOf(e)) ? teamOf(e) : "dev";
+    groups.set(d, [...(groups.get(d) ?? []), e]);
+  }
+  const out: Record<string, Slot> = {};
+  for (const room of DEPT_ROOMS) {
+    const members = groups.get(room.dept) ?? [];
+    const n = members.length;
+    const cols = n <= 2 ? 1 : 2;
+    const rows = Math.ceil(n / cols);
+    members.forEach((e, i) => {
+      const c = cols === 1 ? 0 : i % cols;
+      const r = cols === 1 ? i : Math.floor(i / cols);
+      // 두 칸이면 칸의 1/4 · 3/4 지점 — 자리 폭(w)과 중심 간격이 같아
+      // 옆 사람과 겹칠 수 없다.
+      const x = room.x + room.w * (cols === 1 ? 0.5 : c === 0 ? 0.25 : 0.75);
+      // 여럿이면 말풍선을 접으므로 자리 높이(~60px)만 벌리면 된다. 첫 줄은
+      // 팀 이름표 아래, 마지막 줄은 칸 안에 둔다(평면도 높이 380px 에서도).
+      // 한 칸에 둘 이상이면 말풍선이 옆·위 사람을 덮는다 — DAY 26 화면
+      // 시험이 1280px 에서 잡았다.
+      const y = n === 1 ? 62 : rows === 2 ? 55 + r * 23 : 52 + r * (28 / (rows - 1));
+      out[e.id] = { pt: { x, y }, w: room.w / cols - 0.4, crowded: n >= 2 };
+    });
+  }
+  return out;
+}
+
+/** 평면도 좌표(%)가 가리키는 팀 칸. 칸 밖이면 null. */
+function teamAt(x: number, y: number): string | null {
+  if (y < ROOM_TOP || y > ROOM_BOTTOM) return null;
+  const room = DEPT_ROOMS.find((r) => x >= r.x && x < r.x + r.w);
+  return room ? room.dept : null;
+}
 // 회의실 좌석 — 탁자(가운데) 위아래 두 줄. 말풍선이 옆 사람과 겹치지 않게
 // 가로 간격을 탁자 폭만큼 벌린다.
 const SEATS: Pt[] = [
@@ -109,6 +162,7 @@ const LINE_EVERY_MS = 1300;
 
 export function OfficeFloor({
   snap, events, focus, meetingCall, selected, onSelect, arrivalKey, still = false,
+  onMove,
 }: {
   snap: OfficeSnapshot;
   events: BusEvent[];
@@ -121,8 +175,78 @@ export function OfficeFloor({
   onSelect: (id: string | null) => void;
   /** 바뀌면 전원이 입구에서 출근한다(새 실행이 시작됐을 때). */
   arrivalKey: string | null;
+  /** 직원을 다른 팀으로 끌어다 놓았다. 없으면 끌 수 없다. 끝나면(성공이든
+   *  실패든) 풀리는 약속을 돌려주면, 그 뒤의 사무실 기록이 자리를 정한다. */
+  onMove?: (id: string, team: string) => Promise<unknown> | void;
 }) {
   const { t } = useLang();
+
+  // ── 팀 배치 · 끌기 ─────────────────────────────────────────────
+  // 놓자마자 새 자리에 보이도록 서버 답을 기다리지 않는다(낙관적 표시).
+  // 저장이 끝난 **뒤에 온** 사무실 기록부터는 서버가 이긴다 — 거절됐으면
+  // 그 기록이 원래 자리로 돌려놓는다. `seen` 은 저장이 끝난 순간 화면이
+  // 들고 있던 기록의 시각이다(아직 안 끝났으면 null).
+  const floorRef = useRef<HTMLDivElement>(null);
+  const [pending, setPending] = useState<Record<string, { team: string;
+    seen: number | null }>>({});
+  const [drag, setDrag] = useState<{ id: string; x: number; y: number;
+    over: string | null } | null>(null);
+  const justDragged = useRef(false);
+  const snapNow = useRef(snap.now);
+  useEffect(() => {
+    snapNow.current = snap.now;
+  }, [snap.now]);
+  const teamOf = (e: OfficeEmployee) => {
+    const p = pending[e.id];
+    return p && (p.seen === null || snap.now <= p.seen) ? p.team : e.dept;
+  };
+  const slots = deskSlots(snap.employees, teamOf);
+
+  const startDrag = (ev: React.PointerEvent<HTMLButtonElement>, e: OfficeEmployee) => {
+    if (!onMove || !e.hired || ev.button !== 0) return;
+    const floor = floorRef.current;
+    if (!floor) return;
+    const target = ev.currentTarget;
+    const sx = ev.clientX;
+    const sy = ev.clientY;
+    let moved = false;
+    const at = (cx: number, cy: number) => {
+      const r = floor.getBoundingClientRect();
+      const x = Math.min(100, Math.max(0, ((cx - r.left) / r.width) * 100));
+      const y = Math.min(100, Math.max(0, ((cy - r.top) / r.height) * 100));
+      return { x, y, over: teamAt(x, y) };
+    };
+    const move = (m: PointerEvent) => {
+      if (!moved && Math.hypot(m.clientX - sx, m.clientY - sy) < 6) return;
+      moved = true;
+      setDrag({ id: e.id, ...at(m.clientX, m.clientY) });
+    };
+    const done = (u: PointerEvent, cancelled: boolean) => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", up);
+      target.removeEventListener("pointercancel", cancel);
+      setDrag(null);
+      if (!moved) return;
+      justDragged.current = true;          // 이어서 오는 click 은 선택이 아니다
+      const team = cancelled ? null : at(u.clientX, u.clientY).over;
+      if (team && team !== teamOf(e)) {
+        setPending((p) => ({ ...p, [e.id]: { team, seen: null } }));
+        void Promise.resolve(onMove(e.id, team)).finally(() => {
+          setPending((p) => ({ ...p, [e.id]: { team, seen: snapNow.current } }));
+        });
+      }
+    };
+    const up = (u: PointerEvent) => done(u, false);
+    const cancel = (u: PointerEvent) => done(u, true);
+    try {
+      target.setPointerCapture(ev.pointerId);
+    } catch {
+      // 캡처를 못 잡아도 대상 위에서는 끌린다.
+    }
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", up);
+    target.addEventListener("pointercancel", cancel);
+  };
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -173,7 +297,7 @@ export function OfficeFloor({
     }
     for (const e of snap.employees) {
       if (!e.hired) {
-        out[e.id] = { pt: DESK[e.id] ?? ENTRANCE, mode: "away" };
+        out[e.id] = { pt: slots[e.id]?.pt ?? ENTRANCE, mode: "away" };
         continue;
       }
       if (arriving) {
@@ -192,15 +316,18 @@ export function OfficeFloor({
           continue;
         }
         if (roll === 1) {
-          out[e.id] = { pt: DESK[e.id], mode: "desk", self: true,
+          out[e.id] = { pt: slots[e.id]?.pt ?? ENTRANCE, mode: "desk", self: true,
                         line: t(`office.catch.${e.id}.${tick % 2 ? 1 : 2}` as Key) };
           continue;
         }
       }
-      out[e.id] = { pt: DESK[e.id] ?? ENTRANCE, mode: "desk" };
+      out[e.id] = { pt: slots[e.id]?.pt ?? ENTRANCE, mode: "desk" };
     }
     return out;
-  }, [snap.employees, arriving, inCall, meetingCall, handoffLive, focus, still, tick, t]);
+    // `slots` 는 매번 새로 만들지만 값은 `snap.employees`·`pending` 에서만 나온다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snap.employees, pending, arriving, inCall, meetingCall, handoffLive, focus, still,
+      tick, t]);
 
   // ── 회의실에서 지금 말하는 한 줄 ────────────────────────────────
   const speaking = useMemo(() => {
@@ -222,9 +349,11 @@ export function OfficeFloor({
       {/* 넓은 화면 — 평면도 */}
       {/* `@container` — 말풍선이 자리 폭(17%)을 넘지 않게 `cqw` 로 잰다 (DAY 26).
           고정 132px 이면 1280px 화면에서 옆자리 말풍선과 겹쳤다. */}
-      <div className="@container glass glass-lit relative hidden aspect-[16/10] min-h-[380px]
+      <div ref={floorRef}
+        className="@container glass glass-lit relative hidden aspect-[16/10] min-h-[380px]
         w-full overflow-hidden sm:block" role="group" aria-label={t("office.floor.alt")}>
-        <Rooms approval={!!approval} t={t} />
+        <Rooms approval={!!approval} t={t} dropTarget={drag?.over ?? null}
+          dragging={!!drag} />
 
         {/* 회의실 탁자와 지금 말하는 한 줄 */}
         <div className="absolute left-1/2 top-[21%] -translate-x-1/2 -translate-y-1/2
@@ -256,14 +385,29 @@ export function OfficeFloor({
         {snap.employees.map((e) => {
           const p = places[e.id];
           if (!p) return null;
+          const held = drag?.id === e.id;
+          // 책상에 앉은 사람만 자리 폭에 맞춘다. 회의실·휴게실은 넓다.
+          const width = p.mode === "desk" || p.mode === "away"
+            ? slots[e.id]?.w ?? 17 : 17;
           return (
-            <Token key={e.id} e={e} at={p.pt} mode={p.mode}
+            <Token key={e.id} e={e} at={held ? { x: drag.x, y: drag.y } : p.pt}
+              mode={held ? "desk" : p.mode} held={held} width={width}
+              draggable={!!onMove && e.hired}
+              team={t(`office.dept.${teamOf(e)}` as Key)}
               line={p.line} self={p.self} now={now} snapNow={snap.now}
               speech={lastSpeaker?.who === e.id ? lastSpeaker.text : null}
-              quiet={p.mode === "meeting" && e.state !== "approval"
-                && lastSpeaker?.who !== e.id}
+              quiet={held || (p.mode === "desk" && !!slots[e.id]?.crowded)
+                || (p.mode === "meeting" && e.state !== "approval"
+                  && lastSpeaker?.who !== e.id)}
               selected={selected === e.id}
-              onClick={() => onSelect(selected === e.id ? null : e.id)} />
+              onPointerDown={(ev) => startDrag(ev, e)}
+              onClick={() => {
+                if (justDragged.current) {
+                  justDragged.current = false;
+                  return;
+                }
+                onSelect(selected === e.id ? null : e.id);
+              }} />
           );
         })}
 
@@ -291,7 +435,7 @@ export function OfficeFloor({
                 <span className="flex items-center gap-1.5 text-sm font-medium">
                   {e.name}
                   <span className="text-[11px] text-dim">
-                    {t(`office.dept.${e.dept}` as Key)}
+                    {t(`office.dept.${teamOf(e)}` as Key)}
                   </span>
                   {e.mock && <MockBadge className="scale-90" />}
                 </span>
@@ -322,9 +466,12 @@ function hash(s: string) {
 }
 
 /** 방 경계와 이름. 장식이 아니라 "어디에 있나"를 읽는 격자다. */
-function Rooms({ approval, t }: {
+function Rooms({ approval, t, dropTarget, dragging }: {
   approval: boolean;
   t: (k: Key, v?: Record<string, string | number>) => string;
+  /** 지금 끌고 있는 직원을 놓으면 들어갈 팀. */
+  dropTarget: string | null;
+  dragging: boolean;
 }) {
   const box = (x: number, y: number, w: number, h: number) => ({
     left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%`,
@@ -345,14 +492,27 @@ function Rooms({ approval, t }: {
       <div className={room} style={{ ...style, ...box(74, 0, 26, 38) }}>
         <span className={label}>{t("office.room.secretary")}</span>
       </div>
-      {DEPT_ROOMS.map((r) => (
-        <div key={r.id} className={room}
-          style={{ ...style, ...box(r.x, 38, r.w, 50) }}>
-          <span className={label} style={{ color: `var(--${r.id})` }}>
-            {t(`office.dept.${r.dept}` as Key)}
-          </span>
-        </div>
-      ))}
+      {DEPT_ROOMS.map((r) => {
+        const over = dropTarget === r.dept;
+        return (
+          <div key={r.id} className={`${room} transition-colors`} data-team={r.dept}
+            style={{ ...style, ...box(r.x, ROOM_TOP, r.w, ROOM_BOTTOM - ROOM_TOP),
+                     ...(over ? {
+                       borderColor: `var(--${r.id})`, borderWidth: 2,
+                       background: `color-mix(in srgb, var(--${r.id}) 14%, var(--floor))`,
+                     } : dragging ? { borderStyle: "dashed" } : {}) }}>
+            <span className={label} style={{ color: `var(--${r.id})` }}>
+              {t(`office.dept.${r.dept}` as Key)}
+            </span>
+            {over && (
+              <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap
+                text-[10px] font-semibold" style={{ color: `var(--${r.id})` }}>
+                {t("office.dropHere")}
+              </span>
+            )}
+          </div>
+        );
+      })}
       <div className={room} style={{ ...style, ...box(85, 38, 15, 50) }}>
         <span className={label}>{t("office.room.lounge")}</span>
       </div>
@@ -419,10 +579,19 @@ function Speech({ at, text, who, name }: {
 }
 
 function Token({ e, at, mode, line, self, now, snapNow, selected, onClick,
-                 speech = null, quiet = false }: {
+                 speech = null, quiet = false, held = false, width = 17,
+                 draggable = false, team, onPointerDown }: {
   e: OfficeEmployee; at: Pt; mode: "desk" | "meeting" | "lounge" | "away";
   line?: string; self?: boolean; now: number; snapNow: number;
   selected: boolean; onClick: () => void;
+  /** 지금 끌려가는 중 — 걷는 애니메이션 없이 포인터를 바로 따라간다. */
+  held?: boolean;
+  /** 이 자리가 쓸 수 있는 폭(평면도 %). 말풍선·이름표가 넘지 않는다. */
+  width?: number;
+  draggable?: boolean;
+  /** 소속 팀 이름 — 마우스를 올리면 보인다. */
+  team?: string;
+  onPointerDown?: (ev: React.PointerEvent<HTMLButtonElement>) => void;
   /** 회의에서 지금 이 사람이 말하는 한 줄. */
   speech?: string | null;
   /** 회의 중 말하지 않는 사람 — 말풍선을 접는다(한 명씩만 말한다). */
@@ -435,12 +604,18 @@ function Token({ e, at, mode, line, self, now, snapNow, selected, onClick,
   const bubble = mode === "lounge" ? t("office.bubble.lounge")
     : line ?? t(BUBBLE_KEY[e.state]);
   return (
-    <button type="button" onClick={onClick}
-      title={`${e.name} · ${t(`office.state.${e.state}` as Key)} — ${e.reason}`}
+    <button type="button" onClick={onClick} onPointerDown={onPointerDown}
+      title={`${e.name}${team ? ` · ${team}` : ""} · ${t(`office.state.${e.state}` as Key)}`
+        + ` — ${e.reason}` + (draggable ? `\n${t("office.dragHint")}` : "")}
       aria-label={`${e.name}: ${t(`office.state.${e.state}` as Key)} — ${e.reason}`}
-      className="walker absolute z-10 flex w-[120px] -translate-x-1/2 -translate-y-1/2
-        flex-col items-center"
-      style={{ left: `${at.x}%`, top: `${at.y}%` }}>
+      data-employee={e.id}
+      className={`walker absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center
+        ${held ? "z-40 cursor-grabbing opacity-90" : "z-10"}
+        ${draggable && !held ? "cursor-grab" : ""}`}
+      style={{ left: `${at.x}%`, top: `${at.y}%`,
+               width: `min(120px, ${width}cqw)`,
+               ...(held ? { transition: "none" } : {}),
+               ...(draggable ? { touchAction: "none" } : {}) }}>
       {speech && (
         <span key={speech}
           className={`bubble absolute left-1/2 z-30 w-[220px] rounded-xl border
@@ -453,9 +628,10 @@ function Token({ e, at, mode, line, self, now, snapNow, selected, onClick,
       )}
       {mode !== "away" && !speech && !quiet && (
         <span key={bubble}
-          className={`bubble absolute -top-9 left-1/2 max-w-[min(132px,16cqw)] truncate rounded-lg border
+          className={`bubble absolute -top-9 left-1/2 truncate rounded-lg border
             px-2 py-0.5 text-[10px] shadow ${self ? "italic" : "font-medium"}`}
           style={{
+            maxWidth: `min(132px, ${Math.max(4, width - 1)}cqw)`,
             background: "var(--panel-solid)",
             borderColor: self ? "var(--line)" : STATE_COLOR[e.state],
             color: self ? "var(--muted)" : "var(--fg)",
@@ -468,12 +644,14 @@ function Token({ e, at, mode, line, self, now, snapNow, selected, onClick,
         : ""}`} style={{ ["--tw-ring-offset-color" as string]: "var(--bg)" }}>
         <Avatar e={e} />
       </span>
-      <span className="mt-1 flex items-center gap-1 text-[11px] font-medium">
-        {e.name}
-        {e.mock && <span className="text-[9px] font-bold" style={{ color: "var(--mock)" }}>M</span>}
+      <span className="mt-1 flex max-w-full items-center gap-1 text-[11px] font-medium">
+        <span className="truncate">{e.name}</span>
+        {e.mock && <span className="shrink-0 text-[9px] font-bold"
+          style={{ color: "var(--mock)" }}>M</span>}
       </span>
       {mode !== "away" && e.state === "working" && e.task?.title && (
-        <span className="max-w-[min(118px,16cqw)] truncate text-[10px] text-dim">
+        <span className="truncate text-[10px] text-dim"
+          style={{ maxWidth: `min(118px, ${Math.max(4, width - 1)}cqw)` }}>
           {e.task.title}
         </span>
       )}

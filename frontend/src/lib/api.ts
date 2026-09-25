@@ -232,7 +232,8 @@ export const api = {
   providers: () => call<ProviderStatus>("/api/providers"),
 
   // ── 인사 (DAY 21) ───────────────────────────────────────────────
-  updateEmployee: (id: string, patch: { name?: string; active?: boolean }) =>
+  updateEmployee: (id: string,
+                   patch: { name?: string; active?: boolean; team?: string }) =>
     call<{ ok: boolean; employees: Employee[] }>(
       `/api/employees/${seg(id)}`,
       { method: "PATCH", body: JSON.stringify(patch) },

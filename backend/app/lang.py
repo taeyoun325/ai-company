@@ -320,6 +320,11 @@ _M: dict[str, dict[str, str]] = {
     },
     "test.none": {"ko": "테스트 없음", "en": "no tests", "ja": "テストなし"},
     "test.notRun": {"ko": "미실행", "en": "not run", "ja": "未実行"},
+    "staff.badTeam": {
+        "ko": "없는 팀입니다: {team} (가능: {allowed})",
+        "en": "No such team: {team} (allowed: {allowed})",
+        "ja": "存在しないチームです: {team}（可能: {allowed}）",
+    },
     "test.timeout": {
         "ko": "타임아웃 ({n}초)", "en": "timed out ({n}s)", "ja": "タイムアウト（{n} 秒）",
     },

@@ -26,6 +26,14 @@ AUTO 는 기획 → 구현 → 교차검증 → 검수로 돈다. 이 중 하나
 **내보낼 수 없다는 사실을 화면이 말해야 한다.** 버튼만 막아두면 사용자는
 고장인 줄 안다.
 
+## 팀 배치도 고객의 것이다 (DAY 26)
+
+사무실에서 직원을 끌어다 다른 팀 자리에 앉힐 수 있다. 이것도 이름처럼
+**인사 기록**이다 — 개발자를 문서팀에 앉혀도 여전히 `src/` 에만 쓰고,
+문서팀 소속이라고 `docs/` 에 쓸 수 있게 되지 않는다. 권한을 넓히는 길은
+따로 있고(프로젝트별 권한 · `agents/permissions.py`), 거기는 위험을 확인받는다.
+자리 배치 한 번으로 권한 경계가 움직이면 그 확인이 무의미해진다.
+
 ## 이름은 고객의 것이다
 
 기본 이름(한지수·박도현…)은 우리가 지은 것이고, 자기 회사 직원 이름을
@@ -42,6 +50,11 @@ from app.agents import roles
 
 # 내보낼 수 없는 자리. 이유는 위 문서에 있다.
 CORE = ("strategist", "developer", "analyst")
+
+# 사무실의 팀(부서) — 평면도의 칸과 같은 순서. 직원마다 처음 앉는 팀이 있다.
+TEAMS = ("strategy", "qa", "dev", "docs", "design")
+HOME_TEAM = {"strategist": "strategy", "analyst": "qa", "developer": "dev",
+             "writer": "docs", "designer": "design"}
 
 MAX_NAME = 24
 
@@ -94,6 +107,14 @@ def is_active(owner: str, employee_id: str) -> bool:
     return True if value is None else bool(value)      # 기본은 채용 상태
 
 
+def team_of(owner: str, employee_id: str) -> str:
+    """이 테넌트가 이 직원을 앉힌 팀. 옮긴 적이 없으면 처음 팀."""
+    team = _row(owner, employee_id).get("team")
+    if team in TEAMS:
+        return team
+    return HOME_TEAM.get(employee_id, "etc")
+
+
 def active_ids(owner: str) -> list[str]:
     return [i for i in roles.ids() if is_active(owner, i)]
 
@@ -142,6 +163,32 @@ def set_active(owner: str, employee_id: str, active: bool) -> None:
         _save()
 
 
+class UnknownTeam(ValueError):
+    """없는 팀으로 옮기려 했다."""
+
+
+def set_team(owner: str, employee_id: str, team: str | None) -> str:
+    """직원을 다른 팀 자리로 옮긴다. 비우면 처음 팀으로 돌아간다.
+
+    권한은 바뀌지 않는다 — 위 "팀 배치도 고객의 것이다" 참조.
+    """
+    from app import lang
+    if not roles.exists(employee_id):
+        raise KeyError(f"없는 직원: {employee_id}")
+    team = (team or "").strip()
+    if team and team not in TEAMS:
+        raise UnknownTeam(lang.t("staff.badTeam", team=team,
+                                 allowed=", ".join(TEAMS)))
+    with _lock:
+        row = _load().setdefault(owner, {}).setdefault(employee_id, {})
+        if team and team != HOME_TEAM.get(employee_id):
+            row["team"] = team
+        else:
+            row.pop("team", None)        # 처음 팀이면 기록을 남기지 않는다
+        _save()
+    return team_of(owner, employee_id)
+
+
 def overlay(owner: str) -> dict[str, dict]:
     """화면에 내려보낼 인사 정보 한 벌."""
     return {
@@ -151,6 +198,8 @@ def overlay(owner: str) -> dict[str, dict]:
             "active": is_active(owner, i),
             "can_fire": can_fire(i),
             "fire_reason": fire_reason(i),
+            "team": team_of(owner, i),
+            "home_team": HOME_TEAM.get(i, "etc"),
         }
         for i in roles.ids()
     }

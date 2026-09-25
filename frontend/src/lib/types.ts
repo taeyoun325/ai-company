@@ -240,7 +240,10 @@ export type OfficeState = "done" | "working" | "approval" | "integration" | "idl
 export interface OfficeEmployee {
   id: string;
   name: string;
+  /** 지금 앉은 팀. 대표가 끌어다 옮길 수 있다 (DAY 26 · agents/staff.py). */
   dept: string;
+  /** 처음 팀 — 옮긴 적이 없으면 `dept` 와 같다. */
+  home_dept?: string;
   role: string;
   provider: string;
   hired: boolean;

@@ -48,8 +48,8 @@ from app.orchestrator import engine
 STATES = ("done", "working", "approval", "integration", "idle")
 
 # 부서 — 자리 배치와 비서실의 말투가 이 이름을 쓴다.
-DEPT = {"strategist": "strategy", "developer": "dev", "analyst": "qa",
-        "writer": "docs", "designer": "design"}
+# 처음 앉는 팀. 대표가 옮기면(`staff.set_team`) 그 기록이 이긴다 (DAY 26).
+DEPT = staff.HOME_TEAM
 
 # 하루 시나리오 (사규 §3) — 이 제품의 파이프라인에 맞춘 12단계.
 SCENARIO = ("arrive", "plan", "plan_gate", "tests", "implement", "pytest",
@@ -189,7 +189,8 @@ def snapshot(owner: str = "local", slug: str | None = None,
         done_n = sum(1 for t in mine if t.get("status") == "done")
         u = usage_rows.get(e.id) or {}
         row = {
-            "id": e.id, "name": names[e.id], "dept": DEPT.get(e.id, "etc"),
+            "id": e.id, "name": names[e.id], "dept": staff.team_of(owner, e.id),
+            "home_dept": DEPT.get(e.id, "etc"),
             "role": e.info()["role"], "provider": e.provider,
             "hired": hired, "mock": e.id in blocked,
             "task": None, "progress": {"done": done_n, "total": len(mine)},

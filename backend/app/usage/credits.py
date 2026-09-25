@@ -206,11 +206,12 @@ def wallet(owner: str = "local") -> Wallet:
 
 
 def set_plan(owner: str, name: str) -> Wallet:
-    """요금제를 바꾸면 그 달치 크레딧을 새로 준다.
+    """요금제를 바꾼다 — 올리면 **차이만** 더 주고, 내리면 아무것도 안 준다.
 
-    바뀐 요금제의 크레딧을 **더해주지** 않고 새로 세팅하지도 않는 이유:
-    이미 쓴 것은 쓴 것이다. 남은 잔액은 그대로 두고 새 요금제의 몫만
-    더한다. 요금제를 오가며 크레딧을 무한히 받는 길을 막는다.
+    한 기간에 받는 크레딧은 그동안 고른 요금제 중 가장 큰 것의 몫까지다
+    (`wallet_store.add_plan`). DAY 22 까지는 새 요금제를 고를 때마다 그 몫을
+    통째로 더해서, 요금제를 바꿀 때마다 잔액이 올랐다. 이미 쓴 것은 쓴
+    것이다 — 잔액을 새로 세팅하지 않는다.
     """
     if name not in config.PLANS:
         raise ValueError(lang.t("plan.unknown", name=name))
@@ -219,7 +220,9 @@ def set_plan(owner: str, name: str) -> Wallet:
         # SaaS 에서 한 번의 요청으로 얻어진다.
         raise ValueError(lang.t("plan.notSelectable", name=name))
     wallet(owner)                       # 없으면 만든다
-    wallet_store.add_plan(owner, name, float(plan(name).get("credits", 0)))
+    allowance = {k: float(v.get("credits", 0) or 0)
+                 for k, v in config.PLANS.items()}
+    wallet_store.add_plan(owner, name, allowance)
     return wallet(owner)
 
 

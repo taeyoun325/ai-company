@@ -142,16 +142,26 @@ def create(owner: str, plan: str, granted: float) -> dict:
     return get(owner) or {}
 
 
-def add_plan(owner: str, plan: str, credits: float) -> bool:
-    """요금제를 바꾼다.
+def add_plan(owner: str, plan: str, allowance: dict[str, float]) -> float:
+    """요금제를 바꾼다. 돌려주는 값은 이번 전환으로 **더 준** 크레딧.
 
-    이 요금제로 크레딧을 받은 게 **처음**이면 그 몫을 더한다. 전에 이미
-    받은 적이 있으면(전에 골랐다가 다른 데로 갔다가 돌아온 경우 포함)
-    요금제만 바뀌고 크레딧은 다시 주지 않는다 — 두 요금제를 번갈아
-    누르면 누를 때마다 크레딧이 쌓이는 길을 막는다. 이미 쓴 것은
-    그대로 둔다.
+    ## 한 기간에 받는 크레딧은 "고른 요금제 중 가장 큰 것"까지다 (DAY 26)
 
-    반환값은 이번 전환에서 크레딧을 실제로 줬는지.
+    DAY 22 까지는 요금제마다 **처음 고를 때 그 몫을 통째로** 더했다. 같은
+    요금제를 번갈아 누르는 길은 막았지만, 스타터 → 프로 → 비즈니스를 한 번씩
+    누르면 500 + 1,300 + 2,700 이 쌓였다 — 요금제를 바꿀 때마다 잔액이
+    올랐다(사용자 신고). 한 달에 비즈니스 요금제 하나를 산 사람이 받을 것은
+    2,700 이다.
+
+    이제 지금까지 받은 요금제들의 몫 중 가장 큰 값(`allowance` 로 계산)을
+    넘는 **차이만** 더한다:
+
+    - 올리면(스타터 → 프로) 차이(800)만 받는다.
+    - 내리거나(프로 → 스타터) 전에 받은 요금제로 돌아오면 아무것도 안 받는다.
+    - 쓴 것은 그대로 둔다. 남은 잔액을 깎지도 않는다.
+
+    `granted_plans` 가 그 기간에 고른 요금제의 기록이다. 월 갱신(결제)이
+    붙으면 갱신할 때 이 기록을 비운다.
     """
     with _lock, conn() as c:
         row = c.execute(
@@ -159,16 +169,17 @@ def add_plan(owner: str, plan: str, credits: float) -> bool:
             (owner,)).fetchone()
         already = {p for p in (row["granted_plans"] if row else "").split(",")
                    if p}
-        if plan in already:
-            c.execute("UPDATE wallets SET plan = ? WHERE owner = ?",
-                      (plan, owner))
-            return False
+        had = max((float(allowance.get(p, 0.0)) for p in already), default=0.0)
+        add = max(0.0, float(allowance.get(plan, 0.0)) - had)
         already.add(plan)
         c.execute(
             "UPDATE wallets SET plan = ?, granted = granted + ?, "
-            "renewed_at = ?, granted_plans = ? WHERE owner = ?",
-            (plan, credits, time.time(), ",".join(sorted(already)), owner))
-        return True
+            "granted_plans = ?"
+            + (", renewed_at = ?" if add > 0 else "")
+            + " WHERE owner = ?",
+            (plan, add, ",".join(sorted(already)),
+             *((time.time(),) if add > 0 else ()), owner))
+        return add
 
 
 def add_spent(owner: str, credits: float) -> None:

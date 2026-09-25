@@ -227,9 +227,56 @@ def test_plan_change_adds_credits_without_wiping_spend():
     credits.set_plan("local", "pro")
     w = credits.wallet("local")
     assert w.spent == pytest.approx(spent_before), "쓴 기록이 지워졌다"
-    assert w.granted == pytest.approx(
-        credits.plan(credits.default_plan())["credits"]
-        + credits.plan("pro")["credits"])
+    # 한 기간에 받는 것은 고른 요금제 중 가장 큰 몫까지다 (DAY 26).
+    assert w.granted == pytest.approx(max(
+        credits.plan(credits.default_plan())["credits"],
+        credits.plan("pro")["credits"]))
+
+
+def _fresh_saas_wallet(owner: str):
+    """요금제를 아직 안 고른 SaaS 계정(`none`, 0 크레딧)에서 시작한다."""
+    from app.usage import wallet_store
+    wallet_store.create(owner, "none", 0.0)
+    assert credits.wallet(owner).granted == 0
+
+
+def test_switching_plans_does_not_keep_adding_credits():
+    """사용자 신고 (DAY 26): 요금제를 바꿀 때마다 크레딧이 계속 올랐다.
+    스타터 → 프로 → 비즈니스 → 스타터 → 프로 … 를 몇 번을 눌러도, 받는 것은
+    가장 큰 요금제(비즈니스)의 몫까지다."""
+    owner = "switcher"
+    _fresh_saas_wallet(owner)
+    top = credits.plan("business")["credits"]
+    for _ in range(3):
+        for name in ("starter", "pro", "business", "byok", "starter", "pro"):
+            credits.set_plan(owner, name)
+            assert credits.wallet(owner).granted <= top, name
+    w = credits.wallet(owner)
+    assert w.granted == pytest.approx(top)
+    assert w.plan == "pro"
+
+
+def test_upgrading_adds_only_the_difference():
+    owner = "upgrader"
+    _fresh_saas_wallet(owner)
+    credits.set_plan(owner, "starter")
+    assert credits.wallet(owner).granted == pytest.approx(
+        credits.plan("starter")["credits"])
+    credits.set_plan(owner, "pro")
+    assert credits.wallet(owner).granted == pytest.approx(
+        credits.plan("pro")["credits"]), "올리면 차이만 받아야 한다 (스타터 몫이 겹쳐 쌓였다)"
+
+
+def test_downgrading_adds_nothing_and_keeps_the_balance():
+    owner = "downgrader"
+    _fresh_saas_wallet(owner)
+    credits.set_plan(owner, "business")
+    credits.charge(owner, 1.0)
+    before = credits.wallet(owner).balance
+    credits.set_plan(owner, "starter")
+    after = credits.wallet(owner)
+    assert after.balance == pytest.approx(before), "내렸는데 잔액이 바뀌었다"
+    assert after.plan == "starter"
 
 
 def test_unknown_plan_is_rejected():

@@ -270,3 +270,59 @@ def test_the_url_can_carry_the_language_when_headers_cannot():
     # 모르는 언어는 무시하고 헤더로 돌아간다 — 주소는 아무나 붙일 수 있다.
     r = client.get("/api/employees?lang=zz", headers={"Accept-Language": "ja"})
     assert "開発者" in [e["role"] for e in r.json()["employees"]]
+
+
+# ── 팀 배치 (DAY 26) ────────────────────────────────────────────────
+# 사무실에서 직원을 끌어다 다른 팀에 앉힌다. 인사 기록이지 권한이 아니다.
+def test_moving_to_another_team_is_remembered_per_tenant():
+    assert staff.team_of(OWNER, "writer") == "docs"
+    assert staff.set_team(OWNER, "writer", "dev") == "dev"
+    assert staff.team_of(OWNER, "writer") == "dev"
+    assert staff.team_of(OTHER, "writer") == "docs", "다른 테넌트의 배치가 샜다"
+    staff.reset()                                # 다시 켜도 남는다(파일)
+    assert staff.team_of(OWNER, "writer") == "dev"
+
+
+def test_empty_or_home_team_clears_the_record():
+    staff.set_team(OWNER, "designer", "qa")
+    assert staff.set_team(OWNER, "designer", "") == "design"
+    staff.set_team(OWNER, "designer", "qa")
+    staff.set_team(OWNER, "designer", "design")
+    assert "team" not in staff._row(OWNER, "designer")
+
+
+def test_unknown_team_is_refused():
+    with pytest.raises(staff.UnknownTeam):
+        staff.set_team(OWNER, "writer", "marketing")
+    assert staff.team_of(OWNER, "writer") == "docs"
+
+
+def test_moving_teams_does_not_touch_permissions():
+    """개발자를 문서팀에 앉혀도 src/ 에만 쓴다. 권한을 넓히는 길은 따로 있고
+    거기서는 위험을 확인받는다 — 자리 배치로 그 확인을 건너뛰면 안 된다."""
+    from app.tools import project_fs as pfs
+    before = {i: (pfs.areas(i, write=True), pfs.areas(i, write=False))
+              for i in roles.ids()}
+    for i in roles.ids():
+        staff.set_team("local", i, "qa")
+    after = {i: (pfs.areas(i, write=True), pfs.areas(i, write=False))
+             for i in roles.ids()}
+    assert after == before
+    for i in roles.ids():
+        staff.set_team("local", i, "")
+
+
+def test_api_moves_an_employee_and_the_office_shows_it():
+    from fastapi.testclient import TestClient
+    from app import main
+    c = TestClient(main.app)
+    r = c.patch("/api/employees/writer", json={"team": "design"})
+    assert r.status_code == 200, r.text
+    office = c.get("/api/office").json()
+    row = next(e for e in office["employees"] if e["id"] == "writer")
+    assert row["dept"] == "design" and row["home_dept"] == "docs"
+    r = c.patch("/api/employees/writer", json={"team": "sales"})
+    assert r.status_code == 400
+    assert c.patch("/api/employees/writer", json={"team": ""}).status_code == 200
+    office = c.get("/api/office").json()
+    assert next(e for e in office["employees"] if e["id"] == "writer")["dept"] == "docs"
