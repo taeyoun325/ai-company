@@ -104,3 +104,34 @@ def test_without_archive_setting_nothing_changes(tmp_path, monkeypatch):
     monkeypatch.delenv("TRACE_ARCHIVE_DIR", raising=False)
     assert bus.archive_traces() == 0
     assert bus.read_trace("nope") == []
+
+
+def test_a_run_resumed_on_another_instance_keeps_its_earlier_log(tmp_path, monkeypatch):
+    """배포 인계 뒤 새 인스턴스에서 이어 돈 실행: 로컬 새 파일이 보관본의
+    앞부분을 가리면 안 된다."""
+    from app import bus, config
+    logs, archive = tmp_path / "logs", tmp_path / "archive"
+    archive.mkdir()
+    monkeypatch.setattr(config, "LOGS", logs)
+    monkeypatch.setenv("TRACE_ARCHIVE_DIR", str(archive))
+    (archive / "r9.jsonl").write_text('{"id": 1, "run": "r9", "type": "message"}\n',
+                                      encoding="utf-8")
+    bus._trace({"id": 2, "run": "r9", "type": "message"})
+    bus.close_trace("r9")
+    assert [e["id"] for e in bus.read_trace("r9")] == [1, 2]
+
+
+def test_trace_chunk_never_consumes_a_half_written_line(tmp_path, monkeypatch):
+    """마지막 줄이 잘린 채 읽히면 위치를 거기까지만 옮긴다 — 안 그러면 나머지
+    반쪽이 다음 차례에 깨진 JSON 이 되어 이벤트 하나가 영영 사라진다."""
+    from app import bus, config
+    monkeypatch.setattr(config, "LOGS", tmp_path)
+    monkeypatch.delenv("TRACE_ARCHIVE_DIR", raising=False)
+    p = tmp_path / "r1.jsonl"
+    p.write_text('{"id": 1}\n{"id": 2, "ty', encoding="utf-8")
+    ev, pos = bus.read_trace_chunk("r1", 0)
+    assert [e["id"] for e in ev] == [1]
+    with open(p, "a", encoding="utf-8") as f:
+        f.write('pe": "x"}\n')
+    ev, pos2 = bus.read_trace_chunk("r1", pos)
+    assert [e["id"] for e in ev] == [2] and pos2 == p.stat().st_size

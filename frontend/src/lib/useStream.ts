@@ -113,7 +113,7 @@ export function useStream(run?: string): StreamState {
   }, [run, push]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !("EventSource" in window)) {
+    if (typeof window === "undefined" || !("EventSource" in window) || behindBufferingProxy()) {
       // effect 안의 동기 setState 다. 린터가 막는 패턴이지만 여기서는
       // 불가피하다 — 렌더 시점에 판단하면 하이드레이션이 깨지고(위 참조),
       // 이 분기는 EventSource 가 아예 없는 브라우저에서 딱 한 번 돈다.
@@ -218,6 +218,19 @@ export function useStream(run?: string): StreamState {
   }, [polling, run, push]);
 
   return { events, roster, connected, polling, clear };
+}
+
+/**
+ * 응답을 모았다가 한꺼번에 넘기는 프록시 뒤인가 (DAY 27).
+ *
+ * Firebase Hosting 이 그렇다. 거기서 SSE 를 열면 헤더 한 줄 없이 매달리고,
+ * 6초 뒤 우리가 닫아도 **Hosting 은 서버 쪽 연결을 1시간(3601초) 붙잡았다** —
+ * 페이지를 열 때마다 서버의 동시 요청 자리 하나가 한 시간씩 묶였다(Cloud Run
+ * 로그 실측). 열어 보고 닫는 것으로는 못 막는다. 처음부터 열지 않는다.
+ */
+function behindBufferingProxy(): boolean {
+  const host = window.location.hostname;
+  return host.endsWith(".web.app") || host.endsWith(".firebaseapp.com");
 }
 
 /** 사건 하나를 가리키는 열쇠. 번호가 겹친 옛 기록에서도 갈린다. */

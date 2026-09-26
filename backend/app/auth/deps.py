@@ -130,6 +130,26 @@ def owns(request: Request, record_owner: str | None) -> bool:
     return (record_owner or LOCAL_OWNER) == owner_of(request)
 
 
+def require_operator(request: Request) -> store.User:
+    """운영자만 (DAY 27). 테넌트가 아니라 **이 서버를 운영하는 사람**의 화면.
+
+    원가·마진 보고서와 전체 색인 재구축이 로그인 없이 열려 있었다 — 앞은
+    사업 비밀이고, 뒤는 버킷 전체를 훑는 무거운 일이라 아무나 반복해 부르면
+    서버가 멈춘다. 로컬 모드는 그 컴퓨터의 주인이 곧 운영자다.
+
+    saas 에서는 `OPERATOR_EMAILS`(쉼표로 가른 이메일)에 있는 계정만. 비어
+    있으면 **아무도** 아니다 — 기본이 열림이면 설정을 빠뜨린 날 새어 나간다.
+    """
+    user = require_user(request)
+    if not deploy.is_saas():
+        return user
+    allowed = {e.strip().lower() for e in os.getenv("OPERATOR_EMAILS", "").split(",")
+               if e.strip()}
+    if (user.email or "").lower() not in allowed:
+        raise HTTPException(403, lang.t("err.operatorOnly"))
+    return user
+
+
 def require_owner(request: Request, record_owner: str | None) -> None:
     """남의 자원이면 **404** 로 답한다.
 

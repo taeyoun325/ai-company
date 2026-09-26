@@ -14,13 +14,14 @@
 `.gitignore` 대상 — 사용자의 사적인 화면이 커밋되면 안 된다.
 """
 import base64
+import json
 import os
 import mimetypes
 import time
 import uuid
 from pathlib import Path
 
-from app import config, fencing, lang
+from app import config, fencing, lang, safeio
 
 # 배포에서는 보존되는 곳(ATTACHMENTS_DIR)으로 뺀다 — 저장소 루트는 컨테이너가
 # 바뀌면 사라진다 (DAY 27).
@@ -35,6 +36,19 @@ TEXT_SUFFIXES = {".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".log", ".tsv"
 
 _meta: dict[str, dict] = {}
 
+# ## 누구 것인가 (DAY 27)
+#
+# 첨부에는 주인이 없었다. saas 에서 로그인 없이 `GET /api/attachments` 로
+# **모든 테넌트의 첨부 id** 가 나왔고, 그 id 로 `/preview` 를 부르면 이미지
+# 원본이 나왔다. 이제 저장할 때 주인을 적고, 읽기·지우기·미리보기·실행에
+# 넣기가 전부 주인을 확인한다. 남의 것은 **없는 것과 같은 답**을 한다.
+#
+# ## 어디에 적나
+#
+# 메타데이터가 프로세스 메모리(`_meta`)에만 있었다 — 서버가 다시 뜨면 파일은
+# 남아 있어도 **찾을 수 없었다.** 파일 옆에 `<id>.meta.json` 으로 함께 둔다.
+# 메모리는 그 사본(캐시)이다.
+
 
 def _kind(media_type: str, suffix: str) -> str:
     if media_type in IMAGE_TYPES:
@@ -46,7 +60,16 @@ def _kind(media_type: str, suffix: str) -> str:
     return "unsupported"
 
 
-def save(filename: str, data: bytes, source: str = "upload") -> dict:
+def _sidecar(aid: str) -> Path:
+    return DIR / f"{aid}.meta.json"
+
+
+def _valid_id(aid: str) -> bool:
+    return len(aid) == 12 and all(c in "0123456789abcdef" for c in aid)
+
+
+def save(filename: str, data: bytes, source: str = "upload",
+         owner: str = "local") -> dict:
     """첨부를 저장하고 메타데이터를 돌려준다. source: upload | screen"""
     if len(data) > MAX_BYTES:
         raise ValueError(lang.t("att.tooBig", mb=len(data) // 1024 // 1024,
@@ -64,46 +87,83 @@ def save(filename: str, data: bytes, source: str = "upload") -> dict:
 
     m = {"id": aid, "name": Path(filename).name, "kind": kind,
          "media_type": media_type, "bytes": len(data),
-         "source": source, "created_at": time.time(), "path": str(path)}
+         "source": source, "created_at": time.time(), "owner": owner,
+         "file": path.name}
+    safeio.write_json(_sidecar(aid), m)
     _meta[aid] = m
-    return {k: v for k, v in m.items() if k != "path"}
+    return _public(m)
 
 
-def get(aid: str) -> dict | None:
+def _public(m: dict) -> dict:
+    return {k: v for k, v in m.items() if k not in ("file", "path", "owner")}
+
+
+def _load(aid: str) -> dict | None:
+    if not _valid_id(aid):                 # 경로 조각이 id 로 들어오지 못하게
+        return None
     m = _meta.get(aid)
-    if m and Path(m["path"]).exists():
-        return m
-    return None
+    if m is None:
+        try:
+            m = json.loads(_sidecar(aid).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        _meta[aid] = m
+    return m
 
 
-def listing() -> list[dict]:
-    return [{k: v for k, v in m.items() if k != "path"}
-            for m in sorted(_meta.values(), key=lambda x: x["created_at"], reverse=True)
-            if Path(m["path"]).exists()]
+def _file(m: dict) -> Path:
+    return DIR / m.get("file", "")
 
 
-def delete(aid: str) -> bool:
-    m = _meta.pop(aid, None)
+def get(aid: str, owner: str | None = None) -> dict | None:
+    """`owner` 를 주면 **그 사람의 것일 때만** 돌려준다."""
+    m = _load(aid)
+    if not m or not _file(m).exists():
+        return None
+    if owner is not None and m.get("owner", "local") != owner:
+        return None
+    return m
+
+
+def owned(ids: list[str], owner: str) -> bool:
+    """모두 이 사람의 것인가. 실행에 넣기 전에 본다."""
+    return all(get(a, owner) is not None for a in ids)
+
+
+def listing(owner: str = "local") -> list[dict]:
+    rows = []
+    if DIR.exists():
+        for side in DIR.glob("*.meta.json"):
+            m = get(side.name[:-len(".meta.json")], owner)
+            if m:
+                rows.append(_public(m))
+    return sorted(rows, key=lambda x: x["created_at"], reverse=True)
+
+
+def delete(aid: str, owner: str = "local") -> bool:
+    m = get(aid, owner)
     if not m:
         return False
-    Path(m["path"]).unlink(missing_ok=True)
+    _meta.pop(aid, None)
+    _file(m).unlink(missing_ok=True)
+    _sidecar(aid).unlink(missing_ok=True)
     return True
 
 
-def data_url(aid: str) -> str | None:
+def data_url(aid: str, owner: str | None = None) -> str | None:
     """UI 미리보기용."""
-    m = get(aid)
+    m = get(aid, owner)
     if not m or m["kind"] != "image":
         return None
-    b64 = base64.b64encode(Path(m["path"]).read_bytes()).decode()
+    b64 = base64.b64encode(_file(m).read_bytes()).decode()
     return f"data:{m['media_type']};base64,{b64}"
 
 
-def total_bytes(ids: list[str]) -> int:
-    return sum((get(a) or {}).get("bytes", 0) for a in ids)
+def total_bytes(ids: list[str], owner: str | None = None) -> int:
+    return sum((get(a, owner) or {}).get("bytes", 0) for a in ids)
 
 
-def to_content_blocks(ids: list[str]) -> list[dict]:
+def to_content_blocks(ids: list[str], owner: str | None = None) -> list[dict]:
     """Anthropic Messages API 콘텐츠 블록으로 변환.
 
     자료마다 앞에 출처와 신뢰 수준을 적은 텍스트 블록을 붙인다.
@@ -111,7 +171,7 @@ def to_content_blocks(ids: list[str]) -> list[dict]:
     """
     if not ids:
         return []
-    if total_bytes(ids) > MAX_TOTAL_PER_RUN:
+    if total_bytes(ids, owner) > MAX_TOTAL_PER_RUN:
         raise ValueError(lang.t("att.tooMany"))
 
     blocks: list[dict] = [{
@@ -124,12 +184,12 @@ def to_content_blocks(ids: list[str]) -> list[dict]:
     }]
 
     for aid in ids:
-        m = get(aid)
+        m = get(aid, owner)
         if not m:
             continue
         label = f"[자료: {m['name']} · 출처 {'화면 캡처' if m['source'] == 'screen' else '업로드'}]"
         blocks.append({"type": "text", "text": label})
-        raw = Path(m["path"]).read_bytes()
+        raw = _file(m).read_bytes()
 
         if m["kind"] == "image":
             blocks.append({"type": "image", "source": {
@@ -150,11 +210,11 @@ def to_content_blocks(ids: list[str]) -> list[dict]:
     return blocks
 
 
-def summary(ids: list[str]) -> str:
+def summary(ids: list[str], owner: str | None = None) -> str:
     """Gemini 쪽처럼 텍스트만 받는 경로를 위한 요약."""
     parts = []
     for aid in ids:
-        m = get(aid)
+        m = get(aid, owner)
         if m:
             parts.append(f"{m['name']} ({m['kind']}, {m['bytes']//1024}KB)")
     return ", ".join(parts) or "(없음)"

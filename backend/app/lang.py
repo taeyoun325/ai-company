@@ -620,6 +620,14 @@ _M: dict[str, dict[str, str]] = {
         "ja": "サーバーが再起動したため中断されました。それまでに作った成果物は"
               "そのまま残っています。",
     },
+    "stop.resumeLoop": {
+        "ko": "서버가 다시 시작될 때마다 같은 자리에서 끊겨 자동으로 잇지 않았습니다. "
+              "산출물은 그대로 남아 있고, 재개 버튼으로 직접 이어 갈 수 있습니다.",
+        "en": "This run kept stopping at the same point across restarts, so it was "
+              "not resumed automatically. Its work is kept; use Resume to continue.",
+        "ja": "再起動のたびに同じ箇所で止まったため、自動では再開しませんでした。"
+              "成果物は残っています。再開ボタンで続けられます。",
+    },
     "stop.byCeo": {"ko": "CEO 가 정지시켰습니다.", "en": "Stopped by the CEO.",
                    "ja": "CEO が停止しました。"},
     "stop.rounds": {
@@ -774,6 +782,9 @@ _M: dict[str, dict[str, str]] = {
                   "ja": "登録された鍵がありません"},
     "err.loginRequired": {"ko": "로그인이 필요합니다.", "en": "Sign in first.",
                           "ja": "ログインが必要です。"},
+    "err.operatorOnly": {"ko": "운영자만 볼 수 있습니다.",
+                         "en": "Only the operator can see this.",
+                         "ja": "運営者のみ閲覧できます。"},
     "err.localNoPassword": {
         "ko": "로컬 사용자는 비밀번호가 없습니다.",
         "en": "Local users do not have a password.",

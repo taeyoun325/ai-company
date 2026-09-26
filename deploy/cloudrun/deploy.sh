@@ -49,22 +49,27 @@ deploy)
   # max-instances 1 은 **보장이 아니다**(리비전마다 따로 센다). 쓰는 쪽을 하나로
   # 묶는 건 supervisor.py 의 임대다. 이 값은 평소 비용을 묶는 용도다.
   #
-  # 시작 검사는 /api/deploy (백엔드까지 닿는 경로)로 한다. TCP 로 보면 Next 가
-  # 먼저 떠서 백엔드가 뜨기 전 ~9초 동안 요청이 500 으로 떨어진다(실측).
-  # 임대를 기다리는 시간까지 넉넉히: 5초 × 48 = 240초.
+  # 시작 검사는 **TCP** 다. 감독자의 앞문(supervisor.py · Front)은 임대를 곧
+  # 받을 수 있어 보이면 바로 열리고, 그때부터 온 요청은 앱이 준비될 때까지
+  # 실패하지 않고 붙잡힌다. 그래서 Cloud Run 이 새 리비전으로 일찍 넘겨도 된다 —
+  # 늦게 넘기면(HTTP 검사) 그 사이 옛 인스턴스는 이미 넘겨준 뒤라 요청이
+  # 실패했다(실측). 생존 검사는 백엔드까지 닿는 HTTP 다.
+  #
+  # --timeout 900: SSE 는 서버가 10분(SSE_MAX_SECONDS)마다 닫고 브라우저가
+  # 이어 붙는다. 1시간이던 때 Hosting 뒤의 버려진 연결이 1시간씩 붙어 있었다.
   gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" \
     --image "$IMAGE" \
     --execution-environment gen2 \
     --service-account "$SA" \
     --min-instances 0 --max-instances 1 \
     --no-cpu-throttling --cpu 2 --memory 2Gi \
-    --timeout 3600 --concurrency 80 \
+    --timeout 900 --concurrency 80 \
     --allow-unauthenticated \
     --add-volume "name=state,type=cloud-storage,bucket=$BUCKET" \
     --add-volume-mount "volume=state,mount-path=/mnt/state" \
-    --startup-probe "httpGet.path=/api/deploy,httpGet.port=8080,periodSeconds=5,failureThreshold=48,timeoutSeconds=3" \
+    --startup-probe "tcpSocket.port=8080,periodSeconds=1,failureThreshold=240,timeoutSeconds=1" \
     --liveness-probe "httpGet.path=/api/deploy,httpGet.port=8080,periodSeconds=30,failureThreshold=3,timeoutSeconds=5" \
-    --set-env-vars "STATE_BUCKET=$BUCKET,PROVIDER_MODE=${PROVIDER_MODE:-mock},PUBLIC_URL=https://$PROJECT.web.app,SANDBOXED=1" \
+    --set-env-vars "^;^STATE_BUCKET=$BUCKET;PROVIDER_MODE=${PROVIDER_MODE:-mock};PUBLIC_URL=https://$PROJECT.web.app;SANDBOXED=1;OPERATOR_EMAILS=${OPERATOR_EMAILS:-}" \
     --set-secrets "BYOK_SECRET=byok-secret:latest"
   firebase deploy --only hosting --project "$PROJECT"
   ;;

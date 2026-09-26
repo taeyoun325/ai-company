@@ -192,6 +192,7 @@ def sweep_stale_runs() -> list[str]:
     """
     stopped = []
     now = time.time()
+    sole = sole_writer()
     for row in store.list_projects():
         if row.get("status") != "running":
             continue
@@ -199,7 +200,11 @@ def sweep_stale_runs() -> list[str]:
         if not slug or slug in running_slugs():
             continue
         beat = float(row.get("beat") or row.get("created_at") or 0)
-        if now - beat < BEAT_STALE:
+        # 쓰는 인스턴스가 **나 하나**라고 보장되면(SOLE_WRITER) 박자를 기다릴
+        # 이유가 없다 — 다른 누구도 돌리고 있지 않다. 기다리면 배포 인계(몇 초)
+        # 로 끊긴 실행이 박자가 싱싱해서 건너뛰어지고, 다음 재시작까지 영영
+        # '진행 중'으로 남는다(DAY 27에 찾은 좀비).
+        if not sole and now - beat < BEAT_STALE:
             continue          # 다른 인스턴스가 돌리는 중일 수 있다
         store.save_meta(slug, {
             "status": "stopped",
@@ -210,6 +215,61 @@ def sweep_stale_runs() -> list[str]:
         })
         stopped.append(slug)
     return stopped
+
+
+def sole_writer() -> bool:
+    """이 프로세스가 상태를 쓰는 **유일한** 인스턴스인가 (DAY 27).
+
+    Cloud Run 배치의 감독자(deploy/cloudrun/supervisor.py)가 임대를 쥔
+    뒤에만 백엔드를 띄우고 이 값을 준다. compose·로컬에서는 없다 — 거기서는
+    둘이 떠 있을 수 있다고 보고 박자로 판단하던 옛 동작 그대로다.
+    """
+    return os.getenv("SOLE_WRITER", "").strip() == "1"
+
+
+AUTO_RESUME_MAX = int(os.getenv("AUTO_RESUME_MAX", "2"))
+
+
+def _progress_mark(m: dict) -> list:
+    cp = m.get("checkpoint") or {}
+    return [len(cp.get("done") or []), int(cp.get("rounds") or 0), cp.get("stage")]
+
+
+def resume_interrupted(slugs: list[str]) -> list[str]:
+    """배포·재시작으로 끊긴 실행을 체크포인트에서 이어 돈다 (DAY 27).
+
+    배포할 때마다 돌던 실행이 '중단'으로 남으면, 사용자에게 배포는 곧 "내
+    작업이 멈췄다"다. 쓰는 쪽이 나 하나일 때만(SOLE_WRITER) 한다 — 아니면
+    다른 인스턴스가 돌리는 중일 수 있다.
+
+    **같은 자리에서 두 번 연속 끊기면 더 잇지 않는다.** 실행 자체가 인스턴스를
+    죽이는 경우(생성된 코드가 메모리를 다 먹는 등) 이어 돌리면 기동 → 죽음 →
+    기동이 끝없이 돈다. 진척(끝난 태스크 수·라운드·단계)이 바뀌었으면 센 것을
+    처음으로 돌린다 — 배포 여러 번에 걸친 긴 실행은 계속 이어진다.
+    """
+    if not sole_writer():
+        return []
+    resumed = []
+    for slug in slugs:
+        try:
+            m = store.meta(slug)
+            if not m or m.get("status") != "stopped":
+                continue
+            mark = _progress_mark(m)
+            n = int(m.get("auto_resumes") or 0) if m.get("auto_resume_mark") == mark else 0
+            if n >= AUTO_RESUME_MAX:
+                store.save_meta(slug, {"stopped_reason": lang.t("stop.resumeLoop")})
+                continue
+            store.save_meta(slug, {"auto_resumes": n + 1, "auto_resume_mark": mark})
+            resume(slug, owner=m.get("owner") or "local")
+            resumed.append(slug)
+        except Exception as e:                                  # noqa: BLE001
+            # 요금제·잔액·키 문제면 멈춘 채로 둔다 — 사용자가 고치고 재개한다.
+            try:
+                store.save_meta(slug, {"stopped_reason": f"{lang.t('stop.restarted')} ({e})"})
+            except Exception:                                   # noqa: BLE001
+                pass
+    return resumed
 
 
 def cancel(slug: str) -> bool:
@@ -850,7 +910,7 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
     attachments_note = ""
     if attachment_ids:
         from app import attachments
-        attachments_note = attachments.summary(attachment_ids)
+        attachments_note = attachments.summary(attachment_ids, owner)
         bus.say("USER", lang.t("log.attached", what=attachments_note),
                 kind="tool")
         store.save_meta(slug, {"attachments": attachments_note})

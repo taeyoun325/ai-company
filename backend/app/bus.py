@@ -409,7 +409,15 @@ def _trace(ev: dict) -> None:
             f = _files.get(run or "")
             if f is None or f.closed:
                 config.LOGS.mkdir(parents=True, exist_ok=True)
-                f = open(_trace_path(run), "a", encoding="utf-8")
+                path = _trace_path(run)
+                # 다른 인스턴스에서 시작해 여기서 이어지는 실행(배포 인계 뒤
+                # 자동 재개 — DAY 27): 로컬에 새 파일부터 만들면 읽는 쪽이 로컬을
+                # 먼저 보므로 **보관본의 앞부분이 가려진다.** 보관본을 먼저 깐다.
+                a = _archive_path(run)
+                if not path.exists() and a is not None and a.exists():
+                    import shutil
+                    shutil.copyfile(a, path)
+                f = open(path, "a", encoding="utf-8")
                 _files[run or ""] = f
             f.write(json.dumps(ev, ensure_ascii=False) + "\n")
             f.flush()
@@ -541,6 +549,28 @@ def read_trace(run: str, after: int = 0) -> list[dict]:
         return []
     events = [e for e in events if e.get("id", 0) > after]
     return sorted(events, key=lambda e: e["id"])
+
+
+def read_trace_chunk(run: str, pos: int = 0) -> tuple[list[dict], int]:
+    """`pos` 바이트부터 새로 붙은 줄을 읽는다. (이벤트, 다음 위치) — DAY 27.
+
+    `tail_trace` 의 한 걸음이다. 잠들지 않으므로 비동기 SSE 가 스레드 하나를
+    붙잡지 않고 부를 수 있다(잠은 호출부가 `asyncio.sleep` 으로 잔다).
+    **마지막 줄이 잘려 있으면 그 줄은 다음에 읽는다** — 위치를 온전한 줄 끝까지만
+    옮긴다. 옮겨 버리면 잘린 줄의 나머지가 다음 차례에 깨진 JSON 이 되어
+    이벤트 하나가 영영 사라진다.
+    """
+    try:
+        with open(_read_path(run), "rb") as f:
+            f.seek(pos)
+            data = f.read()
+    except FileNotFoundError:
+        return [], pos
+    end = data.rfind(b"\n") + 1
+    if end == 0:
+        return [], pos
+    lines = data[:end].decode("utf-8", "replace").splitlines()
+    return _parse_trace_lines(lines), pos + end
 
 
 def tail_trace(run: str, after: int = 0):

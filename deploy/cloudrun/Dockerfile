@@ -63,7 +63,7 @@ COPY --from=web /web/.next/static /app/web/.next/static
 COPY --from=web /web/public /app/web/public
 
 COPY deploy/cloudrun/litestream.yml /etc/litestream.yml
-COPY deploy/cloudrun/start.sh deploy/cloudrun/supervisor.py /app/
+COPY deploy/cloudrun/start.sh deploy/cloudrun/supervisor.py deploy/cloudrun/backend_boot.py /app/
 
 # 로그인 횟수 제한이 믿을 '앞단 프록시' 대역 — 빌드할 때마다 구글 공개 목록에서
 # 새로 만든다(backend/app/api/auth.py · TRUSTED_PROXY_FILE).
@@ -79,7 +79,7 @@ RUN python /tmp/google_proxies.py /tmp/goog.json /tmp/cloud.json > /etc/trusted-
 # /app/backend 에 파일을 만들 수 있는 것을 실제로 확인했다.
 # 쓸 수 있는 곳은 로컬 DB·로그 폴더뿐이다. 나머지 상태는 버킷 마운트(/mnt/state)다.
 RUN useradd --create-home --uid 10001 company \
- && chmod -R a-w,a+rX /app/backend /app/web /app/start.sh /app/supervisor.py \
+ && chmod -R a-w,a+rX /app/backend /app/web /app/start.sh /app/supervisor.py /app/backend_boot.py \
       /etc/litestream.yml /etc/trusted-proxies.txt \
  && chmod a+x /app/start.sh \
  && mkdir -p /app/db /app/logs \

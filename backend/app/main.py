@@ -7,11 +7,15 @@
 
 라우트가 늘어나면 `app/api/` 로 쪼갠다.
 """
+import asyncio
+import os
 import json
 import queue
 import sys
+import threading
 import time
 
+import anyio
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -62,6 +66,12 @@ _INDEX_READY = project_index.ensure_ready()
 # 프로세스가 죽으면 '진행 중'을 끝낼 사람이 없다. 기동 시 한 번 치운다 —
 # 안 치우면 목록에 좀비가 쌓이고, 화면은 오지 않는 로그를 기다린다.
 _SWEPT = orchestrator.sweep_stale_runs()
+
+# 배포 인계로 끊긴 실행은 체크포인트에서 이어 돈다 (DAY 27). 쓰는 쪽이 나
+# 하나일 때만 — 그 판단과 되풀이 방지는 engine.resume_interrupted 에 있다.
+# 모듈을 읽는 도중이 아니라 앱이 뜬 뒤에 돌도록 잠깐 미룬다.
+if _SWEPT and orchestrator.sole_writer():
+    threading.Timer(1.0, orchestrator.resume_interrupted, args=(list(_SWEPT),)).start()
 
 app = FastAPI(title="AI Agent Company")
 
@@ -447,6 +457,9 @@ def start_run(req: RunReq, request: Request):
         raise HTTPException(400, str(e))
     except permissions.RiskNotAcknowledged as e:
         raise HTTPException(409, str(e))
+    # 남의 첨부 id 를 실행에 넣으면 그 이름·크기가 내 프로젝트에 적힌다 (DAY 27).
+    if req.attachments and not attachments.owned(req.attachments, owner):
+        raise HTTPException(404, lang.t("err.noAttachment"))
     try:
         slug = orchestrator.start(requirement, req.attachments, owner=owner,
                                   gate_list=gate_list, permissions=perms)
@@ -660,12 +673,25 @@ def cancel_run(slug: str, request: Request):
 
 
 @app.post("/api/route")
-def route_work(req: RunReq):
-    """이 일을 누구에게 맡길지만 물어본다 (§10). 화면이 미리 보여줄 수 있어야 한다."""
+def route_work(req: RunReq, request: Request):
+    """이 일을 누구에게 맡길지만 물어본다 (§10). 화면이 미리 보여줄 수 있어야 한다.
+
+    **모델을 부른다**(PLANNER). 로그인 검사가 없어서 saas 에서 아무나 운영자 키로
+    모델을 무한히 부를 수 있었다(DAY 27) — 돈이 새는 문이자 멈추게 하는 문이다.
+    실행과 같은 문을 지난다: 로그인 · 요금제(BYOK 면 키) · 그 테넌트의 자세.
+    """
+    owner = auth.owner_of(request)
     if not req.requirement.strip():
         raise HTTPException(400, lang.t("err.emptyRequirement"))
     try:
-        r = orchestrator.route(req.requirement.strip())
+        posture = tenant.require_runnable(owner)
+    except tenant.NoPlan as e:
+        raise HTTPException(402, str(e))
+    except tenant.KeysMissing as e:
+        raise HTTPException(409, str(e))
+    try:
+        with tenant.bind(owner, posture):
+            r = orchestrator.route(req.requirement.strip())
     except Exception as e:                       # noqa: BLE001
         raise HTTPException(502, secrets_broker.scrub(f"{type(e).__name__}: {e}"))
     return r.model_dump()
@@ -811,12 +837,13 @@ def verify_byok(provider: str, request: Request):
 
 
 @app.get("/api/margin")
-def margin():
+def margin(request: Request):
     """§17 원가 관리 — 원가가 판매가의 50% 이하인가를 **실제 숫자로** 검사한다.
 
     구호가 아니라 계산이다. 요금제가 주는 크레딧을 전부 쓴 경우가
     우리 최대 원가이므로, 그 값과 구독료를 비교한다.
     """
+    auth.require_operator(request)          # 원가·마진은 사업 비밀이다 (DAY 27)
     return credits.margin_report()
 
 
@@ -936,12 +963,13 @@ def project_stats(request: Request):
 
 
 @app.post("/api/projects/reindex")
-def reindex():
+def reindex(request: Request):
     """디스크를 훑어 색인을 다시 만든다.
 
     **파일이 진실**이라는 규칙이 실제로 성립하려면 이 길이 있어야 한다.
     다른 곳에서 복사해 온 projects/ 폴더를 붙였을 때도 쓴다.
     """
+    auth.require_operator(request)          # 버킷 전체를 훑는다 — 아무나 부르면 멈춘다
     return {"indexed": project_index.rebuild()}
 
 
@@ -1057,37 +1085,84 @@ def set_employee_model(employee_id: str, req: ModelReq2):
 
 # ── 첨부 자료 ───────────────────────────────────────────────────────
 @app.get("/api/attachments")
-def list_attachments():
-    return {"attachments": attachments.listing()}
+def list_attachments(request: Request):
+    return {"attachments": attachments.listing(auth.owner_of(request))}
 
 
 @app.post("/api/attachments")
-async def upload_attachment(file: UploadFile = File(...)):
+async def upload_attachment(request: Request, file: UploadFile = File(...)):
+    # 본문을 읽기 **전에** 주인을 확인한다 — 로그인 없이 12MB 씩 버킷을 채울 수
+    # 있었다(DAY 27).
+    owner = auth.owner_of(request)
     data = await file.read()
     try:
-        return attachments.save(file.filename or "upload.bin", data, source="upload")
+        return attachments.save(file.filename or "upload.bin", data,
+                                source="upload", owner=owner)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
 
 @app.get("/api/attachments/{aid}/preview")
-def attachment_preview(aid: str):
-    url = attachments.data_url(aid)
+def attachment_preview(aid: str, request: Request):
+    url = attachments.data_url(aid, auth.owner_of(request))
     if not url:
         raise HTTPException(404, lang.t("err.noPreview"))
     return {"id": aid, "data_url": url}
 
 
 @app.delete("/api/attachments/{aid}")
-def delete_attachment(aid: str):
-    if not attachments.delete(aid):
+def delete_attachment(aid: str, request: Request):
+    if not attachments.delete(aid, auth.owner_of(request)):
         raise HTTPException(404, lang.t("err.noAttachment"))
     return {"ok": True}
 
 
 # ── 이벤트 스트림 ───────────────────────────────────────────────────
+# ── 누구의 이벤트인가 (DAY 27) ───────────────────────────────────────
+# `/api/stream` · `/api/events` 에 로그인 검사가 없었다. saas 에서 로그인 없이
+# 이 인스턴스의 **모든 테넌트** 작업 로그(요구사항·코드·산출물)가 흘러나왔다.
+# 이제 로그인을 요구하고, 프로젝트 하나를 볼 때는 주인을, 전체를 볼 때는
+# 이벤트마다 그 프로젝트의 주인을 확인한다. 프로젝트에 속하지 않은 이벤트는
+# saas 에서 내보내지 않는다 — 누구 것인지 모르는 것은 아무에게도 안 보인다.
+_run_owner_cache: dict[str, str] = {}
+
+
+def _run_owner(slug: str | None) -> str | None:
+    if not slug:
+        return None
+    o = _run_owner_cache.get(slug)
+    if o is None:
+        if not store.exists(slug):
+            return None
+        o = _run_owner_cache[slug] = store.meta(slug).get("owner") or "local"
+    return o
+
+
+def _events_access(request: Request, run: str | None):
+    """볼 수 있는지 확인하고, 이벤트 거름(없으면 None=전부)을 돌려준다."""
+    owner = auth.owner_of(request)                      # 401
+    if run:
+        if store.exists(run):
+            auth.require_owner(request, store.meta(run).get("owner"))
+        elif deploy.is_saas():
+            raise HTTPException(404, lang.t("err.noProject"))
+        return None
+    if not deploy.is_saas():
+        return None
+    return lambda ev: _run_owner(ev.get("run")) == owner
+
+
+# SSE 연결 하나가 살아 있는 최대 시간 (DAY 27). 넘으면 서버가 스스로 닫고,
+# 브라우저의 EventSource 는 `retry` 뒤에 `Last-Event-ID` 를 들고 다시 붙는다 —
+# 잃는 이벤트는 없다. 상한이 없던 때 Firebase Hosting 뒤의 연결이 **클라이언트가
+# 떠난 뒤에도 3601초**(Cloud Run 요청 시간 한도)씩 붙어 있었다: 페이지를 열
+# 때마다 동시 요청 자리와 스레드 하나가 한 시간씩 묶였다.
+SSE_MAX_SECONDS = float(os.getenv("SSE_MAX_SECONDS", "600"))
+SSE_KEEPALIVE = 15.0
+
+
 @app.get("/api/stream")
-def stream(request: Request, run: str | None = None, after: int = 0):
+async def stream(request: Request, run: str | None = None, after: int = 0):
     """실시간 작업 로그 (§13).
 
     `run` 을 주면 그 프로젝트의 이벤트만 온다. 안 주면 전부 — 여러
@@ -1096,50 +1171,78 @@ def stream(request: Request, run: str | None = None, after: int = 0):
     SSE 는 끊긴다. 프록시가 끊고, 노트북이 잠들고, 탭이 백그라운드로 간다.
     브라우저가 재연결하면서 보내는 `Last-Event-ID` 를 받아 그 뒤부터만
     보낸다. 안 그러면 끊긴 동안의 작업 로그를 사용자가 영영 못 본다.
+
+    **비동기다** (DAY 27). 동기 제너레이터는 연결마다 스레드풀 자리 하나를
+    잠(`sleep`·`queue.get`)으로 붙잡았다 — 같은 풀을 쓰는 보통 API 가 연결
+    수십 개에 멈춘다. 이제 기다림은 이벤트 루프가 하고, 파일 읽기만 잠깐
+    스레드로 간다. 클라이언트가 떠나면(`is_disconnected`) 바로 끝낸다.
     """
+    visible = await anyio.to_thread.run_sync(_events_access, request, run)
     last = request.headers.get("last-event-id")
     try:
         after = max(after, int(last)) if last else after
     except ValueError:
         pass
 
-    def gen_memory():
+    def frame(ev: dict) -> str:
+        return (f"id: {ev['id']}\n"
+                f"event: {ev['type']}\n"
+                f"data: {json.dumps(ev, ensure_ascii=False)}\n\n")
+
+    async def gen_memory():
         """대시보드(§12)용. 이 인스턴스가 본 이벤트만 안다 — 아직 여러
         인스턴스를 못 넘는다(`run=None` 은 id 가 프로세스마다 따로 세여서
         파일들을 그냥 합칠 수 없다)."""
         sub = bus.subscribe(run, after)
+        began = last_sent = time.monotonic()
         try:
             yield ": connected\n\n"
             yield "retry: 5000\n\n"
-            while True:
-                try:
-                    ev = sub.q.get(timeout=15)
-                except queue.Empty:
+            while time.monotonic() - began < SSE_MAX_SECONDS:
+                if await request.is_disconnected():
+                    return
+                sent = False
+                while True:
+                    try:
+                        ev = sub.q.get_nowait()
+                    except queue.Empty:
+                        break
+                    if visible and not await anyio.to_thread.run_sync(visible, ev):
+                        continue
+                    yield frame(ev)
+                    sent = True
+                if sent:
+                    last_sent = time.monotonic()
+                elif time.monotonic() - last_sent >= SSE_KEEPALIVE:
                     yield ": keepalive\n\n"
-                    continue
-                yield (f"id: {ev['id']}\n"
-                       f"event: {ev['type']}\n"
-                       f"data: {json.dumps(ev, ensure_ascii=False)}\n\n")
+                    last_sent = time.monotonic()
+                await asyncio.sleep(0.2)
         finally:
             bus.unsubscribe(sub)
 
-    def gen_file(run_id: str):
+    async def gen_file(run_id: str):
         """프로젝트 하나(§12 상세)용. 트레이스 파일을 따라간다 — 실행을
         맡은 인스턴스가 어디든, 보는 인스턴스가 어디든 같은 로그가 나온다
         (DAY 23). 대가는 폴링 지연(`BUS_FILE_POLL_INTERVAL`, 기본 0.3초)뿐."""
         yield ": connected\n\n"
         yield "retry: 5000\n\n"
-        last_sent = time.time()
-        for ev in bus.tail_trace(run_id, after):
-            if ev is None:
-                if time.time() - last_sent >= 15:
-                    yield ": keepalive\n\n"
-                    last_sent = time.time()
-                continue
-            last_sent = time.time()
-            yield (f"id: {ev['id']}\n"
-                   f"event: {ev['type']}\n"
-                   f"data: {json.dumps(ev, ensure_ascii=False)}\n\n")
+        began = last_sent = time.monotonic()
+        pos, last_id = 0, after
+        while time.monotonic() - began < SSE_MAX_SECONDS:
+            if await request.is_disconnected():
+                return
+            events, pos = await anyio.to_thread.run_sync(bus.read_trace_chunk, run_id, pos)
+            fresh = sorted((e for e in events if e.get("id", 0) > last_id),
+                           key=lambda e: e["id"])
+            for ev in fresh:
+                last_id = ev["id"]
+                yield frame(ev)
+            if fresh:
+                last_sent = time.monotonic()
+            elif time.monotonic() - last_sent >= SSE_KEEPALIVE:
+                yield ": keepalive\n\n"
+                last_sent = time.monotonic()
+            await asyncio.sleep(bus.FILE_POLL_INTERVAL)
 
     gen = gen_file(run) if run else gen_memory()
     return StreamingResponse(gen, media_type="text/event-stream",
@@ -1149,7 +1252,7 @@ def stream(request: Request, run: str | None = None, after: int = 0):
 
 
 @app.get("/api/events")
-def events(run: str | None = None, after: int = 0):
+def events(request: Request, run: str | None = None, after: int = 0):
     """SSE 를 못 쓰는 상황(테스트·프록시·폴링)에서의 같은 이력.
 
     SSE 하나에만 기대면, 그 경로가 막힌 환경에서 화면이 통째로 빈다.
@@ -1158,7 +1261,10 @@ def events(run: str | None = None, after: int = 0):
     이 요청을 받은 인스턴스가 다를 수 있어서다(DAY 23). 없으면(대시보드)
     이 인스턴스의 메모리만 본다.
     """
+    visible = _events_access(request, run)
     rows = bus.read_trace(run, after) if run else bus.replay(run, after)
+    if visible:
+        rows = [e for e in rows if visible(e)]
     return {"events": rows, "last_id": rows[-1]["id"] if rows else after,
             "roster": bus.roster()}
 
