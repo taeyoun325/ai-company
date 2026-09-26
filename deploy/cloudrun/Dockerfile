@@ -41,9 +41,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     NEXT_TELEMETRY_DISABLED=1
 
-# util-linux: 생성된 코드의 네트워크를 끊는 unshare (backend/Dockerfile 과 같은 이유)
+# util-linux: unshare (네트워크만 끊는 옛 방식, 로컬 리눅스와 같은 경로)
+# bubblewrap: 생성된 코드를 **파일 시스템까지** 가두는 샌드박스 (DAY 27).
+#   네트워크만 끊으면 생성된 코드가 서버와 같은 사용자로 계정 DB·다른 테넌트의
+#   프로젝트·서버 소스를 읽고 고칠 수 있다. app/orchestrator/isolation.py 참조.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends util-linux ca-certificates \
+ && apt-get install -y --no-install-recommends util-linux bubblewrap ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 # Next standalone 서버를 돌릴 node 만 가져온다 (npm·빌드 도구는 없다).
@@ -60,21 +63,46 @@ COPY --from=web /web/.next/static /app/web/.next/static
 COPY --from=web /web/public /app/web/public
 
 COPY deploy/cloudrun/litestream.yml /etc/litestream.yml
-COPY deploy/cloudrun/start.sh /app/start.sh
+COPY deploy/cloudrun/start.sh deploy/cloudrun/supervisor.py /app/
 
+# 로그인 횟수 제한이 믿을 '앞단 프록시' 대역 — 빌드할 때마다 구글 공개 목록에서
+# 새로 만든다(backend/app/api/auth.py · TRUSTED_PROXY_FILE).
+ADD https://www.gstatic.com/ipranges/goog.json /tmp/goog.json
+ADD https://www.gstatic.com/ipranges/cloud.json /tmp/cloud.json
+COPY deploy/cloudrun/google_proxies.py /tmp/google_proxies.py
+RUN python /tmp/google_proxies.py /tmp/goog.json /tmp/cloud.json > /etc/trusted-proxies.txt \
+ && grep -q "^66\.249\." /etc/trusted-proxies.txt \
+ && rm /tmp/goog.json /tmp/cloud.json /tmp/google_proxies.py
+
+# 코드와 화면 파일은 root 소유·**아무도 못 쓰게** 둔다. 윈도우에서 올린 빌드
+# 컨텍스트는 권한이 777 로 들어온다 — DAY 27 에 Cloud Run 에서 서버 사용자가
+# /app/backend 에 파일을 만들 수 있는 것을 실제로 확인했다.
+# 쓸 수 있는 곳은 로컬 DB·로그 폴더뿐이다. 나머지 상태는 버킷 마운트(/mnt/state)다.
 RUN useradd --create-home --uid 10001 company \
- && mkdir -p /app/data /app/projects /app/logs \
- && chown -R company:company /app \
- && chmod +x /app/start.sh
+ && chmod -R a-w,a+rX /app/backend /app/web /app/start.sh /app/supervisor.py \
+      /etc/litestream.yml /etc/trusted-proxies.txt \
+ && chmod a+x /app/start.sh \
+ && mkdir -p /app/db /app/logs \
+ && chown company:company /app/db /app/logs
 USER company
 
+# 상태가 사는 곳 (DAY 27):
+#   /app/db      SQLite — 로컬 디스크 + Litestream (gcsfuse 위에서 SQLite 는 깨진다)
+#   /app/logs    실행 트레이스 — 로컬에 덧붙이고 TRACE_ARCHIVE_DIR 로 주기 보관
+#   /mnt/state   Cloud Storage 마운트 — JSON·프로젝트 산출물·첨부·예약
 ENV DEPLOY_MODE=saas \
-    DATA_DIR=/app/data \
-    PROJECTS_DIR=/app/projects \
+    DB_DIR=/app/db \
     LOGS_DIR=/app/logs \
+    DATA_DIR=/mnt/state/data \
+    PROJECTS_DIR=/mnt/state/projects \
+    ATTACHMENTS_DIR=/mnt/state/attachments \
+    SCHEDULES_FILE=/mnt/state/data/schedules.json \
+    TRACE_ARCHIVE_DIR=/mnt/state/traces \
     RUNNER_ISOLATE_NETWORK=1 \
     SESSION_COOKIE=__session \
+    TRUSTED_PROXY_FILE=/etc/trusted-proxies.txt \
     PORT=8080
 
 EXPOSE 8080
-CMD ["/app/start.sh"]
+# 감독자가 임대를 받은 뒤에야 start.sh(복원 → 복제 → 앱)를 띄운다.
+CMD ["python", "/app/supervisor.py"]

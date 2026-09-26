@@ -80,7 +80,7 @@ def _utc_midnight(ts: float) -> float:
 
 def path() -> Path:
     """프로젝트 색인과 같은 파일. 표만 다르다."""
-    return config.data_dir() / "ai_company.db"
+    return config.db_dir() / "ai_company.db"
 
 
 def conn() -> sqlite3.Connection:

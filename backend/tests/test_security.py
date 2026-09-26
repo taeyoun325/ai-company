@@ -99,9 +99,14 @@ def test_saas_blocks_code_execution_unless_sandboxed(saas):
     assert deploy.allow_code_execution() is not None
 
 
-def test_sandbox_declaration_allows_code_execution(sandboxed_saas):
+def test_sandbox_declaration_allows_code_execution(sandboxed_saas, monkeypatch):
     """SANDBOXED 는 자물쇠가 아니라 운영자의 서명이다. 우리가 확인할
-    방법은 없고, 거짓으로 적으면 그 사람의 책임이 된다."""
+    방법은 없고, 거짓으로 적으면 그 사람의 책임이 된다.
+
+    DAY 27 부터는 서명에 더해 **파일 시스템 샌드박스가 실제로 되는지**도
+    본다(tests/test_sandbox.py). 여기서는 된다고 두고 서명만 본다."""
+    from app.orchestrator import isolation
+    monkeypatch.setattr(isolation, "probe_sandbox", lambda: (True, "test"))
     assert deploy.allow_code_execution() is None
     assert deploy.allow_local_tools() is not None, "격리돼도 로컬 접근은 별개다"
 

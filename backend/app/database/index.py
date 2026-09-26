@@ -82,7 +82,7 @@ SWEEPS = 6
 
 def path() -> Path:
     """설정이 바뀌어도(테스트 등) 따라오도록 매번 계산한다."""
-    return config.data_dir() / "ai_company.db"
+    return config.db_dir() / "ai_company.db"
 
 
 def _connect() -> sqlite3.Connection:

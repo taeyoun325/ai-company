@@ -11,3 +11,7 @@ pydantic>=2.0
 fastapi>=0.115.0
 uvicorn>=0.30.0
 python-multipart>=0.0.9
+# 생성된 코드의 테스트를 **서버가 직접** 돌린다(app/orchestrator/runner.py).
+# 개발용(requirements-dev.txt)에만 있어서, 컨테이너에서는 SANDBOXED=1 을
+# 켜도 "No module named pytest" 로 모든 시험이 실패했을 것이다 (DAY 27).
+pytest>=8.0

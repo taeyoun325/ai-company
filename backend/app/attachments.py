@@ -14,6 +14,7 @@
 `.gitignore` 대상 — 사용자의 사적인 화면이 커밋되면 안 된다.
 """
 import base64
+import os
 import mimetypes
 import time
 import uuid
@@ -21,7 +22,9 @@ from pathlib import Path
 
 from app import config, fencing, lang
 
-DIR = config.ROOT / "attachments"
+# 배포에서는 보존되는 곳(ATTACHMENTS_DIR)으로 뺀다 — 저장소 루트는 컨테이너가
+# 바뀌면 사라진다 (DAY 27).
+DIR = Path(os.getenv("ATTACHMENTS_DIR") or config.ROOT / "attachments")
 
 MAX_BYTES = 12 * 1024 * 1024        # 한 파일 12MB
 MAX_TOTAL_PER_RUN = 30 * 1024 * 1024

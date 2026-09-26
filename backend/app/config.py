@@ -46,6 +46,19 @@ def data_dir() -> Path:
     d.mkdir(parents=True, exist_ok=True)
     return d
 
+
+def db_dir() -> Path:
+    """SQLite 파일만 따로 둘 곳 (DAY 27). 없으면 `data_dir()` 과 같다.
+
+    Cloud Run 배치에서는 DATA_DIR 이 Cloud Storage 마운트(gcsfuse)다 —
+    JSON·첨부 같은 파일은 거기서 그대로 보존된다. 하지만 **SQLite 는 거기
+    두면 깨진다**(gcsfuse 에는 WAL 이 기대는 공유 메모리·바이트 잠금이 없다).
+    그래서 DB 만 로컬 디스크(DB_DIR)에 두고 Litestream 이 복제한다.
+    """
+    d = Path(os.getenv("DB_DIR") or data_dir())
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
 # --- 모델 카탈로그 (지시서 §7) ---
 # 단가와 같은 이유로 코드 밖에 둔다: 모델 ID는 **사실**이고, 시점에 따라 바뀐다.
 MODELS_FILE = Path(os.getenv("MODELS_FILE", BACKEND / "models.json"))

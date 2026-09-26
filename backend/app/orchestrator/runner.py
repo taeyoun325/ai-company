@@ -50,6 +50,8 @@ def _clean_env() -> dict:
         if any(h in k.upper() for h in SECRET_HINTS):
             continue
         env[k] = v
+    # `-I` 는 PYTHON* 환경변수를 **무시한다** — 이 값만으로는 산출물에 __pycache__ 가
+    # 쌓였다(DAY 27 Cloud Run 실측). 그래서 명령에 `-B` 도 붙인다.
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["PYTHONNOUSERSITE"] = "1"        # usercustomize.py 자동 import 차단
     env["PYTHONUNBUFFERED"] = "1"
@@ -90,7 +92,8 @@ _SUMMARY = re.compile(r"(\d+) (passed|failed|error|errors|skipped)")
 
 
 def _parse(out: str, returncode: int, timed_out: bool,
-           isolated: bool = False, isolation_detail: str = "") -> dict:
+           isolated: bool = False, isolation_detail: str = "",
+           fs_isolated: bool = False) -> dict:
     counts = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0}
     for n, kind in _SUMMARY.findall(out):
         key = "errors" if kind.startswith("error") else kind
@@ -103,6 +106,8 @@ def _parse(out: str, returncode: int, timed_out: bool,
         # 이 코드가 네트워크 없이 돌았는가. 검증자와 화면이 이 값을 본다 —
         # 조용히 실패해서 "격리된 줄 알았는데 아니었다"가 되지 않게 한다.
         "network_isolated": isolated,
+        # 서버의 데이터·다른 프로젝트를 못 보는 곳에서 돌았는가 (DAY 27).
+        "fs_isolated": fs_isolated,
         "isolation_detail": isolation_detail,
         **counts,
         "failed_tests": failures[:40],
@@ -127,7 +132,8 @@ def blocked(reason: str) -> dict:  # noqa: D401
     return {"ok": False, "skipped_run": True, "timed_out": False,
             "returncode": -1, "passed": 0, "failed": 0, "errors": 0,
             "skipped": 0, "failed_tests": [], "blocked": True,
-            "network_isolated": False, "isolation_detail": "실행하지 않았습니다",
+            "network_isolated": False, "fs_isolated": False,
+            "isolation_detail": "실행하지 않았습니다",
             "output": reason}
 
 
@@ -149,9 +155,9 @@ def run(project_dir) -> dict:
     ini = project_dir / "pytest.ini"      # 오케스트레이터가 매번 덮어쓴다
     ini.write_text(PYTEST_INI, encoding="utf-8")
 
-    cmd, isolated, why = isolation.wrap(
-        [sys.executable, "-I", "-m", "pytest", "-c", str(ini),
-         "--rootdir", str(project_dir)])
+    cmd, iso = isolation.sandbox(
+        [sys.executable, "-I", "-B", "-m", "pytest", "-c", str(ini),
+         "--rootdir", str(project_dir)], project_dir, cpu_seconds=TIMEOUT + 30)
     proc = subprocess.Popen(
         cmd,
         cwd=project_dir, env=_clean_env(), text=True, encoding="utf-8",
@@ -167,7 +173,8 @@ def run(project_dir) -> dict:
         out, _ = proc.communicate()
         out = (out or "") + f"\n\n[타임아웃 {TIMEOUT}초 — 프로세스 트리 강제 종료]"
 
-    return _parse(out or "", proc.returncode or 0, timed_out, isolated, why)
+    return _parse(out or "", proc.returncode or 0, timed_out,
+                  iso["network"], iso["detail"], iso["filesystem"])
 
 
 ENTRY_CANDIDATES = ("main.py", "app.py", "__main__.py", "run.py", "cli.py")
@@ -204,9 +211,15 @@ def run_entry(project_dir, entry: str, timeout: int | None = None) -> dict:
     pytest와 동일한 격리를 쓴다 — 환경 세탁, 격리 모드, 프로세스 트리 종료.
     stdin은 막는다. 입력을 기다리는 프로그램이 타임아웃까지 매달리지 않게.
     """
+    if (reason := deploy.allow_code_execution()) is not None:
+        return {"entry": entry, "network_isolated": False, "fs_isolated": False,
+                "isolation_detail": "실행하지 않았습니다", "ok": False,
+                "timed_out": False, "returncode": -1, "blocked": True,
+                "output": reason}
     limit = timeout or min(TIMEOUT, 30)
-    cmd, isolated, why = isolation.wrap(
-        [sys.executable, "-I", entry.replace("/", os.sep)])
+    cmd, iso = isolation.sandbox(
+        [sys.executable, "-I", "-B", entry.replace("/", os.sep)], project_dir,
+        cpu_seconds=limit + 10)
     proc = subprocess.Popen(
         cmd,
         cwd=project_dir, env=_clean_env(), text=True, encoding="utf-8",
@@ -224,8 +237,9 @@ def run_entry(project_dir, entry: str, timeout: int | None = None) -> dict:
         out = (out or "") + f"\n\n[타임아웃 {limit}초 — 프로세스 트리 강제 종료]"
     return {
         "entry": entry,
-        "network_isolated": isolated,
-        "isolation_detail": why,
+        "network_isolated": iso["network"],
+        "fs_isolated": iso["filesystem"],
+        "isolation_detail": iso["detail"],
         "ok": proc.returncode == 0 and not timed_out,
         "timed_out": timed_out,
         "returncode": proc.returncode or 0,

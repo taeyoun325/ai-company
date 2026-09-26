@@ -243,6 +243,13 @@ def checks(strict: bool = False) -> list[dict]:
             "격리 선언이 없어 생성된 코드를 실행하지 않습니다. 검증자는 "
             "'테스트 없음'을 근거로 판정하게 됩니다.",
             "컨테이너에 네트워크·자원 제한을 건 뒤 SANDBOXED=1."))
+    elif d["mode"] == "saas" and not d["code_execution"]:
+        # 서명은 있는데 샌드박스를 못 짠다 (DAY 27) — 조용히 '되는 것처럼'
+        # 보이면 운영자는 테스트가 왜 늘 '실행 안 함'인지 모른다.
+        out.append(_row(
+            "샌드박스", WARN, d["code_execution_reason"] or "",
+            "bubblewrap 을 설치하고 비특권 사용자 네임스페이스를 허용하세요 "
+            "(deploy/cloudrun/Dockerfile 참조)."))
     else:
         out.append(_row("배포 자세", OK,
                         f"{d['mode']}"

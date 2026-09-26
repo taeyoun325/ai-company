@@ -86,6 +86,8 @@ def wrap(cmd: list[str]) -> tuple[list[str], bool, str]:
     감싸지 못했으면 **원래 명령을 그대로** 돌려준다. 격리가 안 된다고
     테스트를 못 돌리게 하면, 개발 머신에서는 아무것도 검증할 수 없다.
     대신 두 번째 값이 False 로 나가고 그것이 리포트에 실린다.
+
+    네트워크만 끊는다. 파일 시스템까지 가두려면 `sandbox()` 를 쓴다.
     """
     if not requested():
         return cmd, False, f"{ENV_FLAG}=0 — 네트워크를 끊지 않았습니다"
@@ -95,8 +97,109 @@ def wrap(cmd: list[str]) -> tuple[list[str], bool, str]:
     return ["unshare", *UNSHARE_ARGS, *cmd], True, why
 
 
+# ── 파일 시스템까지 가두기 (DAY 27) ────────────────────────────────
+#
+# 네트워크만 끊어서는 부족하다는 것을 Cloud Run 에서 실제로 쟀다. 생성된
+# 코드는 **서버와 같은 사용자**로 돈다. 그래서 네트워크가 끊겨 있어도:
+#
+#   - 계정 DB 에 세션 행을 써 넣어 **아무 계정이나 가져갈** 수 있고
+#   - 지갑 잔액을 고치고, 다른 테넌트의 프로젝트를 읽고 고치고
+#   - `/proc/<서버 pid>/environ` 으로 서버의 비밀 환경변수를 읽는다
+#
+# 빼낼 길도 있다 — 테스트 출력과 산출물이 **요청한 사람에게 돌아간다.**
+#
+# bubblewrap 으로 새 루트를 짠다. 보이는 것은 읽기 전용 시스템(/usr·/etc)과
+# **자기 프로젝트 폴더 하나**뿐이다. 서버의 데이터·다른 프로젝트·버킷
+# 마운트·홈은 아예 없다. PID 네임스페이스가 따로라 서버 프로세스도 안 보인다.
+# 커널 기능은 unshare 와 같다(비특권 사용자 네임스페이스).
+#
+# 자원: 메모리·파일 크기·프로세스 수·CPU 시간을 prlimit 로 묶는다. 한 사용자의
+# 코드가 인스턴스 메모리를 다 먹으면 **모든 사용자의 서버가** 같이 죽는다.
+SANDBOX_MEM_MB = int(os.getenv("SANDBOX_MEM_MB", "1024"))
+SANDBOX_FSIZE_MB = int(os.getenv("SANDBOX_FSIZE_MB", "64"))
+SANDBOX_NPROC = int(os.getenv("SANDBOX_NPROC", "256"))
+
+# 새 루트에 읽기 전용으로 들이는 것. /app·/home·/mnt·/tmp 는 **넣지 않는다.**
+_SYSTEM_DIRS = ("/usr", "/etc")
+_MAYBE_LINKS = ("/bin", "/sbin", "/lib", "/lib64")
+
+
+def _root_args() -> list[str]:
+    args: list[str] = []
+    for d in _SYSTEM_DIRS:
+        args += ["--ro-bind", d, d]
+    for d in _MAYBE_LINKS:
+        if os.path.islink(d):           # merged-/usr: /bin → usr/bin
+            args += ["--symlink", os.readlink(d), d]
+        elif os.path.isdir(d):
+            args += ["--ro-bind", d, d]
+    return args
+
+
+def _bwrap_args(workdir: str) -> list[str]:
+    return ["bwrap", "--unshare-all", "--die-with-parent", "--new-session",
+            *_root_args(),
+            "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+            "--bind", workdir, workdir, "--chdir", workdir,
+            "--setenv", "HOME", "/tmp", "--"]
+
+
+def _limit_args(cpu_seconds: int) -> list[str]:
+    if shutil.which("prlimit") is None:
+        return []
+    return ["prlimit", f"--as={SANDBOX_MEM_MB * 1024 * 1024}",
+            f"--fsize={SANDBOX_FSIZE_MB * 1024 * 1024}",
+            f"--nproc={SANDBOX_NPROC}", f"--cpu={max(1, cpu_seconds)}",
+            "--nofile=512", "--"]
+
+
+@functools.lru_cache(maxsize=1)
+def probe_sandbox() -> tuple[bool, str]:
+    """bubblewrap 이 **여기서 실제로** 새 루트를 짤 수 있는가."""
+    if sys.platform != "linux":
+        return False, f"리눅스가 아닙니다 ({sys.platform}) — 파일 시스템 격리를 쓸 수 없습니다"
+    if shutil.which("bwrap") is None:
+        return False, "bwrap 명령이 없습니다 (bubblewrap 설치 필요)"
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            r = subprocess.run([*_bwrap_args(d), "/bin/sh", "-c",
+                                "test ! -e /app && echo ok > probe"],
+                               capture_output=True, timeout=10, text=True)
+        except (OSError, subprocess.SubprocessError) as e:
+            return False, f"bwrap 실행 실패: {type(e).__name__}: {e}"
+        written = os.path.exists(os.path.join(d, "probe"))
+    if r.returncode != 0 or not written:
+        detail = (r.stderr or r.stdout or "").strip().splitlines()
+        return False, f"bwrap 이 거부됐습니다: {detail[-1] if detail else r.returncode}"
+    return True, "bubblewrap — 네트워크·파일 시스템·프로세스 격리"
+
+
+def sandbox_available() -> bool:
+    return requested() and probe_sandbox()[0]
+
+
+def sandbox(cmd: list[str], workdir, cpu_seconds: int = 120) -> tuple[list[str], dict]:
+    """명령을 `workdir` 하나만 보이는 샌드박스에 넣는다. (명령, 리포트)
+
+    bubblewrap 이 안 되면 네트워크만 끊는 `wrap()` 으로 내려간다 — 로컬
+    개발 머신의 옛 동작 그대로다. **서버 배포(saas)에서는 그 내려감이
+    일어나지 않는다**: `app/deploy.py` 가 bubblewrap 없이는 실행을 막는다.
+    """
+    if requested():
+        ok, why = probe_sandbox()
+        if ok:
+            wd = os.path.abspath(str(workdir))
+            return ([*_limit_args(cpu_seconds), *_bwrap_args(wd), *cmd],
+                    {"network": True, "filesystem": True, "detail": why})
+    out, net, why = wrap(cmd)
+    return out, {"network": net, "filesystem": False, "detail": why}
+
+
 def status() -> dict:
     """화면·점검이 볼 현황."""
     ok, why = probe()
+    fs_ok, fs_why = probe_sandbox()
     return {"requested": requested(), "available": ok, "detail": why,
-            "effective": requested() and ok}
+            "effective": requested() and ok,
+            "filesystem": requested() and fs_ok, "filesystem_detail": fs_why}

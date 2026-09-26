@@ -86,6 +86,16 @@ def allow_code_execution() -> str | None:
                 "합니다. 컨테이너에서 실행 중이라면 SANDBOXED=1 을 설정하세요. "
                 "설정하지 않으면 테스트는 실행되지 않고, 검증자는 '테스트 없음'을 "
                 "근거로 판정합니다.")
+    if is_saas():
+        # 선언만으로는 부족하다 (DAY 27). 컨테이너가 격리돼 있어도 그 안의
+        # **다른 테넌트**와는 격리돼 있지 않다 — 생성된 코드가 서버와 같은
+        # 사용자로 계정 DB 를 고칠 수 있었다. 파일 시스템 샌드박스가 **이
+        # 기계에서 실제로 되는지** 확인되지 않으면 돌리지 않는다.
+        from app.orchestrator import isolation
+        if not isolation.sandbox_available():
+            _ok, why = isolation.probe_sandbox()
+            return ("SANDBOXED=1 이지만 생성된 코드를 가둘 파일 시스템 샌드박스"
+                    f"(bubblewrap)를 쓸 수 없어 실행하지 않습니다: {why}")
     return None
 
 

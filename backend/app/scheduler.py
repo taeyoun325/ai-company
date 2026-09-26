@@ -12,15 +12,18 @@ cron 문자열 대신 `HH:MM` + 요일 선택. 개인용 도구에 cron 문법�
 - 실제 모드인데 키가 없으면 실행하지 않고 사유를 남긴다.
 """
 import json
+import os
 import threading
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from app import bus
 from app import config, safeio
 
-STORE = config.ROOT / "schedules.json"
+# 배포에서는 보존되는 곳(SCHEDULES_FILE)으로 뺀다 (DAY 27).
+STORE = Path(os.getenv("SCHEDULES_FILE") or config.ROOT / "schedules.json")
 CHECK_INTERVAL = 20          # 초
 
 _lock = threading.RLock()

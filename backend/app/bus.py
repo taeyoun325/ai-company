@@ -291,6 +291,9 @@ def reset(run_id: str | None = None) -> None:
     close_trace(rid)
     try:
         _trace_path(rid).unlink(missing_ok=True)
+        if (a := _archive_path(rid)) is not None:
+            a.unlink(missing_ok=True)
+            _archived.pop(a.name, None)
     except OSError:
         # 다른 프로세스가 아직 그 파일을 쓰고 있을 수 있다(Windows 는
         # 열린 파일을 못 지운다). 지우기는 정리일 뿐 실행의 전제가 아니다.
@@ -416,6 +419,73 @@ def _trace(ev: dict) -> None:
         pass
 
 
+# ── 트레이스 보관 (DAY 27) ──────────────────────────────────────────
+#
+# 트레이스는 로컬 디스크에 줄 단위로 덧붙인다 — 이벤트마다 네트워크 저장소에
+# 쓰면 실행이 느려진다. 그런데 Cloud Run 의 로컬 디스크는 인스턴스가 쉬면
+# (유휴 15분) 사라진다. 그러면 **지난 실행의 작업 로그가 빈 화면**이 된다.
+#
+# 그래서 TRACE_ARCHIVE_DIR 이 있으면 커진 파일만 주기적으로(그리고 종료 때)
+# 그리로 복사하고, 읽을 때 로컬에 없으면 보관본을 읽는다. 트레이스는 덧붙이기만
+# 하므로 "크기가 달라졌다"가 곧 "새 내용이 있다"이다.
+ARCHIVE_INTERVAL = float(os.getenv("TRACE_ARCHIVE_INTERVAL", "30"))
+_archived: dict[str, int] = {}
+
+
+def _archive_path(run: str | None):
+    d = os.getenv("TRACE_ARCHIVE_DIR", "").strip()
+    if not d:
+        return None
+    from pathlib import Path
+    return Path(d) / _trace_path(run).name
+
+
+def _read_path(run: str | None):
+    local = _trace_path(run)
+    if local.exists():
+        return local
+    a = _archive_path(run)
+    return a if a is not None and a.exists() else local
+
+
+def archive_traces() -> int:
+    """커진 트레이스를 보관 폴더로 복사한다. 복사한 파일 수."""
+    d = os.getenv("TRACE_ARCHIVE_DIR", "").strip()
+    if not d or not config.LOGS.exists():
+        return 0
+    from pathlib import Path
+    from app import safeio
+    dest = Path(d)
+    dest.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for p in config.LOGS.glob("*.jsonl"):
+        try:
+            size = p.stat().st_size
+            if _archived.get(p.name) == size:
+                continue
+            # 쓰는 도중이면 마지막 줄이 잘려 있을 수 있다 — 다음 차례에 크기가
+            # 달라 다시 복사되고, 읽는 쪽은 잘린 줄을 원래 건너뛴다.
+            safeio.write_text(dest / p.name,
+                              p.read_bytes().decode("utf-8", "replace"))
+            _archived[p.name] = size
+            n += 1
+        except OSError:
+            continue            # 보관은 증거물이지 실행의 전제가 아니다
+    return n
+
+
+def _archive_loop() -> None:
+    while True:
+        time.sleep(ARCHIVE_INTERVAL)
+        archive_traces()
+
+
+if os.getenv("TRACE_ARCHIVE_DIR", "").strip():
+    import atexit
+    atexit.register(archive_traces)
+    threading.Thread(target=_archive_loop, daemon=True, name="trace-archive").start()
+
+
 def close_trace(run: str | None = None) -> None:
     with _lock:
         key = run or ""
@@ -465,7 +535,7 @@ def _parse_trace_lines(lines) -> list[dict]:
 def read_trace(run: str, after: int = 0) -> list[dict]:
     """`run` 하나의 이벤트를 트레이스 파일에서 읽는다. 인스턴스를 안 가린다."""
     try:
-        with open(_trace_path(run), "r", encoding="utf-8") as f:
+        with open(_read_path(run), "r", encoding="utf-8") as f:
             events = _parse_trace_lines(f)
     except FileNotFoundError:
         return []
@@ -481,7 +551,7 @@ def tail_trace(run: str, after: int = 0):
     keepalive 박자를 맞춘다. 서버가 죽지 않는 한 끝나지 않는다; 연결이
     끊기면(제너레이터가 버려지면) 자연히 멈춘다.
     """
-    path = _trace_path(run)
+    path = _read_path(run)
     last_id = after
     pos = 0
     while True:

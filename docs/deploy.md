@@ -48,9 +48,18 @@ docker compose logs -f
 | `projects` | 산출물 파일 | 만든 것이 사라진다 |
 | `logs` | 실행 트레이스 | 기록만 사라진다 |
 
-백업은 `data` 와 `projects` 다. 색인(`ai_company.db`)은 지워도
-`POST /api/projects/reindex` 로 파일에서 다시 만든다 — 하지만
-계정 DB(`ai_company_auth.db`)는 다시 만들 방법이 없다.
+백업은 `data` 와 `projects` 다. 계정 DB(`ai_company_auth.db`)는 다시 만들
+방법이 없다.
+
+> **`ai_company.db` 를 지우면 안 된다** (DAY 27 정정). 이 문서는 "색인이라
+> 지워도 reindex 로 다시 만든다"고 적고 있었지만, 같은 파일에 **지갑**
+> (`wallet_store` — 요금제·잔액·사용 내역)이 들어 있다. 프로젝트 목록이
+> 깨졌다면 파일을 지우지 말고 `POST /api/projects/reindex` 만 부른다.
+
+compose 는 저장소 루트에 쓰는 두 가지를 볼륨으로 빼지 않는다 — **첨부
+자료**(`/app/attachments`)와 **예약 실행**(`/app/schedules.json`). 컨테이너를
+새로 만들면 사라진다. `ATTACHMENTS_DIR` · `SCHEDULES_FILE` 로 볼륨 안을
+가리킬 것(Cloud Run 배치는 그렇게 한다 — 7절).
 
 ---
 
@@ -191,3 +200,72 @@ MANUAL 은 만료 시각이 있는 임대로 잡는다(잠근 인스턴스가 �
 인스턴스의 트레이스 파일들을 그냥 합치면 순서가 보장되지 않는다 —
 집계 뷰를 인스턴스 넘게 맞추려면 별도 설계(전역 id 채번 또는 파일별
 정렬 후 병합)가 필요하다.
+
+---
+
+## 7. Cloud Run + Firebase Hosting 배치 (DAY 27)
+
+`deploy/cloudrun/` — `sh deploy/cloudrun/deploy.sh setup|build|deploy`.
+주소는 `https://ai-company-1c4da.web.app`(Hosting → Cloud Run)과 Cloud Run
+자체 주소 둘이다. **실행으로 검증했다** — 아래 수치는 전부 실측이다.
+
+### 모양
+
+한 컨테이너에 Next(바깥 `:8080`)와 백엔드(`127.0.0.1:8000`)를 넣는다.
+Cloud Run 서비스는 각자 공개 주소를 받으므로, 둘로 나누면 4절이 금지한
+"백엔드 직접 노출"이 된다.
+
+| 상태 | 사는 곳 | 방식 |
+|---|---|---|
+| 계정·색인·지갑 SQLite | `/app/db` (로컬) | Litestream → Cloud Storage. gcsfuse 위에 SQLite 를 두면 깨진다 |
+| JSON·산출물·첨부·예약 | `/mnt/state` | Cloud Storage 버킷 마운트(gcsfuse). 쓰기 한 번 ~0.15초 |
+| 실행 트레이스 | `/app/logs` (로컬) | 30초마다 + 종료 때 `/mnt/state/traces` 로 보관, 읽을 때 되짚음 |
+
+### 쓰는 인스턴스는 하나 — `supervisor.py` 의 임대
+
+Litestream 은 동시에 둘이 복제하면 복원이 불가능해질 수 있다고 적는다.
+Cloud Run 의 `max-instances` 는 **리비전마다** 세고, 배포 직후 옛 리비전
+인스턴스가 **한 시간 가까이** 함께 떠 있었다(실측). 그래서 버킷의
+`lease.json` 을 조건부 쓰기로만 고치는 임대를 둔다:
+
+- 새 리비전만 옛 리비전에게 넘겨 달라고 한다. 쥐는 쪽도 옛 리비전의 요청은
+  거절한다 — 규칙 없이 "리비전이 다르면 넘긴다"였을 때 1분에 여섯 번 주인이
+  바뀌는 핑퐁이 났다.
+- 넘겨준 쪽은 끝내지 않고 대기한다(끝내면 Cloud Run 이 옛 리비전을 다시 띄운다).
+- **되돌리기는 옛 이미지를 새 리비전으로 다시 배포한다.** 트래픽만 옛
+  리비전으로 돌리면 그 리비전은 임대를 받지 못한다.
+- **배포하면 약 10초 끊긴다.** 새 리비전은 임대를 받아 DB 를 되살려야
+  준비되는데, 그동안 옛 리비전은 이미 넘겨준 뒤다(실측 170회 중 1회 실패).
+  돌고 있던 실행도 끊긴다 — 다음 기동 때 `sweep_stale_runs` 가 정리한다.
+
+### 생성된 코드 — bubblewrap
+
+네트워크만 끊어서는 부족했다. 생성된 코드는 서버와 **같은 사용자**라 계정
+DB 에 세션 행을 써 넣어 아무 계정이나 가져갈 수 있었고, `/proc` 로 서버의
+환경변수를 읽었다(Cloud Run 실측). 이제 saas 에서는 **bubblewrap 이 실제로
+되는지 확인된 경우에만** 코드를 돌린다(`app/orchestrator/isolation.py`).
+샌드박스 안에서 보이는 것은 `/usr`·`/etc`(읽기 전용)와 **자기 프로젝트
+폴더 하나**다. 메모리 1GB·파일 64MB·프로세스 256·CPU 시간을 `prlimit` 로 묶는다.
+
+실측(Cloud Run gen2, 운영 이미지): Mock 파이프라인 전체가 20초에 끝나고
+점수 100, 시험 2개 통과, `network_isolated=True · fs_isolated=True`.
+
+### 실제 주소 — 로그인 횟수 제한
+
+Firebase Hosting 은 `66.249.82.x` 와 `192.178.14.x` **두 대역**에서 붙었다
+(요청 로그 실측). 손으로 적은 대역은 샌다. 이미지 빌드 때 구글 공개 목록
+(`goog.json − cloud.json`)으로 `/etc/trusted-proxies.txt` 를 만들고,
+`X-Forwarded-For` 를 오른쪽부터 읽으며 그 대역을 건너뛴다.
+
+### Firebase Hosting 의 제약
+
+- `__session` 이외의 쿠키를 지운다 → `SESSION_COOKIE=__session`
+- 응답을 모았다 보낸다 → SSE 가 오지 않는다. 화면은 6초 안에 열리지 않으면
+  폴링(1.5초)으로 내려간다. Cloud Run 자체 주소에서는 SSE 가 그대로 흐른다.
+
+### 아직 남은 것
+
+- 배포 때의 ~10초 끊김과 실행 중단(위)
+- 옛 이미지에서 로컬 디스크에만 있던 산출물은 이미 사라졌다 — 목록에는
+  남아 있고 파일은 없는 프로젝트가 있을 수 있다
+- 메일(SMTP) 미설정, 실제 모델 키 미투입(Mock)

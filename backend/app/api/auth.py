@@ -11,6 +11,7 @@ main.py 가 800줄을 넘어서 여기로 뺐다 — `app/api/__init__.py` 에
 """
 from __future__ import annotations
 
+import functools
 import ipaddress
 import os
 
@@ -67,17 +68,37 @@ def _client_ip(request: Request) -> str:
 
 
 def _trusted_proxies() -> list | None:
-    """TRUSTED_PROXY_CIDRS — 쉼표로 가른 대역. 없으면 None (옛 동작)."""
+    """믿는 프록시 대역. 둘 다 없으면 None (옛 동작).
+
+    TRUSTED_PROXY_CIDRS  쉼표로 가른 대역
+    TRUSTED_PROXY_FILE   한 줄에 대역 하나 — Cloud Run 이미지는 빌드 때 구글이
+                         공개한 목록(goog.json − cloud.json)으로 만든다.
+                         Firebase Hosting 은 66.249.82.x 와 192.178.14.x 에서
+                         모두 접속했다(DAY 27 실측) — 손으로 적은 대역은 샌다.
+    """
     raw = os.getenv("TRUSTED_PROXY_CIDRS", "").strip()
-    if not raw:
+    path = os.getenv("TRUSTED_PROXY_FILE", "").strip()
+    if not raw and not path:
         return None
+    parts = [p for p in raw.split(",") if p.strip()]
+    if path:
+        parts += _read_cidr_file(path)
     nets = []
-    for part in raw.split(","):
+    for part in parts:
         try:
             nets.append(ipaddress.ip_network(part.strip(), strict=False))
         except ValueError:
             continue
     return nets
+
+
+@functools.lru_cache(maxsize=4)
+def _read_cidr_file(path: str) -> tuple[str, ...]:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return tuple(ln.strip() for ln in f if ln.strip() and not ln.startswith("#"))
+    except OSError:
+        return ()
 
 
 def _in(host: str, nets: list) -> bool:
