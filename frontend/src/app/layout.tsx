@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
 
 import { AuthGate } from "@/components/AuthGate";
-import { LangPartialNote, LangSwitch, Nav, VerifyNote }
-  from "@/components/LangSwitch";
-import { UserMenu } from "@/components/UserMenu";
-import { Icon } from "@/components/icons";
+import { TabDeck } from "@/components/TabDeck";
+import { AppHeader } from "@/components/AppHeader";
+import { LangPartialNote, VerifyNote } from "@/components/LangSwitch";
 import { LangProvider } from "@/lib/i18n";
 import { AuthProvider } from "@/lib/useAuth";
 import "./globals.css";
@@ -61,41 +59,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <AuthProvider>
           <LangPartialNote />
           <VerifyNote />
-          <header className="z-20 shrink-0 border-b border-line bg-[color:var(--panel)] backdrop-blur-xl">
-            {/* 좁은 화면에서 메뉴 글자가 두 줄로 쪼개지던 것을 막는다.
-                넘치면 접지 말고 옆으로 밀리게 둔다 — 접으면 어떤 메뉴가
-                있는지 자체가 안 보인다. */}
-            <nav
-              className="flex w-full items-center gap-1 overflow-x-auto px-4 py-2.5
-                [-ms-overflow-style:none] [scrollbar-width:none]
-                [&>*]:shrink-0 [&_*]:whitespace-nowrap"
-            >
-              <Link href="/" className="mr-3 flex items-center gap-2.5">
-                <span
-                  className="grid size-8 place-items-center rounded-xl text-white
-                    shadow-[0_4px_14px_rgba(109,141,255,0.4)] grad-accent"
-                >
-                  <Icon name="building" size={18} />
-                </span>
-                <span className="text-sm font-bold tracking-tight">AI COMPANY</span>
-              </Link>
-              <Nav />
-              {/* 가장자리에 **붙여둔다** (DAY 22).
-                  헤더는 넘치면 옆으로 밀리는데(위 주석), 폰에서는 그
-                  사실을 알 길이 없다. 375px 에서 재보니 이 묶음이 화면
-                  밖 173px 에 있었다 — 즉 폰에서는 언어를 바꿀 수도,
-                  사용자 메뉴를 열 수도 없었다. 붙여두면 밀려도 보인다.
-                  배경을 주는 이유는 밑으로 지나가는 메뉴가 비쳐 보이지
-                  않게 하려는 것이다. */}
-              <span className="sticky right-0 -my-2.5 ml-auto flex items-center
-                gap-1 bg-[color:var(--bg)] py-2.5 pl-3">
-                <UserMenu />
-                <LangSwitch compact />
-              </span>
-            </nav>
-          </header>
+          <AppHeader />
           <main className="min-h-0 flex-1 overflow-hidden">
-            <AuthGate>{children}</AuthGate>
+            <AuthGate><TabDeck>{children}</TabDeck></AuthGate>
           </main>
         </AuthProvider>
         </LangProvider>

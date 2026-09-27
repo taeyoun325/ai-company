@@ -31,7 +31,7 @@
  * 접히거나 사라지는 경고는 아무도 안 본다. 그 상태에서 나온 산출물을
  * 실제 AI 의 작업 결과로 믿는 순간이 이 제품에서 제일 나쁜 순간이다.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ChatLog } from "@/components/ChatLog";
@@ -61,6 +61,15 @@ const LOG_WIDTH_MIN = 260;
 const LOG_WIDTH_MAX = 560;
 // 이보다 넓어야 로그와 최근 결과를 나란히 둔다. 좁으면 위아래로 쌓는다.
 const LOG_SPLIT_MIN = 440;
+/**
+ * 사무실이 이만큼 넓으면 작업 로그를 **가운데 옆**에 따로 세운다.
+ *
+ * 가운데 칸은 읽기 좋은 폭(920px)에서 멈추므로, 넓은 화면(탭 카드 덱은 화면을
+ * 줄여 그려서 늘 넓다)에서는 그 양옆이 비어 있었다. 그 빈자리에 로그를 두면
+ * 오른쪽 칸은 지난 결과만 넉넉하게 보여줄 수 있다. 레일(≈230) + 가운데(줄어서 ≈800) +
+ * 로그(최소 300) + 오른쪽 칸(기본 336) 이 들어가는 폭이다.
+ */
+const WIDE_MIN = 1640;
 
 /** 사무실을 다시 읽어야 하는 이벤트 — 사람의 자리나 상태가 바뀌는 것들. */
 const PULSE_TYPES = new Set(["phase", "gate", "awaiting", "done", "handoff"]);
@@ -227,6 +236,18 @@ export default function OfficePage() {
     LOG_WIDTH_KEY, LOG_WIDTH_DEFAULT,
   );
   const [logWidthDrag, setLogWidthDrag] = useState<number | null>(null);
+  const [wide, setWide] = useState(false);
+  // 그리기 전에 한 번 재고(useLayoutEffect), 그 뒤로는 크기가 바뀔 때마다.
+  // 배치 폭(offsetWidth)으로 잰다 — 탭 카드 덱이 줄여(zoom) 그려도 배치는 그대로다.
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const check = () => setWide(el.offsetWidth >= WIDE_MIN);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const logWidth = logWidthDrag ?? logWidthStored;
   const commitLogWidth = (w: number) => {
     setLogWidthDrag(null);
@@ -251,6 +272,40 @@ export default function OfficePage() {
   };
   const liveGates = run && run.status !== "done" ? snap?.gates ?? [] : gates;
 
+  const walletLink = wallet && (
+    <a href="/pricing" className="text-[11px] text-dim hover:text-fg">
+      {num(wallet.balance, lang)} · {wallet.plan_label}
+    </a>
+  );
+  // 작업 로그의 머리와 몸. 넓으면 가운데 옆 칸에, 아니면 오른쪽 칸 위에 선다.
+  const logHead = (
+    <div className="flex items-center justify-between px-3 py-3">
+      <span className="flex min-w-0 items-center gap-1.5 text-[13px]
+        font-semibold tracking-tight">
+        {t("office.log")}
+        {running && folded.phase && (
+          <span className="flex min-w-0 items-center gap-1 rounded-md
+            px-1.5 py-0.5 text-[10px] font-medium"
+            style={{ background: "var(--panel-2)", color: "var(--accent)" }}>
+            <span className="size-1 animate-pulse rounded-full"
+                  style={{ background: "var(--accent)" }} aria-hidden />
+            <span className="truncate">{folded.phase}</span>
+          </span>
+        )}
+      </span>
+      {!wide && walletLink}
+    </div>
+  );
+  const logBody = stream.events.length === 0 ? (
+    <p className="px-4 py-6 text-center text-xs text-dim">
+      {t("office.logEmpty")}
+    </p>
+  ) : (
+    <ChatLog events={stream.events} roster={stream.roster}
+      connected={stream.connected} polling={stream.polling}
+      slug={slug} className="h-full" />
+  );
+
   return (
     <div ref={root} className="flex h-full">
       <ProjectRail
@@ -266,7 +321,8 @@ export default function OfficePage() {
         }}
       />
 
-      <section ref={work} className="min-w-0 flex-1 overflow-y-auto px-4 py-4">
+      <section ref={work} className={`overflow-y-auto px-4 py-4 ${
+        wide ? "min-w-[560px] shrink grow-0 basis-[952px]" : "min-w-0 flex-1"}`}>
         <div className="mx-auto max-w-[920px] space-y-3">
           {allMock && !mockDismissed && (
             <div data-enter>
@@ -455,6 +511,17 @@ export default function OfficePage() {
         </div>
       </section>
 
+      {wide && (
+        <section className="flex h-full min-w-[300px] flex-1 flex-col border-l border-line
+          bg-[color:var(--panel)] backdrop-blur-xl" data-enter>
+          {logHead}
+          <div className="min-h-0 flex-1 overflow-y-auto border-t border-line"
+            data-testid="activity-log">
+            {logBody}
+          </div>
+        </section>
+      )}
+
       <ResizeHandle
         width={logWidth}
         onChange={setLogWidthDrag}
@@ -471,50 +538,38 @@ export default function OfficePage() {
           bg-[color:var(--panel)] backdrop-blur-xl lg:flex"
         data-enter
       >
-        <div className="flex items-center justify-between px-3 py-3">
-          <span className="flex min-w-0 items-center gap-1.5 text-[13px]
-            font-semibold tracking-tight">
-            {t("office.log")}
-            {running && folded.phase && (
-              <span className="flex min-w-0 items-center gap-1 rounded-md
-                px-1.5 py-0.5 text-[10px] font-medium"
-                style={{ background: "var(--panel-2)", color: "var(--accent)" }}>
-                <span className="size-1 animate-pulse rounded-full"
-                      style={{ background: "var(--accent)" }} aria-hidden />
-                <span className="truncate">{folded.phase}</span>
+        {wide ? (
+          <>
+            <div className="flex items-center justify-between px-3 py-3">
+              <span className="text-[13px] font-semibold tracking-tight">
+                {t("recent.title")}
               </span>
-            )}
-          </span>
-          {wallet && (
-            <a href="/pricing" className="text-[11px] text-dim hover:text-fg">
-              {num(wallet.balance, lang)} · {wallet.plan_label}
-            </a>
-          )}
-        </div>
-
-        {/* 레일이 좁으면 최근 결과를 로그 **아래**로 내린다 (DAY 26). 기본 폭
-            336px 를 반씩 나누면 로그 칸이 168px 이 되어 "연결됨"이 한 글자씩
-            세로로 줄바꿈됐다 — 화면 시험을 만들며 찾았다. */}
-        <div className={`grid min-h-0 flex-1 border-t border-line overflow-hidden ${
-          logWidth >= LOG_SPLIT_MIN
-            ? "grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] divide-x divide-line"
-            : "grid-rows-[minmax(0,1fr)_auto] divide-y divide-line"}`}>
-          <div className="min-h-0 overflow-y-auto" data-testid="activity-log">
-            {stream.events.length === 0 ? (
-              <p className="px-4 py-6 text-center text-xs text-dim">
-                {t("office.logEmpty")}
-              </p>
-            ) : (
-              <ChatLog events={stream.events} roster={stream.roster}
-                connected={stream.connected} polling={stream.polling}
-                slug={slug} className="h-full" />
-            )}
-          </div>
-          <div className={`min-h-0 overflow-y-auto ${
-            logWidth >= LOG_SPLIT_MIN ? "" : "max-h-44"}`}>
-            <RecentResults />
-          </div>
-        </div>
+              {walletLink}
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto border-t border-line">
+              <RecentResults bare />
+            </div>
+          </>
+        ) : (
+          <>
+            {logHead}
+            {/* 레일이 좁으면 최근 결과를 로그 **아래**로 내린다 (DAY 26). 기본 폭
+                336px 를 반씩 나누면 로그 칸이 168px 이 되어 "연결됨"이 한 글자씩
+                세로로 줄바꿈됐다 — 화면 시험을 만들며 찾았다. */}
+            <div className={`grid min-h-0 flex-1 border-t border-line overflow-hidden ${
+              logWidth >= LOG_SPLIT_MIN
+                ? "grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] divide-x divide-line"
+                : "grid-rows-[minmax(0,1fr)_auto] divide-y divide-line"}`}>
+              <div className="min-h-0 overflow-y-auto" data-testid="activity-log">
+                {logBody}
+              </div>
+              <div className={`min-h-0 overflow-y-auto ${
+                logWidth >= LOG_SPLIT_MIN ? "" : "max-h-44"}`}>
+                <RecentResults />
+              </div>
+            </div>
+          </>
+        )}
 
         {(slug || stream.events.length > 0) && (
           <div className="shrink-0 space-y-3 border-t border-line p-3">

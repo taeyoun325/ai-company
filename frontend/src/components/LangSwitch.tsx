@@ -23,12 +23,15 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { NavLink } from "./ui";
 
-export function LangSwitch({ compact = false }: { compact?: boolean }) {
+export function LangSwitch({
+  compact = false, vertical = false,
+}: { compact?: boolean; vertical?: boolean }) {
   const { lang, setLang, t } = useLang();
 
   return (
     <div
-      className="flex items-center gap-0.5 rounded-lg border border-line bg-panel2 p-0.5"
+      className={`flex items-center gap-0.5 rounded-lg border border-line bg-panel2 p-0.5
+        ${vertical ? "flex-col" : ""}`}
       role="group"
       aria-label={t("nav.language")}
     >
@@ -125,9 +128,9 @@ export function Nav() {
   return (
     <>
       <NavLink href="/" active={at("/")}>{t("nav.office")}</NavLink>
-      <NavLink href="/guide" active={at("/guide")}>{t("nav.guide")}</NavLink>
       <NavLink href="/pricing" active={at("/pricing")}>{t("nav.pricing")}</NavLink>
       <NavLink href="/settings" active={at("/settings")}>{t("nav.settings")}</NavLink>
+      <NavLink href="/guide" active={at("/guide")}>{t("nav.guide")}</NavLink>
     </>
   );
 }

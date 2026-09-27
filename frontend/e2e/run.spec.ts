@@ -37,11 +37,14 @@ test("작업 로그 칸이 좁아져 글자가 한 자씩 세로로 쌓이지 �
   await waitStatus(request, req, "done");
   const log = page.getByTestId("activity-log");
   await expect(log).toBeVisible();
-  const width = await log.evaluate((e) => e.getBoundingClientRect().width);
+  // 배치 폭으로 잰다(offsetWidth). 사무실은 탭 카드 덱 안에서 줄여(CSS zoom)
+  // 그려지므로 화면상 폭(getBoundingClientRect)은 배치 폭보다 작다 — 줄바꿈을
+  // 가르는 것은 배치 폭이다.
+  const width = await log.evaluate((e) => (e as HTMLElement).offsetWidth);
   expect(width).toBeGreaterThan(250);
   // "연결됨" · "N줄" 같은 머리글이 한 줄에 있어야 한다.
   const tall = await log.locator("span.whitespace-nowrap").evaluateAll((els) =>
-    els.map((e) => e.getBoundingClientRect().height).filter((h) => h > 24));
+    els.map((e) => (e as HTMLElement).offsetHeight).filter((h) => h > 24));
   expect(tall, "머리글이 여러 줄로 쪼개졌다").toEqual([]);
 });
 

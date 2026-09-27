@@ -64,6 +64,43 @@ const S = {
   "nav.pricing": { ko: "요금제", en: "Pricing", ja: "料金" },
   "nav.settings": { ko: "설정", en: "Settings", ja: "設定" },
   "nav.guide": { ko: "설명", en: "Guide", ja: "説明" },
+
+  // ── 직원 쇼케이스(/staff) ─────────────────────────────────────
+  "show.title": {
+    ko: "직원 다섯이\n당신의 회사를\n움직입니다",
+    en: "Five employees\nrun your\ncompany",
+    ja: "5 名の社員が\nあなたの会社を\n動かす",
+  },
+  "show.cta": { ko: "사무실로", en: "To the office", ja: "オフィスへ" },
+
+  "show.prev": { ko: "이전 직원", en: "Previous", ja: "前の社員" },
+  "show.next": { ko: "다음 직원", en: "Next", ja: "次の社員" },
+  "show.model": { ko: "쓰는 모델", en: "Model", ja: "使うモデル" },
+  // ── 탭 카드 덱(TabDeck) — 탭 화면이 궤도 가운데 카드로 선다 ─────────
+  "deck.prev": { ko: "이전 탭", en: "Previous tab", ja: "前のタブ" },
+  "deck.next": { ko: "다음 탭", en: "Next tab", ja: "次のタブ" },
+  "deck.hint": { ko: "카드 밖에서 스크롤", en: "Scroll outside the card", ja: "カードの外でスクロール" },
+  "deck.office.body": {
+    ko: "대표 지시창으로 일을 맡기고, 직원 다섯의 상태와 승인 대기를 한 화면에서 봅니다.",
+    en: "Hand out work from the CEO command window and see all five employees and pending approvals on one screen.",
+    ja: "社長指示窓から仕事を任せ、社員 5 名の状態と承認待ちを一画面で見ます。",
+  },
+  "deck.pricing.body": {
+    ko: "요금제와 남은 크레딧을 봅니다. 크레딧 환산은 아직 추정치입니다.",
+    en: "See plans and remaining credits. The credit conversion is still an estimate.",
+    ja: "料金プランと残りクレジットを見ます。クレジット換算はまだ推定値です。",
+  },
+  "deck.settings.body": {
+    ko: "API 키와 직원별 모델을 정합니다. 저장한 키는 가린 채로만 보여줍니다.",
+    en: "Set API keys and each employee's model. Saved keys are only ever shown masked.",
+    ja: "API キーと社員ごとのモデルを決めます。保存したキーは伏せて表示します。",
+  },
+  "deck.guide.body": {
+    ko: "이 회사가 일하는 순서를 여덟 장으로 넘겨 봅니다. 직원 다섯은 '직원' 장에 있습니다.",
+    en: "Flip through how this company works in eight chapters. The five employees are in the Team chapter.",
+    ja: "この会社の働き方を 8 章でめくって見ます。社員 5 名は「社員」の章にいます。",
+  },
+  "show.drag": { ko: "끌어서 넘기기", en: "Drag to switch", ja: "ドラッグで切替" },
   "nav.language": { ko: "언어", en: "Language", ja: "言語" },
   "footer.note": {
     ko: "당신은 CEO 입니다. 직원에게 직접 지시하거나 AUTO 로 맡기세요.",

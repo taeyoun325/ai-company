@@ -387,3 +387,35 @@ svg [tabindex]:focus-visible {
   .approval-pulse { animation: none; outline: 2px solid var(--st-approval); }
   .bubble { animation: none; }
 }
+
+/*
+  끝없이 도는 장식 (탭 카드 덱 · 직원 쇼케이스).
+
+  motion 으로 돌리면 x · y · rotate 같은 개별 transform 은 JS 가 매 프레임
+  스타일을 쓴다 — 아무도 안 보는 동안에도. CSS 애니메이션은 합성 스레드에서
+  돌아 메인 스레드를 쓰지 않는다. 움직임을 줄인 사람에게는 멈춘다.
+*/
+@keyframes galaxy-drift {
+  0% { transform: rotate(0deg) translate(0, 0); }
+  50% { transform: rotate(180deg) translate(3%, -2%); }
+  100% { transform: rotate(360deg) translate(0, 0); }
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+@keyframes scroll-hint {
+  0%, 100% { transform: translateY(0); opacity: 1; }
+  50% { transform: translateY(7px); opacity: 0.2; }
+}
+@keyframes float-y {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-14px) rotate(-2.2deg); }
+}
+.anim-galaxy { animation: galaxy-drift 90s linear infinite; }
+.anim-twinkle { animation: twinkle 4.5s ease-in-out infinite; }
+.anim-hint { animation: scroll-hint 1.6s ease-in-out infinite; }
+.anim-float { animation: float-y 5.5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .anim-galaxy, .anim-twinkle, .anim-hint, .anim-float { animation: none; }
+}

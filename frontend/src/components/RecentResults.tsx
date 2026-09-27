@@ -25,7 +25,8 @@ import { useLang } from "@/lib/i18n";
 import { useLoader } from "@/lib/useLoader";
 import { clock, money, took, when } from "./ui";
 
-export function RecentResults() {
+/** `bare`: 제목을 바깥(사무실 오른쪽 칸의 머리)이 달 때 — 같은 제목이 두 번 서지 않게. */
+export function RecentResults({ bare = false }: { bare?: boolean }) {
   const { t, lang } = useLang();
   const { data, loading } = useLoader("recent", () =>
     api.projects({ limit: 30, sort: "recent" }),
@@ -41,9 +42,11 @@ export function RecentResults() {
 
   return (
     <section className="px-3 py-3">
-      <h2 className="text-[10px] font-semibold uppercase tracking-wider text-dim">
-        {t("recent.title")}
-      </h2>
+      {!bare && (
+        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-dim">
+          {t("recent.title")}
+        </h2>
+      )}
       {loading || rows.length === 0 ? (
         <p className="px-1 py-6 text-center text-xs text-dim">
           {t("recent.none")}

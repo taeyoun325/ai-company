@@ -34,7 +34,7 @@ export type IconName =
   | "strategist" | "developer" | "analyst" | "writer" | "designer"
   | "building" | "req" | "verify" | "package" | "person" | "system"
   | "plus" | "play" | "stop" | "panel" | "copy" | "check" | "download"
-  | "chevron";
+  | "chevron" | "card" | "gear" | "book";
 
 /** 24×24 격자 위의 path 들. 바깥에서 stroke 속성을 걸어준다. */
 const GLYPHS: Record<IconName, ReactNode> = {
@@ -86,6 +86,29 @@ const GLYPHS: Record<IconName, ReactNode> = {
       <line x1="7.4" y1="16" x2="9.6" y2="16" />
       <line x1="15.6" y1="13.4" x2="16.8" y2="13.4" />
       <line x1="15.6" y1="16.4" x2="16.8" y2="16.4" />
+    </>
+  ),
+  // 카드 — 요금제.
+  card: (
+    <>
+      <rect x="3.2" y="5.8" width="17.6" height="12.4" rx="2" />
+      <line x1="3.2" y1="9.8" x2="20.8" y2="9.8" />
+      <line x1="6.4" y1="14.6" x2="10.2" y2="14.6" />
+    </>
+  ),
+  // 톱니 — 설정.
+  gear: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3.4v2.3M12 18.3v2.3M3.4 12h2.3M18.3 12h2.3M5.9 5.9l1.6 1.6M16.5 16.5l1.6 1.6M5.9 18.1l1.6-1.6M16.5 7.5l1.6-1.6" />
+      <circle cx="12" cy="12" r="6.2" />
+    </>
+  ),
+  // 펼친 책 — 설명.
+  book: (
+    <>
+      <path d="M12 6.6C10.3 5.2 7.6 4.6 4 4.8v13.6c3.6-.2 6.3.4 8 1.8 1.7-1.4 4.4-2 8-1.8V4.8c-3.6-.2-6.3.4-8 1.8Z" />
+      <line x1="12" y1="6.6" x2="12" y2="20.2" />
     </>
   ),
   // 문서 — 요구사항 한 줄.

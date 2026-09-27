@@ -46,11 +46,13 @@ import {
 } from "react";
 
 import { PipelineFigure } from "@/components/PipelineFigure";
+import { Showcase, type ShowItem } from "@/components/Showcase";
 import { Icon, iconOfAgent } from "@/components/icons";
 import { STATE_COLOR } from "@/components/office/OfficeFloor";
 import { Filled } from "@/components/ui";
 import { type Key, useLang } from "@/lib/i18n";
 import { T, animate, stagger, utils, withScope } from "@/lib/motion";
+import { useStack } from "@/lib/stack";
 import type { OfficeEmployee } from "@/lib/types";
 
 /** 직원 다섯 — 이름이 아니라 **자리**다. `writes` 는 코드가 강제하는 쓰기
@@ -62,6 +64,18 @@ const STAFF = [
   { id: "writer", who: "GPT", writes: "docs/" },
   { id: "designer", who: "Gemini", writes: "design/" },
 ] as const;
+
+/** 직원 장 쇼케이스의 누빈 그림 색(바탕 · 밝은 면 · 그림자). 위 표와 따로 둔다 —
+ *  위 표는 한 줄 한 사람 모양 그대로 test_repo_files 가 읽는다. */
+const TINT: Record<(typeof STAFF)[number]["id"], { bg: string; hi: string; deep: string }> = {
+  strategist: { bg: "#2b47c4", hi: "#a9c0ff", deep: "#16287a" },
+  analyst: { bg: "#9c5a0c", hi: "#ffd27a", deep: "#5c3405" },
+  developer: { bg: "#0c6e51", hi: "#77ecc0", deep: "#053f2e" },
+  writer: { bg: "#a8316d", hi: "#ffaed8", deep: "#661a41" },
+  designer: { bg: "#6439bd", hi: "#dcb8ff", deep: "#3c1f7a" },
+};
+
+const MODELS = ["Claude", "Gemini", "GPT"] as const;
 
 const STEPS = [1, 2, 3, 4, 5, 6] as const;
 
@@ -142,8 +156,11 @@ export default function GuidePage() {
     }
   }, [tab]);
 
-  // ←/→ 로 넘긴다. 입력칸에 쓰는 중이면 건드리지 않는다.
+  // ←/→ 로 넘긴다. 입력칸에 쓰는 중이면 건드리지 않는다. 탭 카드 덱에서
+  // 옆 자리에 비켜 있을 때는 듣지 않는다 — 가운데 카드의 키를 뺏는다.
+  const { active: onStage } = useStack();
   useEffect(() => {
+    if (!onStage) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
@@ -153,7 +170,7 @@ export default function GuidePage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, index]);
+  }, [go, index, onStage]);
 
   // 탭 목록의 키보드 — ARIA 탭 패턴(←/→ · Home/End 로 옮기고 바로 연다).
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -317,6 +334,44 @@ function NavButton({ onClick, disabled, dir, children }: {
 // `data-item` + `data-reveal`: 장이 서면 차례로 올라오는 조각. 움직임을 줄였거나
 // 애니메이션이 못 돌면 lib/motion 의 안전망이 그대로 드러낸다.
 
+/**
+ * '직원' 장 — 직원 다섯을 궤도 위에서 한 명씩 넘겨 본다(components/Showcase).
+ * 쓰기 구역은 이름 밑 한 줄에 남긴다 — 이 장에서만 보이는 정보다.
+ */
+function StaffOrbit() {
+  const { t } = useLang();
+  const items: ShowItem[] = STAFF.map((e) => ({
+    id: e.id,
+    icon: iconOfAgent(e.id),
+    ...TINT[e.id],
+    name: t(`role.${e.id}` as Key),
+    sub: `${e.who} · ${t("guide.writes")}: ${e.writes ?? t("guide.writes.none")}`,
+    body: t(`staff.${e.id}` as Key),
+  }));
+  const who = Object.fromEntries(STAFF.map((e) => [e.id, e.who]));
+  return (
+    <>
+      <div data-item data-reveal
+        className="h-[clamp(400px,calc(100dvh-330px),680px)]
+          sm:h-[clamp(440px,calc(100dvh-230px),680px)]">
+        <Showcase
+          items={items}
+          title={t("show.title")}
+          label={t("guide.tab.staff")}
+          chips={{ label: t("show.model"), values: MODELS, of: (it) => who[it.id] }}
+          cta={{ label: t("show.cta"), href: "/" }}
+          autoplay
+          embedded
+        />
+      </div>
+      <p data-item data-reveal className="mt-3 text-center text-[11px] leading-relaxed
+        text-dim">
+        {t("staff.note")} {t("guide.teams")} {t("office.card.teamHint")}
+      </p>
+    </>
+  );
+}
+
 function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
   const { t } = useLang();
   switch (tab) {
@@ -382,39 +437,7 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
       );
 
     case "staff":
-      return (
-        <>
-          <Heading title={t("staff.title")} lead={t("staff.note")} />
-          <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            {STAFF.map((e) => (
-              <li key={e.id} data-item data-reveal
-                className="rounded-xl border border-line bg-panel p-3">
-                <div className="flex items-center gap-2">
-                  <span className="grid size-8 place-items-center rounded-lg" aria-hidden
-                    style={{ background: `color-mix(in srgb, var(--${e.id}) 16%, transparent)`,
-                             color: `var(--${e.id})` }}>
-                    <Icon name={iconOfAgent(e.id)} size={18} />
-                  </span>
-                  <span className="text-sm font-semibold">{t(`role.${e.id}` as Key)}</span>
-                  <span className="ml-auto text-[11px] text-dim">{e.who}</span>
-                </div>
-                <p className="mt-2 text-xs text-muted">{t(`staff.${e.id}` as Key)}</p>
-                <p className="mt-1.5 text-[11px] text-dim">
-                  {t("guide.writes")}:{" "}
-                  {e.writes
-                    ? <code className="rounded bg-panel2 px-1 py-0.5 text-fg">{e.writes}</code>
-                    : t("guide.writes.none")}
-                </p>
-              </li>
-            ))}
-            <li data-item data-reveal
-              className="flex items-center rounded-xl border border-dashed border-line p-3
-                text-xs leading-relaxed text-muted">
-              {t("guide.teams")} {t("office.card.teamHint")}
-            </li>
-          </ul>
-        </>
-      );
+      return <StaffOrbit />;
 
     case "gates":
       return (

@@ -23,9 +23,10 @@ async function open(page: Page, id: string) {
   await expect(page.locator("[role=tabpanel]")).toHaveCount(1);
 }
 
-test("헤더의 '설명' 탭에서 열린다", async ({ page }) => {
+test("탭 카드 덱의 '설명' 탭에서 열린다", async ({ page }) => {
+  // 네 탭 주소에는 앱 머리가 없다 — 탭은 덱 왼쪽 여백의 버튼이다(TabDeck).
   await page.goto("/");
-  await page.getByRole("link", { name: "설명", exact: true }).click();
+  await page.getByRole("button", { name: "설명", exact: true }).click();
   await expect(page).toHaveURL(/\/guide/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("AI COMPANY 는 이렇게 일합니다");
   await expect(page.getByRole("tab")).toHaveCount(TABS.length);
@@ -53,11 +54,12 @@ test("탭 · ←/→ 키 · 다음/이전 버튼으로 넘기고, 주소에 장�
   await expect(selected(page)).toHaveAttribute("id", "tab-gates");
   await page.keyboard.press("ArrowLeft");
   await expect(selected(page)).toHaveAttribute("id", "tab-staff");
-  await page.getByRole("button", { name: /다음/ }).click();
+  // '다음 직원'(직원 장의 쇼케이스) · '다음 탭'(탭 카드 덱)과 헷갈리지 않게 정확히.
+  await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(selected(page)).toHaveAttribute("id", "tab-gates");
   // 개발 서버에서는 Next 의 왼쪽 아래 배지가 '이전' 버튼 위에 떠 클릭을 가로챈다
   // (개발 모드에만 있다). 키보드로 누른다 — 버튼이 하는 일은 같다.
-  await page.getByRole("button", { name: /이전/ }).focus();
+  await page.getByRole("button", { name: "이전", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(selected(page)).toHaveAttribute("id", "tab-staff");
   // 탭 목록 안에서는 ARIA 탭 패턴 — End 로 마지막 장.
@@ -109,7 +111,10 @@ test("새 장이 서면 그 안의 조각이 차례로 올라온다 (anime.js)",
   await expect.poll(() => page.locator("#panel-staff [data-reveal]").count(),
                     { intervals: [30, 30, 30] }).toBeGreaterThan(0);
   await expect(page.locator("#panel-staff [data-reveal]")).toHaveCount(0, { timeout: 5000 });
-  await expect(page.locator("#panel-staff li")).toHaveCount(6);
+  // 직원 장은 궤도 쇼케이스다 — 다섯 명이 한 명씩 가운데에 선다.
+  const show = page.locator("#panel-staff").getByRole("region", { name: "직원" });
+  await expect(show).toBeVisible();
+  await expect(show.getByText("/ 05")).toBeVisible();
 });
 
 test("승인 지점·상태·결정은 사무실과 같은 말을 쓴다", async ({ page }) => {
