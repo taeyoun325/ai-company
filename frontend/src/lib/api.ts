@@ -33,6 +33,7 @@ import type {
   User,
   Verdict,
   BusEvent,
+  AttachmentMeta,
 } from "./types";
 
 export class ApiError extends Error {
@@ -170,6 +171,8 @@ const put = <T>(path: string, body?: unknown) =>
 export interface StartOptions {
   /** 대표가 멈춰 서서 보겠다는 지점 — "plan" · "task" · "task:<직원>" · "confidence" */
   gates?: string[];
+  /** 미리 올린 첨부의 id (`api.uploadAttachment`). 기획 단계에서 원본이 직원에게 간다. */
+  attachments?: string[];
   permissions?: Record<string, { writes?: string[]; reads?: string[] }>;
   acknowledge_risk?: boolean;
 }
@@ -265,6 +268,46 @@ export const api = {
     post<{ ok: boolean; detail: string }>(
       `/api/byok/verify/${seg(provider)}`,
     ),
+
+  // ── 첨부 (DAY 28) ───────────────────────────────────────────────
+  /**
+   * 파일 한 개를 올린다. fetch 는 **올리는** 진행률을 알려주지 않는다 — 20MB 짜리
+   * 영상이 몇 초씩 걸리는데 막대가 없으면 멈춘 줄 안다. 그래서 여기만 XHR 이다.
+   * 머리글 · 401 처리는 `call` 과 같게 맞춘다.
+   */
+  uploadAttachment: (file: File, onProgress?: (fraction: number) => void) =>
+    new Promise<AttachmentMeta>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/attachments");
+      xhr.setRequestHeader("Accept-Language", language());
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress?.(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        let body: { detail?: unknown } | null = null;
+        try {
+          body = JSON.parse(xhr.responseText);
+        } catch {
+          /* 본문이 JSON 이 아닐 수 있다 */
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(body as unknown as AttachmentMeta);
+          return;
+        }
+        if (xhr.status === 401) unauthorizedListeners.forEach((fn) => fn());
+        reject(new ApiError(xhr.status, body?.detail
+          ? String(body.detail) : `${xhr.status} ${xhr.statusText}`));
+      };
+      xhr.onerror = () => reject(new ApiError(0, "network"));
+      // 답이 영영 안 오면(중간에서 본문이 잘리는 등) '올리는 중 100%' 에 멈춰
+      // 있게 된다. 끝을 정해 두고 오류로 보인다.
+      xhr.timeout = 180_000;
+      xhr.ontimeout = () => reject(new ApiError(0, "timeout"));
+      const form = new FormData();
+      form.append("file", file);
+      xhr.send(form);
+    }),
+  deleteAttachment: (id: string) => del<{ ok: boolean }>(`/api/attachments/${seg(id)}`),
 
   // ── AUTO (§10) ──────────────────────────────────────────────────
   startRun: (requirement: string, opts: StartOptions = {}) =>

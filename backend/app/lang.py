@@ -563,9 +563,24 @@ _M: dict[str, dict[str, str]] = {
         "ja": "ファイルが大きすぎます ({mb}MB)。最大 {max}MB です。",
     },
     "att.badType": {
-        "ko": "지원하지 않는 형식입니다: {type}. 이미지 / PDF / 텍스트만 받습니다.",
-        "en": "Unsupported format: {type}. Only images, PDF and text are accepted.",
-        "ja": "対応していない形式です: {type}。画像 / PDF / テキストのみ受け付けます。",
+        "ko": "지원하지 않는 형식입니다: {type}. 이미지 / 영상(mp4·webm·mov) / PDF / 텍스트만 받습니다.",
+        "en": "Unsupported format: {type}. Only images, video (mp4, webm, mov), PDF and text are accepted.",
+        "ja": "対応していない形式です: {type}。画像 / 動画 (mp4・webm・mov) / PDF / テキストのみ受け付けます。",
+    },
+    "log.videoWatch": {
+        "ko": "분석가가 첨부 영상을 먼저 보고 기획용으로 정리합니다: {name}",
+        "en": "The analyst watches the attached video first and summarises it for planning: {name}",
+        "ja": "アナリストが添付動画を先に見て、企画用にまとめます: {name}",
+    },
+    "log.mockAttach": {
+        "ko": "Mock 직원은 첨부를 읽지 않습니다 — 실제 키를 연결하면 기획 단계에서 전략가가 원본을 봅니다.",
+        "en": "Mock employees don't read attachments — connect a real key and the strategist reads the originals while planning.",
+        "ja": "Mock 社員は添付を読みません — 実際のキーを接続すると、企画段階でストラテジストが原本を読みます。",
+    },
+    "log.videoUnseen": {
+        "ko": "영상은 이름만 전달됩니다 — 영상을 볼 수 있는 모델(Gemini)이 연결되어 있지 않습니다: {name}",
+        "en": "Only the video's name is passed on — no model that can watch video (Gemini) is connected: {name}",
+        "ja": "動画は名前だけが渡されます — 動画を見られるモデル (Gemini) が接続されていません: {name}",
     },
     "att.tooMany": {
         "ko": "첨부 총량이 너무 큽니다. 일부를 빼고 다시 시도하세요.",

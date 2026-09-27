@@ -14,6 +14,14 @@ const nextConfig: NextConfig = {
   // 담아준다 — node_modules 전체를 이미지에 넣지 않아도 된다.
   output: "standalone",
 
+  // `/api` 는 아래 rewrites 로 백엔드에 넘기는데, Next 는 넘기는 요청 본문을
+  // **10MB 에서 자른다**(경고 한 줄만 남기고). 작업 지시에 붙이는 영상은
+  // 20MB 까지 받으므로(backend/app/attachments.py) 잘린 영상이 끝없이
+  // "올리는 중 100%" 에 멈춰 있었다 (DAY 28). 한 파일 20MB + 양식 머리를 넉넉히.
+  experimental: {
+    proxyClientMaxBodySize: "32mb",
+  },
+
   async rewrites() {
     // 개발 중에는 프론트(3000)에서 /api 를 백엔드(8000)로 그대로 넘긴다.
     // CORS 설정을 따로 두지 않기 위해서다.

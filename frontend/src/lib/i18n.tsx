@@ -849,6 +849,44 @@ const S = {
     en: "What should we build?",
     ja: "何を作りましょうか？",
   },
+  // ── 첨부 (DAY 28) ─────────────────────────────────────────────
+  "attach.add": { ko: "첨부", en: "Attach", ja: "添付" },
+  "attach.hint": {
+    ko: "사진 · 영상 · PDF · 텍스트 — 끌어다 놓거나 붙여넣어도 됩니다",
+    en: "Photos, video, PDF, text — drag in or paste",
+    ja: "写真・動画・PDF・テキスト — ドラッグや貼り付けでも",
+  },
+  "attach.drop": { ko: "놓으면 첨부됩니다", en: "Drop to attach", ja: "ドロップで添付" },
+  "attach.list": { ko: "첨부한 자료", en: "Attachments", ja: "添付した資料" },
+  "attach.remove": { ko: "{name} 빼기", en: "Remove {name}", ja: "{name} を外す" },
+  "attach.uploading": { ko: "올리는 중 {p}%", en: "Uploading {p}%", ja: "アップロード中 {p}%" },
+  "attach.badType": {
+    ko: "받지 않는 형식", en: "Unsupported format", ja: "対応していない形式",
+  },
+  "attach.tooBig": {
+    ko: "{mb}MB — 최대 {max}MB", en: "{mb}MB — max {max}MB", ja: "{mb}MB — 最大 {max}MB",
+  },
+  "attach.tooMuch": {
+    ko: "합계 {max}MB 초과", en: "Over {max}MB in total", ja: "合計 {max}MB 超過",
+  },
+  "attach.kind.image": { ko: "사진", en: "Photo", ja: "写真" },
+  "attach.kind.video": { ko: "영상", en: "Video", ja: "動画" },
+  "attach.kind.document": { ko: "PDF", en: "PDF", ja: "PDF" },
+  "attach.kind.text": { ko: "텍스트", en: "Text", ja: "テキスト" },
+  "attach.note": {
+    ko: "첨부는 기획 단계에서 전략가가 원본을 봅니다.",
+    en: "The strategist reads the originals while planning.",
+    ja: "添付は企画段階でストラテジストが原本を読みます。",
+  },
+  "attach.videoNote": {
+    ko: "영상은 Gemini 가 연결돼 있어야 내용이 전달됩니다 — 아니면 이름만 갑니다.",
+    en: "Video content only gets through if Gemini is connected — otherwise just the name.",
+    ja: "動画は Gemini が接続されている場合のみ内容が伝わります — それ以外は名前だけです。",
+  },
+  "attach.waiting": {
+    ko: "첨부를 올리는 중입니다", en: "Attachments are still uploading",
+    ja: "添付をアップロード中です",
+  },
   "office.placeholder": {
     ko: "예) 사칙연산을 하는 계산기 모듈과 사용법 문서를 만들어주세요",
     en: "e.g. Build a calculator module with the four basic operations, plus usage docs",

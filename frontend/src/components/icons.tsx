@@ -34,7 +34,7 @@ export type IconName =
   | "strategist" | "developer" | "analyst" | "writer" | "designer"
   | "building" | "req" | "verify" | "package" | "person" | "system"
   | "plus" | "play" | "stop" | "panel" | "copy" | "check" | "download"
-  | "chevron" | "card" | "gear" | "book";
+  | "chevron" | "card" | "gear" | "book" | "clip";
 
 /** 24×24 격자 위의 path 들. 바깥에서 stroke 속성을 걸어준다. */
 const GLYPHS: Record<IconName, ReactNode> = {
@@ -87,6 +87,10 @@ const GLYPHS: Record<IconName, ReactNode> = {
       <line x1="15.6" y1="13.4" x2="16.8" y2="13.4" />
       <line x1="15.6" y1="16.4" x2="16.8" y2="16.4" />
     </>
+  ),
+  // 클립 — 첨부.
+  clip: (
+    <path d="M20.4 11.6 12.6 19.4a5.1 5.1 0 0 1-7.2-7.2l8.1-8.1a3.4 3.4 0 0 1 4.8 4.8l-8.1 8.1a1.7 1.7 0 0 1-2.4-2.4l7.4-7.4" />
   ),
   // 카드 — 요금제.
   card: (

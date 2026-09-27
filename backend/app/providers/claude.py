@@ -18,10 +18,12 @@ Mock 으로 돌린다. **계약 테스트는 Mock 과 이 클래스에 똑같이
 """
 from __future__ import annotations
 
+import base64
 from collections.abc import Iterator
 
 from app import config, lang, secrets_broker
-from app.providers.base import (AIProvider, AuthError, GenerateRequest,
+from app.providers.base import (ATTACH_PREFACE, AIProvider, Attachment, AuthError,
+                                GenerateRequest, attach_label, unseen_note,
                                 GenerateResult, ProviderError,
                                 ProviderUnavailable, RateLimited,
                                 RefusedError, StreamEnd, TransientError,
@@ -117,8 +119,33 @@ class ClaudeProvider(AIProvider):
             "output_config": {"effort": req.effort},
             "system": [{"type": "text", "text": req.system,
                         "cache_control": {"type": "ephemeral"}}],
-            "messages": [{"role": m.role, "content": m.content} for m in req.messages],
+            "messages": self._messages(req),
         }
+
+    def _messages(self, req: GenerateRequest) -> list[dict]:
+        msgs: list[dict] = [{"role": m.role, "content": m.content} for m in req.messages]
+        if req.attachments and msgs and msgs[-1]["role"] == "user":
+            msgs[-1] = {"role": "user",
+                        "content": self._blocks(msgs[-1]["content"], req.attachments)}
+        return msgs
+
+    def _blocks(self, text: str, atts: tuple[Attachment, ...]) -> list[dict]:
+        """첨부를 Anthropic 콘텐츠 블록으로. Claude 는 영상을 받지 않는다."""
+        blocks: list[dict] = [{"type": "text", "text": text},
+                              {"type": "text", "text": ATTACH_PREFACE}]
+        for a in atts:
+            if a.kind == "video":
+                blocks.append({"type": "text", "text": unseen_note(a, self.name)})
+                continue
+            blocks.append({"type": "text", "text": attach_label(a)})
+            if a.kind == "text":
+                blocks.append({"type": "text", "text": a.text})
+            else:
+                blocks.append({
+                    "type": "image" if a.kind == "image" else "document",
+                    "source": {"type": "base64", "media_type": a.media_type,
+                               "data": base64.b64encode(a.data).decode()}})
+        return blocks
 
     @staticmethod
     def _usage_of(raw) -> Usage:

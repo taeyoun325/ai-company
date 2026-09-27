@@ -56,3 +56,32 @@ test("쉬는 실행은 정지 버튼으로 멈춘다", async ({ page, request })
   await page.getByRole("button", { name: "정지", exact: true }).click();
   await waitStatus(request, req, "stopped");
 });
+
+test("작업 지시에 사진·영상을 붙이면 올라가고, 로그가 무엇이 보였는지 정직하게 말한다 (DAY 28)",
+  async ({ page, request }) => {
+    const req = unique("간단한 계산기를 만들어주세요");
+    await gotoOffice(page);
+    await page.getByRole("textbox", { name: "무엇을 만들까요?" }).fill(req);
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+    await page.getByLabel("첨부", { exact: true }).setInputFiles([
+      { name: "shot.png", mimeType: "image/png", buffer: png },
+      { name: "clip.mp4", mimeType: "video/mp4", buffer: Buffer.from("0000001866747970", "hex") },
+      { name: "tool.exe", mimeType: "application/octet-stream", buffer: Buffer.from("MZ") },
+    ]);
+    const tray = page.getByRole("list", { name: "첨부한 자료" });
+    await expect(tray.getByText(/^사진 ·/)).toBeVisible();
+    await expect(tray.getByText(/^영상 ·/)).toBeVisible();
+    // 받지 않는 형식은 올리기 전에 거른다.
+    await expect(tray.getByText("받지 않는 형식")).toBeVisible();
+
+    await page.getByRole("button", { name: "AUTO 로 맡기기" }).click();
+    await waitStatus(request, req, "done");
+    const log = page.getByTestId("activity-log");
+    await expect(log.getByText(/shot\.png/).first()).toBeVisible();
+    // Mock 은 첨부를 보지 않는다 — 본 척하지 않고 그렇게 적는다.
+    await expect(log.getByText(/Mock 직원은 첨부를 읽지 않습니다/)).toBeVisible();
+    // 영상을 볼 수 있는 모델이 없으니 이름만 간다고 적는다.
+    await expect(log.getByText(/영상은 이름만 전달됩니다/)).toBeVisible();
+    // 맡긴 뒤에는 트레이를 비운다.
+    await expect(tray).toHaveCount(0);
+  });

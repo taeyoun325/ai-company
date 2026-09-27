@@ -75,7 +75,7 @@ import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 
-from app import bus, config, lang, safeio, tenant, usage
+from app import bus, config, fencing, lang, safeio, tenant, usage
 from app.agents import employee, roles
 from app.agents.schemas import (Criterion, FinalReport, Plan, Routing, Task,
                                 TestSuite, Verdict, WorkResult)
@@ -83,6 +83,7 @@ from app.database import index, store
 from app.usage import credits
 from app.orchestrator import difficulty, gates, guard, prompts, runner
 from app.orchestrator.score import Score
+from app.providers.base import Attachment, attachment_tokens
 from app.tools import project_fs as pfs
 
 MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "3"))
@@ -917,7 +918,8 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
 
     try:
         if run.plan is None:
-            _plan(run, requirement, attachments_note)
+            _plan(run, requirement, attachments_note,
+                  _materials(run, requirement, attachment_ids))
         if run.stage == "planned":
             _plan_gate(run)
             _write_tests(run)
@@ -969,14 +971,71 @@ def _run_bound(requirement: str, slug: str, attachment_ids: list[str],
         pfs.release()
 
 
-def _plan(run: _Run, requirement: str, attachments_note: str) -> None:
+def _sees_video(employee_id: str) -> bool:
+    """이 직원이 지금 영상을 **실제로** 볼 수 있나 — Gemini 이고 Mock 이 아닐 때만."""
+    e = roles.get(employee_id)
+    return e.provider == "gemini" and not employee.is_mock(e)
+
+
+def _materials(run: _Run, requirement: str, ids: list[str]) -> list[Attachment]:
+    """첨부 원본을 기획에 싣는다.
+
+    전에는 이름 · 종류 · 크기만 적은 한 줄(`summary`)이 기획에 들어갔다 — 사진을
+    올려도 전략가는 파일 이름만 봤다. 이제 원본을 싣는다.
+
+    영상은 전략가(Claude)가 못 본다. 영상을 볼 수 있는 분석가(Gemini)가 먼저 보고
+    글로 옮겨 넘긴다. 그럴 수 없으면(Gemini 가 없거나 Mock) 이름만 넘어가고, 로그에
+    그렇게 적는다 — 본 척하지 않는다.
+    """
+    if not ids:
+        return []
+    from app import attachments
+    try:
+        parts = attachments.to_parts(ids, run.owner)
+    except ValueError as e:
+        raise Stop(str(e)) from e
+    if parts and employee.is_mock(roles.get(roles.PLANNER)):
+        bus.say("SYSTEM", lang.t("log.mockAttach"), kind="error")
+    out: list[Attachment] = []
+    for a in parts:
+        if a.kind != "video" or _sees_video(roles.PLANNER):
+            out.append(a)
+        elif _sees_video(roles.VERIFIER):
+            out.append(_watch(run, requirement, a))
+        else:
+            bus.say("SYSTEM", lang.t("log.videoUnseen", name=a.name), kind="error")
+            out.append(a)          # 어댑터가 '이 모델은 볼 수 없다'고 적어 넘긴다
+    return out
+
+
+def _watch(run: _Run, requirement: str, a: Attachment) -> Attachment:
+    """분석가가 영상을 보고 기획용 글로 옮긴다."""
+    bus.say("SYSTEM", lang.t("log.videoWatch", name=a.name), kind="tool")
+    _check_cancelled(run.slug)
+    with run.hold(employee.worst_case_cost(roles.VERIFIER)
+                  + employee.attachment_cost(roles.VERIFIER, attachment_tokens([a])),
+                  bump=True):
+        text = employee.ask_text(roles.VERIFIER, prompts.watch_video(a.name, requirement),
+                                 attachments=[a])
+    return Attachment(f"{a.name} — {roles.display(roles.VERIFIER)}", "text",
+                      "text/plain", text=fencing.wrap(text))
+
+
+def _plan(run: _Run, requirement: str, attachments_note: str,
+          parts: list[Attachment] | None = None) -> None:
     """1) 기획."""
     bus.phase("PLAN", lang.t("phase.plan"))
     run.score.push()
     _check_cancelled(run.slug)
-    with run.hold(employee.worst_case_cost(roles.PLANNER), bump=True):
+    parts = parts or []
+    # 첨부가 없으면 예전과 **똑같은 모양**으로 부른다 — 첨부는 덧붙는 것이다.
+    extra = {"attachments": parts} if parts else {}
+    with run.hold(employee.worst_case_cost(roles.PLANNER)
+                  + employee.attachment_cost(roles.PLANNER, attachment_tokens(parts)),
+                  bump=True):
         plan = employee.ask(roles.PLANNER,
-                            prompts.plan(requirement, attachments_note), Plan)
+                            prompts.plan(requirement, attachments_note, bool(parts)),
+                            Plan, **extra)
     _adopt_plan(run, plan)
     if not plan.tasks:
         raise Stop(lang.t("stop.noTasks"))

@@ -23,6 +23,7 @@ SDK 가 만드는 요청, SDK 가 읽는 응답, SDK 의 예외·재시도·시�
 받는지, 토큰을 어떻게 세는지는 모른다 — 그건 `test_live_providers.py`
 (키가 있을 때만 돈다)와 `scripts/first_real_run.py` 의 몫이다.
 """
+import json
 import os
 import sys
 import time
@@ -326,3 +327,25 @@ def test_env_base_url_is_read_at_call_time(fp):
     assert config.base_url("anthropic") == fp.root
     assert config.base_url("openai") == fp.root + "/v1"
     assert os.environ["GEMINI_BASE_URL"] == fp.root
+
+
+# ── 첨부가 실제 SDK 를 지나 선에 실리는가 (DAY 28) ──────────────────────
+# 어댑터가 만든 dict 가 SDK 의 형식 검사를 통과해 **그대로 선에 올라가는지**는
+# 어댑터 단위 시험으로는 모른다(genai 는 dict 를 pydantic 으로 다시 읽는다).
+def test_attachments_reach_the_wire_in_each_companys_shape(fp):
+    import base64 as _b64
+    from app.providers.base import Attachment
+    png = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+                         "2mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+    atts = [Attachment("shot.png", "image", "image/png", data=png),
+            Attachment("demo.mp4", "video", "video/mp4", data=b"\0\0\0\x18ftypmp42")]
+    for name, (cls, who) in PROVIDERS.items():
+        req = employee._request(roles.get(who), "만들어 주세요", None, attachments=atts)
+        cls(model=roles.get(who).model).generate(req)
+        wire = json.dumps(fp.hits(name)[-1]["body"])
+        assert _b64.b64encode(png).decode() in wire, f"{name}: 사진이 선에 없다"
+        if name == "gemini":
+            assert "video/mp4" in wire, "Gemini 는 영상을 받는다"
+        else:
+            assert "video/mp4" not in wire and "demo.mp4" in wire, \
+                f"{name}: 영상은 이름만 — 원본을 보내면 거절당한다"

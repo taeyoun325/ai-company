@@ -167,6 +167,17 @@ export interface FileVersion {
   current?: boolean;
 }
 
+/** 올린 첨부 한 점 (`POST /api/attachments` 의 답). */
+export interface AttachmentMeta {
+  id: string;
+  name: string;
+  kind: "image" | "video" | "document" | "text";
+  media_type: string;
+  bytes: number;
+  source: "upload" | "screen";
+  created_at: number;
+}
+
 export interface Project {
   slug: string;
   name: string;

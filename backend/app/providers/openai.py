@@ -20,10 +20,12 @@ Gemini 와 같은 모양(system 따로, 메시지 배열 따로)이라 어댑터
 """
 from __future__ import annotations
 
+import base64
 from collections.abc import Iterator
 
 from app import config, lang, secrets_broker
-from app.providers.base import (AIProvider, AuthError, GenerateRequest,
+from app.providers.base import (ATTACH_PREFACE, AIProvider, Attachment, AuthError,
+                                GenerateRequest, attach_label, unseen_note,
                                 GenerateResult, ProviderError,
                                 ProviderUnavailable, RateLimited,
                                 RefusedError, StreamEnd, TransientError,
@@ -88,10 +90,37 @@ class OpenAIProvider(AIProvider):
         return {
             "model": self.model_for(req),
             "instructions": req.system,
-            "input": [{"role": m.role, "content": m.content} for m in req.messages],
+            "input": self._input(req),
             "max_output_tokens": req.max_tokens,
             "temperature": req.temperature,
         }
+
+    def _input(self, req: GenerateRequest) -> list[dict]:
+        items: list[dict] = [{"role": m.role, "content": m.content} for m in req.messages]
+        if req.attachments and items and items[-1]["role"] == "user":
+            items[-1] = {"role": "user",
+                         "content": self._content(items[-1]["content"], req.attachments)}
+        return items
+
+    def _content(self, text: str, atts: tuple[Attachment, ...]) -> list[dict]:
+        """첨부를 Responses API 입력으로. GPT 는 영상을 받지 않는다."""
+        out: list[dict] = [{"type": "input_text", "text": text},
+                           {"type": "input_text", "text": ATTACH_PREFACE}]
+        for a in atts:
+            if a.kind == "video":
+                out.append({"type": "input_text", "text": unseen_note(a, self.name)})
+                continue
+            out.append({"type": "input_text", "text": attach_label(a)})
+            b64 = base64.b64encode(a.data).decode()
+            if a.kind == "text":
+                out.append({"type": "input_text", "text": a.text})
+            elif a.kind == "image":
+                out.append({"type": "input_image",
+                            "image_url": f"data:{a.media_type};base64,{b64}"})
+            else:
+                out.append({"type": "input_file", "filename": a.name,
+                            "file_data": f"data:{a.media_type};base64,{b64}"})
+        return out
 
     @staticmethod
     def _usage_of(raw) -> Usage:

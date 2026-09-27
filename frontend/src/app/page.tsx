@@ -45,6 +45,8 @@ import { CommandWindow } from "@/components/office/CommandWindow";
 import { EmployeeCard, IntegrationList } from "@/components/office/EmployeeCard";
 import { type MeetingCall, OfficeFloor } from "@/components/office/OfficeFloor";
 import { ScenarioStrip } from "@/components/office/ScenarioStrip";
+import { AttachButton, AttachTray, DropZone, useAttachments }
+  from "@/components/Attachments";
 import { Button, ErrorBox, Panel, Skeleton, Warning, num } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { useErrorText, useLang } from "@/lib/i18n";
@@ -85,6 +87,8 @@ export default function OfficePage() {
   const providers: ProviderStatus | null = state?.providers ?? null;
   const wallet: CreditStatus | null = state?.credits ?? null;
   const [requirement, setRequirement] = useState("");
+  // 일에 붙이는 사진 · 영상 · 파일 (DAY 28). 고르는 즉시 올리고, 시작할 때 id 만 싣는다.
+  const att = useAttachments();
   const [error, setError] = useState<string | null>(null);
   const [routing, setRouting] = useState<{ employee: string; why: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -149,13 +153,14 @@ export default function OfficePage() {
 
   const start = async () => {
     const text = requirement.trim();
-    if (!text || busy) return;
+    if (!text || busy || att.uploading) return;
     setBusy(true);
     setError(null);
     setRouting(null);
     stream.clear();
     try {
-      const r = await api.startRun(text, { gates });
+      const r = await api.startRun(text, { gates, attachments: att.ids });
+      att.clear();
       setSlug(r.slug);
       setArrivalKey(r.slug);          // ① 전원 출근
       window.history.replaceState(null, "", `/?run=${encodeURIComponent(r.slug)}`);
@@ -417,9 +422,18 @@ export default function OfficePage() {
             <Panel title={t("office.ask")}
               right={slug && <span className="truncate text-[11px] text-dim">
                 <code>{slug}</code></span>}>
+              <DropZone onFiles={att.add}>
               <textarea
                 value={requirement}
                 onChange={(e) => setRequirement(e.target.value)}
+                // 캡처한 화면을 바로 붙여넣는다 — 글을 붙여넣을 때는 건드리지 않는다.
+                onPaste={(e) => {
+                  const files = [...e.clipboardData.files];
+                  if (files.length) {
+                    e.preventDefault();
+                    att.add(files);
+                  }
+                }}
                 rows={3}
                 // 자리표시 글은 이름이 아니다 — 쓰기 시작하면 사라지고, 화면
                 // 낭독기는 "편집 가능한 글"로만 읽는다 (DAY 26 화면 시험에서 찾음).
@@ -432,6 +446,17 @@ export default function OfficePage() {
                   px-3 py-2 text-sm outline-none backdrop-blur
                   placeholder:text-dim focus:border-accent"
               />
+              </DropZone>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <AttachButton onFiles={att.add} />
+                <span className="text-[11px] text-dim">{t("attach.hint")}</span>
+              </div>
+              <AttachTray items={att.items} onRemove={att.remove} />
+              {att.ids.length > 0 && (
+                <p className="mt-1.5 text-[11px] text-dim">
+                  {t("attach.note")}{att.hasVideo && ` ${t("attach.videoNote")}`}
+                </p>
+              )}
               <p className="mb-1 mt-2 text-[11px] text-dim">
                 {run && run.status !== "done" ? t("gate.liveTitle") : t("gate.title")}
               </p>
@@ -439,7 +464,8 @@ export default function OfficePage() {
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Button tone="primary" onClick={start}
                   disabled={busy || running || run?.status === "awaiting"
-                    || !requirement.trim()}>
+                    || !requirement.trim() || att.uploading}
+                  title={att.uploading ? t("attach.waiting") : undefined}>
                   {t("office.auto")}
                 </Button>
                 <Button onClick={openManual} disabled={busy || !requirement.trim()}>

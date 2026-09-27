@@ -22,7 +22,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from app import config, lang, secrets_broker
-from app.providers.base import (AIProvider, AuthError, GenerateRequest,
+from app.providers.base import (ATTACH_PREFACE, AIProvider, Attachment, AuthError,
+                                GenerateRequest, attach_label,
                                 GenerateResult, ProviderError,
                                 ProviderUnavailable, RateLimited,
                                 RefusedError, StreamEnd, TransientError,
@@ -100,6 +101,9 @@ class GeminiProvider(AIProvider):
         # 멀티턴 대화에서 역할이 뒤집혀 모델이 자기 말을 사용자 말로 읽는다.
         contents = [{"role": "model" if m.role == "assistant" else "user",
                      "parts": [{"text": m.content}]} for m in req.messages]
+        if req.attachments and contents and contents[-1]["role"] == "user":
+            contents[-1]["parts"] = [*contents[-1]["parts"],
+                                     *self._parts(req.attachments)]
         return {
             "model": self.model_for(req),
             "contents": contents,
@@ -113,6 +117,18 @@ class GeminiProvider(AIProvider):
                 "automatic_function_calling": {"disable": True},
             },
         }
+
+    @staticmethod
+    def _parts(atts: tuple[Attachment, ...]) -> list[dict]:
+        """첨부를 Gemini parts 로. 이미지 · PDF · 영상을 원본 그대로 본다."""
+        parts: list[dict] = [{"text": ATTACH_PREFACE}]
+        for a in atts:
+            parts.append({"text": attach_label(a)})
+            if a.kind == "text":
+                parts.append({"text": a.text})
+            else:
+                parts.append({"inline_data": {"mime_type": a.media_type, "data": a.data}})
+        return parts
 
     @staticmethod
     def _usage_of(raw) -> Usage:

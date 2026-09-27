@@ -22,7 +22,7 @@ JSON 을 글로 요구하는 이상(→ `json_io.py`) 실패는 반드시 일어
 """
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import TypeVar
 
 from pydantic import BaseModel
@@ -31,7 +31,7 @@ from app import bus, config, lang
 from app.agents import json_io, roles
 from app.agents.roles import Employee
 from app.providers import registry
-from app.providers.base import GenerateRequest, Message, ProviderError
+from app.providers.base import Attachment, GenerateRequest, Message, ProviderError
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -58,7 +58,8 @@ def is_mock(e: Employee) -> bool:
 
 def _request(e: Employee, user: str, schema: type[BaseModel] | None,
              history: list[Message] | None = None,
-             model: str | None = None) -> GenerateRequest:
+             model: str | None = None,
+             attachments: Sequence[Attachment] = ()) -> GenerateRequest:
     system = e.system
     if schema is not None:
         system = f"{system}\n\n{json_io.render_instruction(schema)}"
@@ -72,6 +73,7 @@ def _request(e: Employee, user: str, schema: type[BaseModel] | None,
         system=system, messages=messages, model=model or e.model,
         max_tokens=e.max_tokens, temperature=e.temperature, effort=e.effort,
         agent=e.id,                      # ← 사용량이 이 키로 잡힌다 (§14)
+        attachments=tuple(attachments),
     )
 
 
@@ -81,7 +83,8 @@ def say(e: Employee, text: str, kind: str = "say") -> None:
 
 def ask(employee_id: str, user: str, schema: type[T],
         history: list[Message] | None = None,
-        model: str | None = None) -> T:
+        model: str | None = None,
+        attachments: Sequence[Attachment] = ()) -> T:
     """직원에게 일을 시키고 스키마로 검증된 답을 받는다.
 
     `model` 을 주면 이 호출 한 번만 그 모델로 부른다 — 직원의 기본 모델
@@ -90,7 +93,7 @@ def ask(employee_id: str, user: str, schema: type[T],
     """
     e = roles.get(employee_id)
     p = provider_of(e)
-    req = _request(e, user, schema, history, model=model)
+    req = _request(e, user, schema, history, model=model, attachments=attachments)
 
     last_error: str | None = None
     for attempt in range(REPAIR_ATTEMPTS + 1):
@@ -103,7 +106,7 @@ def ask(employee_id: str, user: str, schema: type[T],
                 f"## 다시 할 것\n같은 요청에 대해 **JSON 객체 하나만** 내보내세요. "
                 f"위 오류가 가리키는 필드를 고치세요.\n\n"
                 f"## 원래 요청\n{user}",
-                schema, history, model=model)
+                schema, history, model=model, attachments=attachments)
         try:
             result = p.generate(req)
         except ProviderError as ex:
@@ -124,11 +127,13 @@ def ask(employee_id: str, user: str, schema: type[T],
 
 
 def ask_text(employee_id: str, user: str,
-             history: list[Message] | None = None) -> str:
+             history: list[Message] | None = None,
+             attachments: Sequence[Attachment] = ()) -> str:
     """구조화가 필요 없는 한마디. MANUAL 모드의 직접 지시에 쓴다(§11)."""
     e = roles.get(employee_id)
     try:
-        return provider_of(e).generate(_request(e, user, None, history)).text
+        return provider_of(e).generate(
+            _request(e, user, None, history, attachments=attachments)).text
     except ProviderError as ex:
         raise EmployeeFailed(e.id, str(ex), cause=ex) from ex
 
@@ -191,6 +196,16 @@ def worst_case_cost(employee_id: str) -> float:
     e = roles.get(employee_id)
     worst_input = 80_000 if e.kind in ("build", "verify") else 40_000
     return config.price_of(e.model, worst_input, e.max_tokens)
+
+
+def attachment_cost(employee_id: str, tokens: int) -> float:
+    """첨부(이미지 · PDF · 영상)가 이 직원 한 번의 입력에 더하는 비용($).
+
+    `worst_case_cost` 와 따로 둔다 — 첨부가 없으면 0 이고, 예산을 미리 잡을 때만 더한다.
+    """
+    if tokens <= 0:
+        return 0.0
+    return config.price_of(roles.get(employee_id).model, tokens, 0)
 
 
 def max_worst_case() -> float:

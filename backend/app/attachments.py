@@ -1,4 +1,4 @@
-"""첨부 자료 — 이미지·문서·화면 캡처를 받아 에이전트에게 넘긴다.
+"""첨부 자료 — 이미지·문서·영상·화면 캡처를 받아 에이전트에게 넘긴다.
 
 ## 가장 중요한 규칙
 
@@ -28,11 +28,24 @@ from app import config, fencing, lang, safeio
 DIR = Path(os.getenv("ATTACHMENTS_DIR") or config.ROOT / "attachments")
 
 MAX_BYTES = 12 * 1024 * 1024        # 한 파일 12MB
+# 영상은 따로 — 휴대폰으로 찍은 20초짜리도 10MB 를 넘는다. Gemini 가 요청 안에
+# 바로 싣는 한도(20MB 안팎)에 맞춘다. 더 긴 영상은 잘라서 올리라고 말한다.
+MAX_VIDEO_BYTES = 20 * 1024 * 1024
 MAX_TOTAL_PER_RUN = 30 * 1024 * 1024
 
 IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 DOC_TYPES = {"application/pdf"}
+VIDEO_TYPES = {"video/mp4", "video/webm", "video/quicktime"}
 TEXT_SUFFIXES = {".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".log", ".tsv"}
+
+# 윈도우의 mimetypes 는 레지스트리를 읽어서, 컴퓨터마다 .webm · .webp 를 모르기도
+# 한다. 받는 형식은 여기서 못 박는다.
+_SUFFIX_TYPES = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif", ".webp": "image/webp", ".pdf": "application/pdf",
+    ".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm",
+    ".mov": "video/quicktime",
+}
 
 _meta: dict[str, dict] = {}
 
@@ -55,6 +68,8 @@ def _kind(media_type: str, suffix: str) -> str:
         return "image"
     if media_type in DOC_TYPES:
         return "document"
+    if media_type in VIDEO_TYPES:
+        return "video"
     if suffix.lower() in TEXT_SUFFIXES or media_type.startswith("text/"):
         return "text"
     return "unsupported"
@@ -71,15 +86,17 @@ def _valid_id(aid: str) -> bool:
 def save(filename: str, data: bytes, source: str = "upload",
          owner: str = "local") -> dict:
     """첨부를 저장하고 메타데이터를 돌려준다. source: upload | screen"""
-    if len(data) > MAX_BYTES:
-        raise ValueError(lang.t("att.tooBig", mb=len(data) // 1024 // 1024,
-                                max=MAX_BYTES // 1024 // 1024))
-    DIR.mkdir(parents=True, exist_ok=True)
     suffix = Path(filename).suffix or ".bin"
-    media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    media_type = (_SUFFIX_TYPES.get(suffix.lower())
+                  or mimetypes.guess_type(filename)[0] or "application/octet-stream")
     kind = _kind(media_type, suffix)
     if kind == "unsupported":
         raise ValueError(lang.t("att.badType", type=media_type or suffix))
+    limit = MAX_VIDEO_BYTES if kind == "video" else MAX_BYTES
+    if len(data) > limit:
+        raise ValueError(lang.t("att.tooBig", mb=len(data) // 1024 // 1024,
+                                max=limit // 1024 // 1024))
+    DIR.mkdir(parents=True, exist_ok=True)
 
     aid = uuid.uuid4().hex[:12]
     path = DIR / f"{aid}{suffix}"
@@ -208,6 +225,35 @@ def to_content_blocks(ids: list[str], owner: str | None = None) -> list[dict]:
             blocks.append({"type": "text", "text": fencing.wrap(text)})
 
     return blocks
+
+
+def to_parts(ids: list[str], owner: str | None = None) -> list:
+    """제공자 중립 모양(`providers.base.Attachment`)으로 — AUTO 실행의 직원에게 싣는다.
+
+    `to_content_blocks` 는 Anthropic 모양이라 Gemini · GPT 로는 못 보낸다. 여기서는
+    원본 바이트와 종류만 들고, 각 제공자 어댑터가 자기 모양으로 옮긴다. 글 자료는
+    여기서 울타리를 친다(자료 안의 백틱 세 개가 프롬프트를 깨지 못하게).
+    """
+    from app.providers.base import Attachment
+    if not ids:
+        return []
+    if total_bytes(ids, owner) > MAX_TOTAL_PER_RUN:
+        raise ValueError(lang.t("att.tooMany"))
+    out = []
+    for aid in ids:
+        m = get(aid, owner)
+        if not m:
+            continue
+        raw = _file(m).read_bytes()
+        if m["kind"] == "text":
+            text = raw.decode("utf-8", errors="replace")
+            if len(text) > 40_000:
+                text = text[:20_000] + "\n\n… (중략) …\n\n" + text[-20_000:]
+            out.append(Attachment(m["name"], "text", m["media_type"],
+                                  text=fencing.wrap(text)))
+        else:
+            out.append(Attachment(m["name"], m["kind"], m["media_type"], data=raw))
+    return out
 
 
 def summary(ids: list[str], owner: str | None = None) -> str:
