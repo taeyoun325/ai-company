@@ -67,12 +67,14 @@ const STAFF = [
 
 /** 직원 장 쇼케이스의 누빈 그림 색(바탕 · 밝은 면 · 그림자). 위 표와 따로 둔다 —
  *  위 표는 한 줄 한 사람 모양 그대로 test_repo_files 가 읽는다. */
-const TINT: Record<(typeof STAFF)[number]["id"], { bg: string; hi: string; deep: string }> = {
-  strategist: { bg: "#2b47c4", hi: "#a9c0ff", deep: "#16287a" },
-  analyst: { bg: "#9c5a0c", hi: "#ffd27a", deep: "#5c3405" },
-  developer: { bg: "#0c6e51", hi: "#77ecc0", deep: "#053f2e" },
-  writer: { bg: "#a8316d", hi: "#ffaed8", deep: "#661a41" },
-  designer: { bg: "#6439bd", hi: "#dcb8ff", deep: "#3c1f7a" },
+const TINT: Record<(typeof STAFF)[number]["id"], {
+  bg: string; hi: string; deep: string; ink: readonly [string, string];
+}> = {
+  strategist: { bg: "#2b47c4", hi: "#a9c0ff", deep: "#16287a", ink: ["#22d3ee", "#4f6bff"] },
+  analyst: { bg: "#9c5a0c", hi: "#ffd27a", deep: "#5c3405", ink: ["#ffe600", "#ff7a00"] },
+  developer: { bg: "#0c6e51", hi: "#77ecc0", deep: "#053f2e", ink: ["#b6ff3b", "#00d68f"] },
+  writer: { bg: "#a8316d", hi: "#ffaed8", deep: "#661a41", ink: ["#ff9ec7", "#ff1f7a"] },
+  designer: { bg: "#6439bd", hi: "#dcb8ff", deep: "#3c1f7a", ink: ["#f472ff", "#8b3dff"] },
 };
 
 const MODELS = ["Claude", "Gemini", "GPT"] as const;
@@ -158,7 +160,7 @@ export default function GuidePage() {
 
   // ←/→ 로 넘긴다. 입력칸에 쓰는 중이면 건드리지 않는다. 탭 카드 덱에서
   // 옆 자리에 비켜 있을 때는 듣지 않는다 — 가운데 카드의 키를 뺏는다.
-  const { active: onStage, wheel: wheelFlips = true } = useStack();
+  const { active: onStage, wheel: wheelFlips = true, onEdge } = useStack();
   useEffect(() => {
     if (!onStage) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -194,7 +196,13 @@ export default function GuidePage() {
     const d = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
     if (Math.abs(d) < 30 || Date.now() < wheelLock.current) return;
     wheelLock.current = Date.now() + WHEEL_LOCK_MS;
-    go(index + (d > 0 ? 1 : -1));
+    const step = d > 0 ? 1 : -1;
+    // 첫 장 앞 · 끝 장 뒤 — 넘길 장이 없다. 전체 화면 미리보기면 닫고 페이지로 돌려준다.
+    if (index + step < 0 || index + step >= TABS.length) {
+      onEdge?.(step);
+      return;
+    }
+    go(index + step);
   };
 
   return (
@@ -340,6 +348,7 @@ function NavButton({ onClick, disabled, dir, children }: {
  */
 function StaffOrbit() {
   const { t } = useLang();
+  const { preview } = useStack();
   const items: ShowItem[] = STAFF.map((e) => ({
     id: e.id,
     icon: iconOfAgent(e.id),
@@ -359,7 +368,7 @@ function StaffOrbit() {
           title={t("show.title")}
           label={t("guide.tab.staff")}
           chips={{ label: t("show.model"), values: MODELS, of: (it) => who[it.id] }}
-          cta={{ label: t("show.cta"), href: "/" }}
+          cta={preview ? undefined : { label: t("show.cta"), href: "/" }}
           autoplay
           embedded
         />
@@ -374,6 +383,7 @@ function StaffOrbit() {
 
 function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
   const { t } = useLang();
+  const { preview } = useStack();
   switch (tab) {
     case "intro":
       return (
@@ -552,6 +562,7 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
             <li style={{ color: "var(--warn)" }}>· {t("honest.noRealRun")}</li>
             <li style={{ color: "var(--warn)" }}>· {t("honest.noBilling")}</li>
           </ul>
+          {!preview && (
           <div data-item data-reveal className="mt-8 text-center">
             <h2 className="text-lg font-semibold">{t("guide.cta.title")}</h2>
             <div className="mt-3 flex flex-wrap justify-center gap-2">
@@ -560,6 +571,7 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
               <CtaLink href="/settings">{t("guide.cta.keys")}</CtaLink>
             </div>
           </div>
+          )}
         </>
       );
   }

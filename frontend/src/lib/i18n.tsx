@@ -100,6 +100,10 @@ const S = {
     en: "Flip through how this company works in eight chapters. The five employees are in the Team chapter.",
     ja: "この会社の働き方を 8 章でめくって見ます。社員 5 名は「社員」の章にいます。",
   },
+  "show.oneMore": {
+    ko: "한 번 더 내리면 넘어갑니다", en: "Scroll once more to move on",
+    ja: "もう一度スクロールで次へ",
+  },
   "show.drag": { ko: "끌어서 넘기기", en: "Drag to switch", ja: "ドラッグで切替" },
   "nav.language": { ko: "언어", en: "Language", ja: "言語" },
   "footer.note": {
@@ -180,6 +184,7 @@ const S = {
     en: "Flip through how this company works in eight chapters before signing up — the same screen as the Guide tab after you log in.",
     ja: "登録する前に、この会社の働き方を 8 章でめくってみてください — ログイン後の「説明」タブと同じ画面です。",
   },
+  "landing.guideClose": { ko: "작게 보기", en: "Shrink back", ja: "小さく戻す" },
   "why.title": { ko: "왜 이렇게 만들었나", en: "Why it is built this way", ja: "なぜこう作ったか" },
   "why.order": { ko: "순서는 코드가 정한다", en: "Code decides the order", ja: "順序はコードが決める" },
   "why.order.body": {
@@ -716,6 +721,8 @@ const S = {
     ja: "空のままなら、メールの @ より前を使います。",
   },
   "auth.password": { ko: "비밀번호", en: "Password", ja: "パスワード" },
+  "auth.showPassword": { ko: "비밀번호 보기", en: "Show password", ja: "パスワードを表示" },
+  "auth.hidePassword": { ko: "비밀번호 가리기", en: "Hide password", ja: "パスワードを隠す" },
   "auth.passwordHint": { ko: "10자 이상.", en: "10 characters or more.", ja: "10 文字以上。" },
   "auth.working": { ko: "확인 중…", en: "Checking…", ja: "確認中…" },
   "auth.signupCta": { ko: "가입하고 시작", en: "Sign up and start", ja: "登録して始める" },

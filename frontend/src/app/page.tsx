@@ -42,7 +42,7 @@ import { ResizeHandle } from "@/components/ResizeHandle";
 import { ScorePanel, TaskBoard } from "@/components/TaskBoard";
 import { ApprovalDesk } from "@/components/office/ApprovalDesk";
 import { CommandWindow } from "@/components/office/CommandWindow";
-import { EmployeeCard, IntegrationList } from "@/components/office/EmployeeCard";
+import { EmployeeCard } from "@/components/office/EmployeeCard";
 import { type MeetingCall, OfficeFloor } from "@/components/office/OfficeFloor";
 import { ScenarioStrip } from "@/components/office/ScenarioStrip";
 import { AttachButton, AttachTray, DropZone, useAttachments }
@@ -409,7 +409,6 @@ export default function OfficePage() {
                   onMove={(team) => void moveTeam(picked.id, team)}
                   onClose={() => setSelected(null)} />
               )}
-              <IntegrationList items={snap.integrations} />
             </div>
           ) : (
             <div className="glass glass-lit p-4"><Skeleton lines={8} /></div>

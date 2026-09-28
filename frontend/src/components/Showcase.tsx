@@ -29,12 +29,11 @@ import {
 } from "motion/react";
 import Link from "next/link";
 import {
-  useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode,
-  type WheelEvent,
+  useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode,
 } from "react";
 
 import { Galaxy } from "./Galaxy";
-import { Icon, type IconName } from "./icons";
+import { GLYPHS, Icon, type IconName } from "./icons";
 import { useLang } from "@/lib/i18n";
 import { useStack } from "@/lib/stack";
 
@@ -45,6 +44,8 @@ export type ShowItem = {
   bg: string;
   hi: string;
   deep: string;
+  /** 아이콘을 긋는 마커 색 두 개(시작 → 끝). 쨍하게. */
+  ink?: readonly [string, string];
   name: string;
   sub: string;
   body: string;
@@ -63,6 +64,10 @@ type Props = {
 
 const AUTOPLAY_MS = 5000;
 const WHEEL_LOCK_MS = 750;
+/** 마지막 직원에서 붙잡은 뒤, 이 안에 한 번 더 굴리면 넘어간다. 지나면 다시 붙잡는다. */
+const EDGE_ARMED_MS = 4000;
+/** 굴림이 이만큼 끊겨야 '새로 굴렸다'고 본다 — 그 전은 같은 굴림의 관성이다. */
+const GESTURE_GAP_MS = 180;
 
 type Slot = "queued" | "next" | "center" | "prev" | "gone";
 
@@ -164,18 +169,63 @@ export function Showcase({
     go(d);
   };
 
-  const onWheel = (e: WheelEvent) => {
-    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-    const step = d > 0 ? 1 : -1;
-    // 안에 박혀 있을 때 끝에 닿으면 휠을 바깥(장 넘기기)에 넘긴다.
-    if (embedded && (active + step < 0 || active + step > n - 1)) return;
-    e.stopPropagation();
-    if (Math.abs(d) < 18) return;
-    const now = Date.now();
-    if (now - wheelAt.current < WHEEL_LOCK_MS) return;
-    wheelAt.current = now;
-    go(step);
-  };
+  // 휠은 **네이티브로, passive 없이** 듣는다. React 의 onWheel 은 passive 라
+  // preventDefault 가 안 먹어서, 직원을 넘기는 동안 바깥 페이지(로그인 전 랜딩)와
+  // 설명 장의 칸까지 같이 내려갔다. 넘길 수 있는 방향이면 화면을 붙잡는다.
+  const wheelState = useRef({ active, n, embedded, go });
+  // 마지막 직원에서는 **두 번** 내려야 넘어간다 — 한 번은 붙잡고 "한 번 더"를
+  // 보인다. 마지막 사람을 제대로 보기도 전에 장이 넘어가 버리지 않게.
+  const edge = useRef<{ index: number; at: number; last: number } | null>(null);
+  const [edgeHint, setEdgeHint] = useState(false);
+  const hintTimer = useRef(0);
+  useEffect(() => {
+    wheelState.current = { active, n, embedded, go };
+  });
+  useEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const onWheel = (e: globalThis.WheelEvent) => {
+      const { active: a, n: count, embedded: inside, go: move } = wheelState.current;
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      const step = d > 0 ? 1 : -1;
+      if (inside && step > 0 && a === count - 1) {
+        const now = Date.now();
+        const armed = edge.current;
+        const fresh = armed && armed.index === a && now - armed.at < EDGE_ARMED_MS;
+        // 두 번째 굴림 — 관성이 아니라 **새로** 굴렸을 때만(잠깐 멈춘 뒤) 넘겨준다.
+        if (fresh && now - armed.last > GESTURE_GAP_MS && now - armed.at > WHEEL_LOCK_MS / 2) {
+          edge.current = null;
+          setEdgeHint(false);
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        if (fresh) {
+          armed.last = now;
+        } else {
+          edge.current = { index: a, at: now, last: now };
+          setEdgeHint(true);
+          window.clearTimeout(hintTimer.current);
+          hintTimer.current = window.setTimeout(() => setEdgeHint(false), EDGE_ARMED_MS);
+        }
+        return;
+      }
+      // 안에 박혀 있을 때 앞쪽 끝에 닿으면 휠을 바깥(장 넘기기 · 페이지)에 넘긴다.
+      if (inside && (a + step < 0 || a + step > count - 1)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (Math.abs(d) < 18) return;
+      const now = Date.now();
+      if (now - wheelAt.current < WHEEL_LOCK_MS) return;
+      wheelAt.current = now;
+      move(step);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      window.clearTimeout(hintTimer.current);
+    };
+  }, []);
 
   const onPanEnd = (_: unknown, info: PanInfo) => {
     const { x, y } = info.offset;
@@ -192,7 +242,6 @@ export function Showcase({
           shadow-[0_30px_80px_-30px_rgba(0,0,0,0.7)]
           focus-visible:ring-2 focus-visible:ring-white/60`}
         style={{ containerType: "size" }}
-        onWheel={onWheel}
         onPanEnd={onPanEnd}
         onKeyDown={onKeyDown}
         tabIndex={embedded ? 0 : -1}
@@ -278,6 +327,7 @@ export function Showcase({
             nextLabel={t("show.next")}
             link={link}
             deep={s.deep}
+            hint={edgeHint && active === n - 1 ? t("show.oneMore") : null}
           />
         </div>
       </motion.section>
@@ -383,54 +433,66 @@ function Figure({
   );
 }
 
-/** 패딩 점퍼처럼 누빈 베개 모양 — 사진 없이 CSS 로 입체감을 낸다. */
-export function Puffer({ s }: { s: Pick<ShowItem, "icon" | "bg" | "hi" | "deep"> }) {
+/**
+ * 유리 타일 위에 마커로 그린 아이콘 — 인스타그램 로고처럼.
+ *
+ * 타일은 반투명 유리다(뒤의 은하가 흐리게 비친다). 아이콘은 끝이 둥근 선 **한 획**을
+ * 쨍한 두 색 그라디언트(`ink`)로 긋는다. 번짐 · 떨림을 주던 층은 걷었다 — 칠이
+ * 선 밖으로 삐져나와 보였다. 선 한가운데에 가는 윤기 한 줄만 둔다.
+ */
+export function Puffer({ s }: {
+  s: Pick<ShowItem, "icon" | "bg" | "hi" | "deep" | "ink">;
+}) {
+  const id = useId().replace(/:/g, "");
+  // 잉크 색이 따로 없으면 밝은 면 → 바탕색. 어두운 색(deep)은 쓰지 않는다 — 탁해진다.
+  const ink = s.ink ?? [s.hi, s.bg];
   return (
     <div className="relative aspect-square w-full">
-      {/* 바닥 그림자 */}
-      <div className="absolute bottom-[1%] left-1/2 h-[9%] w-[64%] -translate-x-1/2
-        rounded-[50%] bg-black/40 blur-2xl" />
+      {/* 바닥 그림자 · 직원 색 빛 */}
+      <div className="absolute bottom-[2%] left-1/2 h-[9%] w-[60%] -translate-x-1/2
+        rounded-[50%] bg-black/45 blur-2xl" />
+      <div className="absolute inset-[14%] rounded-[34%] opacity-60 blur-3xl"
+        style={{ background: s.bg }} />
+      {/* 유리 타일 */}
       <div
-        className="absolute inset-[7%] overflow-hidden rounded-[36%]"
+        className="absolute inset-[7%] overflow-hidden rounded-[30%] border border-white/35
+          backdrop-blur-xl"
         style={{
           background:
-            `radial-gradient(120% 95% at 28% 18%, ${s.hi} 0%, ` +
-            `color-mix(in srgb, ${s.hi} 45%, ${s.bg}) 42%, ${s.deep} 100%)`,
+            "linear-gradient(150deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.08) 45%," +
+            " rgba(255,255,255,0.04) 70%, rgba(255,255,255,0.14) 100%)",
           boxShadow:
-            "inset 0 -26px 50px rgba(0,0,0,0.38), inset 0 18px 36px rgba(255,255,255,0.38)," +
-            " 0 40px 70px -24px rgba(0,0,0,0.55)",
+            "inset 0 1.5px 0 rgba(255,255,255,0.55), inset 0 -18px 40px rgba(0,0,0,0.22)," +
+            " inset 0 0 0 1px rgba(255,255,255,0.06), 0 40px 70px -26px rgba(0,0,0,0.6)",
         }}
       >
-        {/* 누빔 — 밝은 윗면과 어두운 솔기가 다섯 줄 반복된다 */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "repeating-linear-gradient(180deg, rgba(255,255,255,0.22) 0%," +
-              " rgba(255,255,255,0) 7%, rgba(0,0,0,0) 14%, rgba(0,0,0,0.26) 19.3%," +
-              " rgba(0,0,0,0.45) 20%)",
-            mixBlendMode: "soft-light",
-          }}
-        />
-        {/* 가운데 지퍼 선 */}
-        <div className="absolute inset-y-[6%] left-1/2 w-[1.5%] -translate-x-1/2
-          bg-gradient-to-b from-black/10 via-black/30 to-black/10" />
-        {/* 광택 */}
-        <div className="absolute left-[12%] top-[8%] h-[34%] w-[46%] rounded-[50%] bg-white/45
-          blur-2xl" />
-        {/* 아이콘 배지 */}
-        <div
-          className="absolute left-1/2 top-1/2 grid aspect-square w-[42%] -translate-x-1/2
-            -translate-y-1/2 place-items-center rounded-full border border-white/45
-            backdrop-blur-md"
-          style={{
-            background: `color-mix(in srgb, ${s.deep} 38%, rgba(255,255,255,0.12))`,
-            boxShadow: "inset 0 2px 10px rgba(255,255,255,0.35), 0 12px 30px rgba(0,0,0,0.3)",
-          }}
-        >
-          <Icon name={s.icon} size={120} strokeWidth={1.5}
-            className="h-[58%] w-[58%] text-white drop-shadow-[0_4px_10px_rgba(0,0,0,0.3)]" />
-        </div>
+        {/* 윗면 반사 — 유리 모서리를 타고 도는 흰 빛 */}
+        <div className="absolute -left-[10%] -top-[30%] h-[70%] w-[120%] rotate-[-12deg]
+          rounded-[50%] bg-gradient-to-b from-white/35 to-transparent" />
+        <div className="absolute bottom-[6%] right-[8%] h-[18%] w-[40%] rounded-[50%]
+          bg-white/10 blur-xl" />
+        {/* 마커로 그린 아이콘 — 한 획, 번짐 없이 */}
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden shapeRendering="geometricPrecision"
+          className="absolute left-1/2 top-1/2 h-[58%] w-[58%] -translate-x-1/2 -translate-y-1/2
+            overflow-visible drop-shadow-[0_3px_6px_rgba(0,0,0,0.35)]">
+          <defs>
+            <linearGradient id={`ink-${id}`} x1="3" y1="21" x2="21" y2="3"
+              gradientUnits="userSpaceOnUse">
+              <stop offset="0" stopColor={ink[0]} />
+              <stop offset="1" stopColor={ink[1]} />
+            </linearGradient>
+          </defs>
+          {/* 마커 선 — 선 하나로 끝낸다. 칠이 선 밖으로 나가지 않는다. */}
+          <g stroke={`url(#ink-${id})`} strokeWidth={2.2} strokeLinecap="round"
+            strokeLinejoin="round">
+            {GLYPHS[s.icon]}
+          </g>
+          {/* 선 한가운데의 가는 윤기 — 선과 같은 길 위에만 있다(어긋나지 않게). */}
+          <g stroke="white" strokeWidth={0.45} strokeLinecap="round" strokeLinejoin="round"
+            opacity={0.5}>
+            {GLYPHS[s.icon]}
+          </g>
+        </svg>
       </div>
     </div>
   );
@@ -677,7 +739,7 @@ export function Swap({
 /** 오른쪽 아래: 화살표 · 몇 번째인지 · 진행 막대 · 이동 버튼.
  *  자동 넘김이면 막대가 남은 시간을, 아니면 전체 중 어디쯤인지를 보인다. */
 function Controls({
-  active, n, go, running, autoplay, prevLabel, nextLabel, link, deep,
+  active, n, go, running, autoplay, prevLabel, nextLabel, link, deep, hint,
 }: {
   active: number;
   n: number;
@@ -688,6 +750,8 @@ function Controls({
   nextLabel: string;
   link?: { label: string; href: string };
   deep: string;
+  /** 마지막 직원에서 한 번 붙잡았을 때의 안내 — "한 번 더 내리면 넘어갑니다". */
+  hint: string | null;
 }) {
   const round =
     "grid size-11 place-items-center rounded-full border border-white/45 text-white/90" +
@@ -731,6 +795,21 @@ function Controls({
           )}
         </span>
       </div>
+
+      <AnimatePresence>
+        {hint && (
+          <motion.span
+            className="-mt-1 whitespace-nowrap rounded-full bg-white/15 px-2.5 py-1 text-[11px]
+              text-white backdrop-blur-md"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            aria-live="polite"
+          >
+            {hint} ↓
+          </motion.span>
+        )}
+      </AnimatePresence>
 
       {link && (
         <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>

@@ -20,6 +20,8 @@
  */
 import { useState, type FormEvent, type ReactNode } from "react";
 
+import { Icon } from "./icons";
+
 import { useLang } from "@/lib/i18n";
 import { GALAXY_DEEP, Galaxy } from "./Galaxy";
 import { Landing } from "./Landing";
@@ -212,21 +214,41 @@ function Field({
   required?: boolean;
   hint?: string;
 }) {
+  const { t } = useLang();
+  // 비밀번호는 눈 아이콘으로 잠깐 보이게 한다 — 길게 치다 틀리면 어디서 틀렸는지
+  // 알 길이 없다. 기본은 가린 채다.
+  const secret = type === "password";
+  const [shown, setShown] = useState(false);
   return (
     <div>
       <label htmlFor={id} className="mb-1 block text-xs text-muted">
         {label}
       </label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        required={required}
-        autoComplete={autoComplete}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-sm
-          outline-none focus:border-accent"
-      />
+      <div className="relative">
+        <input
+          id={id}
+          type={secret && shown ? "text" : type}
+          value={value}
+          required={required}
+          autoComplete={autoComplete}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-sm
+            outline-none focus:border-accent ${secret ? "pr-10" : ""}`}
+        />
+        {secret && (
+          <button
+            type="button"
+            onClick={() => setShown((v) => !v)}
+            aria-pressed={shown}
+            aria-label={t(shown ? "auth.hidePassword" : "auth.showPassword")}
+            title={t(shown ? "auth.hidePassword" : "auth.showPassword")}
+            className="absolute right-1.5 top-1/2 grid size-7 -translate-y-1/2 place-items-center
+              rounded-md text-dim transition-colors hover:text-fg"
+          >
+            <Icon name={shown ? "eyeOff" : "eye"} size={16} />
+          </button>
+        )}
+      </div>
       {hint && <p className="mt-1 text-[11px] text-dim">{hint}</p>}
     </div>
   );

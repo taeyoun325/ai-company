@@ -27,7 +27,8 @@
  * 쓰고, 못 하는 것은 아래 '지금 상태' 에 그대로 적는다. 랜딩에서 부풀린
  * 만큼 첫 결제 다음 날 환불로 돌아온다.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import GuidePage from "@/app/guide/page";
 import { StackCtx } from "@/lib/stack";
@@ -180,12 +181,7 @@ export function Landing({ children }: { children: ReactNode }) {
       <section className="mt-16" data-reveal-group>
         <h2 className="text-lg font-semibold" data-reveal>{t("landing.guide")}</h2>
         <p className="mt-1 text-xs text-dim" data-reveal>{t("landing.guideNote")}</p>
-        <div className="mt-4 h-[min(680px,78vh)] overflow-hidden rounded-2xl border border-line
-          bg-[color:var(--bg)]" data-reveal>
-          <StackCtx.Provider value={{ inCard: false, active: true, wheel: false }}>
-            <GuidePage />
-          </StackCtx.Provider>
-        </div>
+        <GuidePreview closeLabel={t("landing.guideClose")} />
       </section>
 
       {/* ── 우리가 다르게 하는 것 ──────────────────────────── */}
@@ -320,6 +316,119 @@ export function Landing({ children }: { children: ReactNode }) {
       <p className="mt-10 text-center text-[11px] text-dim">
         {t("landing.reducedMotion")}
       </p>
+    </div>
+  );
+}
+
+/**
+ * 설명 미리보기 — 내려오다 70% 쯤 보이면 **화면 전체로** 펼친다.
+ *
+ * 작은 칸 안에서 여덟 장을 넘기면 글자가 작고, 칸 안의 휠이 페이지를 같이
+ * 내린다. 펼친 동안에는 휠이 장을 넘기고(설명 탭 그대로), 끝 장에서 더 내리면
+ * (또는 첫 장에서 더 올리면) 원래 크기로 돌아가며 페이지가 이어서 움직인다.
+ * Esc · 닫기 버튼으로도 돌아간다.
+ *
+ * 한 번 닫으면 칸이 화면 밖으로 거의 나갔다가 다시 들어올 때까지는 펼치지
+ * 않는다 — 닫자마자 또 펼쳐지면 그 자리를 지나갈 수가 없다.
+ */
+function GuidePreview({ closeLabel }: { closeLabel: string }) {
+  const slot = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [full, setFull] = useState(false);
+  const armed = useRef(true);
+
+  useEffect(() => {
+    const el = slot.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => {
+      if (e.intersectionRatio >= 0.7 && armed.current) {
+        armed.current = false;
+        setFull(true);
+      } else if (e.intersectionRatio < 0.2) {
+        armed.current = true;
+      }
+    }, { threshold: [0, 0.2, 0.7, 1] });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const close = useCallback((dir: 0 | 1 | -1 = 0) => {
+    setFull(false);
+    const el = slot.current;
+    if (!el || !dir) return;
+    // 넘긴 방향으로 페이지를 이어서 — 칸을 지나가게 한다.
+    const scroller = scrollParent(el) as HTMLElement | null;
+    const r = el.getBoundingClientRect();
+    const by = dir > 0 ? r.bottom - window.innerHeight * 0.25 : r.top - window.innerHeight * 0.75;
+    scroller?.scrollBy({ top: by, behavior: "smooth" });
+  }, []);
+
+  // 펼친 동안: Esc 로 닫고, 휠이 뒤의 페이지를 굴리지 않게 붙잡는다(React 의 휠은
+  // passive 라 막지 못한다 — 네이티브로 건다). 장은 설명 탭이 넘긴다.
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    const stop = (e: WheelEvent) => e.preventDefault();
+    const el = panel.current;
+    window.addEventListener("keydown", onKey);
+    el?.addEventListener("wheel", stop, { passive: false });
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      el?.removeEventListener("wheel", stop);
+    };
+  }, [full, close]);
+
+  return (
+    // 등장 움직임(data-reveal)을 걸지 않는다 — 조상에 transform 이 남으면 fixed 가
+    // 화면이 아니라 그 조상을 기준으로 펼쳐진다.
+    <div ref={slot} className="mt-4 h-[min(680px,78vh)]">
+      <motion.div
+        ref={panel}
+        layout
+        transition={{ type: "spring", stiffness: 170, damping: 26 }}
+        className={full
+          ? "fixed inset-3 z-[70] overflow-hidden rounded-3xl border border-line-strong"
+            + " bg-[color:var(--bg)] shadow-[0_40px_120px_rgba(0,0,0,0.7)]"
+          : "relative h-full overflow-hidden rounded-2xl border border-line bg-[color:var(--bg)]"}
+      >
+        <StackCtx.Provider value={{
+          inCard: false, active: true, preview: true,
+          wheel: full, onEdge: (d) => close(d),
+        }}>
+          <GuidePage />
+        </StackCtx.Provider>
+        <AnimatePresence>
+          {full && (
+            <motion.button
+              type="button"
+              onClick={() => close()}
+              aria-label={closeLabel}
+              title={closeLabel}
+              className="absolute right-3 top-2.5 z-10 grid size-8 place-items-center
+                rounded-full border border-line bg-panel2 text-muted hover:text-fg"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              ×
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </motion.div>
+      {/* 펼친 동안 뒤를 어둡게 — 앞에 무엇이 떠 있는지 분명하게. */}
+      <AnimatePresence>
+        {full && (
+          <motion.div
+            className="fixed inset-0 z-[65] bg-black/60 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => close()}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -34,10 +34,10 @@ export type IconName =
   | "strategist" | "developer" | "analyst" | "writer" | "designer"
   | "building" | "req" | "verify" | "package" | "person" | "system"
   | "plus" | "play" | "stop" | "panel" | "copy" | "check" | "download"
-  | "chevron" | "card" | "gear" | "book" | "clip";
+  | "chevron" | "card" | "gear" | "book" | "clip" | "eye" | "eyeOff";
 
 /** 24×24 격자 위의 path 들. 바깥에서 stroke 속성을 걸어준다. */
-const GLYPHS: Record<IconName, ReactNode> = {
+export const GLYPHS: Record<IconName, ReactNode> = {
   // 나침반 — 전략가. 방향을 정하는 사람이다.
   strategist: (
     <>
@@ -86,6 +86,22 @@ const GLYPHS: Record<IconName, ReactNode> = {
       <line x1="7.4" y1="16" x2="9.6" y2="16" />
       <line x1="15.6" y1="13.4" x2="16.8" y2="13.4" />
       <line x1="15.6" y1="16.4" x2="16.8" y2="16.4" />
+    </>
+  ),
+  // 눈 — 비밀번호 보기.
+  eye: (
+    <>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="2.8" />
+    </>
+  ),
+  // 눈에 사선 — 비밀번호 가리기.
+  eyeOff: (
+    <>
+      <path d="M9.9 5.8A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a16.8 16.8 0 0 1-2.6 3.4" />
+      <path d="M6.6 7.3C3.9 9 2.5 12 2.5 12S6 18.5 12 18.5a9.3 9.3 0 0 0 4.8-1.3" />
+      <path d="M10 10.1a2.8 2.8 0 0 0 3.9 3.9" />
+      <line x1="3.5" y1="3.5" x2="20.5" y2="20.5" />
     </>
   ),
   // 클립 — 첨부.

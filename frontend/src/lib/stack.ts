@@ -12,12 +12,18 @@
  */
 import { createContext, useContext } from "react";
 
-export const StackCtx = createContext<{ inCard: boolean; active: boolean; wheel?: boolean }>({
+export const StackCtx = createContext<{
+  inCard: boolean; active: boolean; wheel?: boolean; preview?: boolean;
+  /** 휠로 첫 장 앞 · 끝 장 뒤로 넘기려 했다(-1 · 1). 전체 화면 미리보기가 닫힌다. */
+  onEdge?: (dir: 1 | -1) => void;
+}>({
   inCard: false,
   active: true,
 });
 // `wheel: false` — 긴 페이지 안에 박혀 있다(로그인 전 랜딩의 설명 미리보기).
 // 휠은 그 페이지를 내려야 한다 — 설명 탭이 휠로 장을 넘기지 않는다.
+// `preview: true` — 로그인 전이다. 사무실 · 요금제 · 설정으로 가는 버튼을 숨긴다
+// (눌러도 갈 곳이 로그인 화면뿐이다).
 
 export function useStack() {
   return useContext(StackCtx);
