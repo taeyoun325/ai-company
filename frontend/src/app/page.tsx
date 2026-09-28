@@ -45,8 +45,7 @@ import { CommandWindow } from "@/components/office/CommandWindow";
 import { EmployeeCard } from "@/components/office/EmployeeCard";
 import { type MeetingCall, OfficeFloor } from "@/components/office/OfficeFloor";
 import { ScenarioStrip } from "@/components/office/ScenarioStrip";
-import { AttachButton, AttachTray, DropZone, useAttachments }
-  from "@/components/Attachments";
+import { AttachButton, AttachTray, useAttachments } from "@/components/Attachments";
 import { Button, ErrorBox, Panel, Skeleton, Warning, num } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { useErrorText, useLang } from "@/lib/i18n";
@@ -311,6 +310,71 @@ export default function OfficePage() {
       slug={slug} className="h-full" />
   );
 
+  // 대표 지시창 · 일 맡기기. 넓으면 작업 로그 칸 아래로 옮긴다 — 지시하고 그 결과(로그)를
+  // 한 칸에서 본다. 좁으면 원래대로 가운데 아래.
+  const orders = (
+    <div data-enter>
+      <CommandWindow run={slug} snap={snap} onAction={onAction}
+        value={requirement} onValueChange={setRequirement}
+        inputLabel={t("cmd.inputLabel")} onFiles={att.add} onStart={() => void start()}>
+        <AttachTray items={att.items} onRemove={att.remove} />
+        {att.ids.length > 0 && (
+          <p className="text-[11px] text-dim">
+            {t("attach.note")}{att.hasVideo && ` ${t("attach.videoNote")}`}
+          </p>
+        )}
+        <p className="text-[11px] text-dim">
+          {run && run.status !== "done" ? t("gate.liveTitle") : t("gate.title")}
+        </p>
+        <GateToggles value={liveGates} onChange={(g) => void updateGates(g)} />
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <AttachButton onFiles={att.add} />
+          <Button tone="primary" onClick={start}
+            disabled={busy || running || run?.status === "awaiting"
+              || !requirement.trim() || att.uploading}
+            title={att.uploading ? t("attach.waiting") : undefined}>
+            {t("office.auto")}
+          </Button>
+          <Button onClick={openManual} disabled={busy || !requirement.trim()}>
+            {t("office.manual")}
+          </Button>
+          <Button tone="ghost" onClick={askRouting}
+            disabled={busy || !requirement.trim()}>
+            {t("office.whoFirst")}
+          </Button>
+          {(running || run?.status === "awaiting") && (
+            <Button tone="danger" onClick={cancel} className="ml-auto">
+              {t("proj.stop")}
+            </Button>
+          )}
+        </div>
+        {(folded.files?.length ?? 0) > 0 && (
+          <p className="flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="text-dim">{t("run.made")}</span>
+            {folded.files!.slice(0, 6).map((f) => (
+              <span key={f} className="rounded-md bg-panel2 px-1.5 py-0.5 font-mono">
+                <span className="text-dim">{f.slice(0, f.lastIndexOf("/") + 1)}</span>
+                {f.slice(f.lastIndexOf("/") + 1)}
+              </span>
+            ))}
+            {folded.files!.length > 6 && (
+              <span className="text-dim">+{folded.files!.length - 6}</span>
+            )}
+          </p>
+        )}
+        {routing && (
+          <p className="text-xs text-muted">
+            {t("run.routing")}:{" "}
+            <strong style={{ color: `var(--${routing.employee}, var(--accent))` }}>
+              {routing.employee}
+            </strong>{" "}
+            — {routing.why}
+          </p>
+        )}
+      </CommandWindow>
+    </div>
+  );
+
   return (
     <div ref={root} className="flex h-full">
       <ProjectRail
@@ -414,97 +478,7 @@ export default function OfficePage() {
             <div className="glass glass-lit p-4"><Skeleton lines={8} /></div>
           )}
 
-          <div data-enter className="grid gap-3 lg:grid-cols-2">
-            <CommandWindow run={slug} snap={snap} focus={focus} onAction={onAction} />
-
-            {/* 일 맡기기 */}
-            <Panel title={t("office.ask")}
-              right={slug && <span className="truncate text-[11px] text-dim">
-                <code>{slug}</code></span>}>
-              <DropZone onFiles={att.add}>
-              <textarea
-                value={requirement}
-                onChange={(e) => setRequirement(e.target.value)}
-                // 캡처한 화면을 바로 붙여넣는다 — 글을 붙여넣을 때는 건드리지 않는다.
-                onPaste={(e) => {
-                  const files = [...e.clipboardData.files];
-                  if (files.length) {
-                    e.preventDefault();
-                    att.add(files);
-                  }
-                }}
-                rows={3}
-                // 자리표시 글은 이름이 아니다 — 쓰기 시작하면 사라지고, 화면
-                // 낭독기는 "편집 가능한 글"로만 읽는다 (DAY 26 화면 시험에서 찾음).
-                aria-label={t("office.ask")}
-                placeholder={t("office.placeholder")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void start();
-                }}
-                className="w-full resize-y rounded-xl border border-line bg-[color:var(--panel-2)]
-                  px-3 py-2 text-sm outline-none backdrop-blur
-                  placeholder:text-dim focus:border-accent"
-              />
-              </DropZone>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <AttachButton onFiles={att.add} />
-                <span className="text-[11px] text-dim">{t("attach.hint")}</span>
-              </div>
-              <AttachTray items={att.items} onRemove={att.remove} />
-              {att.ids.length > 0 && (
-                <p className="mt-1.5 text-[11px] text-dim">
-                  {t("attach.note")}{att.hasVideo && ` ${t("attach.videoNote")}`}
-                </p>
-              )}
-              <p className="mb-1 mt-2 text-[11px] text-dim">
-                {run && run.status !== "done" ? t("gate.liveTitle") : t("gate.title")}
-              </p>
-              <GateToggles value={liveGates} onChange={(g) => void updateGates(g)} />
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Button tone="primary" onClick={start}
-                  disabled={busy || running || run?.status === "awaiting"
-                    || !requirement.trim() || att.uploading}
-                  title={att.uploading ? t("attach.waiting") : undefined}>
-                  {t("office.auto")}
-                </Button>
-                <Button onClick={openManual} disabled={busy || !requirement.trim()}>
-                  {t("office.manual")}
-                </Button>
-                <Button tone="ghost" onClick={askRouting}
-                  disabled={busy || !requirement.trim()}>
-                  {t("office.whoFirst")}
-                </Button>
-                {(running || run?.status === "awaiting") && (
-                  <Button tone="danger" onClick={cancel} className="ml-auto">
-                    {t("proj.stop")}
-                  </Button>
-                )}
-              </div>
-              {(folded.files?.length ?? 0) > 0 && (
-                <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-                  <span className="text-dim">{t("run.made")}</span>
-                  {folded.files!.slice(0, 6).map((f) => (
-                    <span key={f} className="rounded-md bg-panel2 px-1.5 py-0.5 font-mono">
-                      <span className="text-dim">{f.slice(0, f.lastIndexOf("/") + 1)}</span>
-                      {f.slice(f.lastIndexOf("/") + 1)}
-                    </span>
-                  ))}
-                  {folded.files!.length > 6 && (
-                    <span className="text-dim">+{folded.files!.length - 6}</span>
-                  )}
-                </p>
-              )}
-              {routing && (
-                <p className="mt-2 text-xs text-muted">
-                  {t("run.routing")}:{" "}
-                  <strong style={{ color: `var(--${routing.employee}, var(--accent))` }}>
-                    {routing.employee}
-                  </strong>{" "}
-                  — {routing.why}
-                </p>
-              )}
-            </Panel>
-          </div>
+          {!wide && orders}
 
           {/* 좁은 화면에는 오른쪽 레일이 없다 — 점수·태스크·로그를 여기로 내린다. */}
           {(slug || stream.events.length > 0) && (
@@ -543,6 +517,9 @@ export default function OfficePage() {
           <div className="min-h-0 flex-1 overflow-y-auto border-t border-line"
             data-testid="activity-log">
             {logBody}
+          </div>
+          <div className="max-h-[64%] shrink-0 overflow-y-auto border-t border-line p-3">
+            {orders}
           </div>
         </section>
       )}

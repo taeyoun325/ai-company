@@ -133,7 +133,7 @@ test("승인 지점·상태·결정은 사무실과 같은 말을 쓴다", async
 test("마지막 장의 시작 버튼이 사무실로 간다", async ({ page }) => {
   await page.goto("/guide#honest");
   await page.getByRole("link", { name: "사무실로 가기" }).click();
-  await expect(page.getByRole("textbox", { name: "무엇을 만들까요?" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "지시 · 질문" })).toBeVisible();
 });
 
 // 장은 한 번에 하나만 그려지므로, 번역 검사(i18n.spec)는 첫 장만 본다. 여기서

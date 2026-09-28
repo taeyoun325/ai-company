@@ -26,12 +26,12 @@ test("언어 전환이 화면 안에 있고 누를 수 있다", async ({ page })
   expect(box, "언어 전환 버튼이 그려지지 않았다").not.toBeNull();
   expect(box!.x + box!.width).toBeLessThanOrEqual(375);
   await en.click();
-  await expect(page.getByRole("textbox", { name: "What should we build?" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Instruction or question" })).toBeVisible();
 });
 
 test("사무실 작업 칸이 레일에 눌리지 않는다", async ({ page }) => {
   await page.goto("/");
-  const box = await page.getByRole("textbox", { name: "무엇을 만들까요?" }).boundingBox();
+  const box = await page.getByRole("textbox", { name: "지시 · 질문" }).boundingBox();
   expect(box).not.toBeNull();
   // DAY 22 에는 130px 이었다. 접힌 레일(44px)과 여백을 빼면 265px 안팎이 정상.
   expect(box!.width).toBeGreaterThan(240);

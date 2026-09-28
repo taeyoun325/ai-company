@@ -863,6 +863,7 @@ const S = {
     ja: "何を作りましょうか？",
   },
   // ── 첨부 (DAY 28) ─────────────────────────────────────────────
+  "cmd.inputLabel": { ko: "지시 · 질문", en: "Instruction or question", ja: "指示・質問" },
   "attach.add": { ko: "첨부", en: "Attach", ja: "添付" },
   "attach.hint": {
     ko: "사진 · 영상 · PDF · 텍스트 — 끌어다 놓거나 붙여넣어도 됩니다",
@@ -1147,9 +1148,9 @@ const S = {
     ja: "記録を読んで答えます — モデルを呼ばないので無料です",
   },
   "cmd.empty": {
-    ko: "아래 단추를 누르거나 직접 물어보세요.",
-    en: "Tap a button below or ask in your own words.",
-    ja: "下のボタンを押すか、直接聞いてください。",
+    ko: "묻거나 일을 맡기세요. 파일도 여기에 붙입니다.",
+    en: "Ask, or hand over work. Attach files here too.",
+    ja: "質問するか、仕事を任せてください。ファイルもここに添付できます。",
   },
   "cmd.thinking": { ko: "기록 확인 중…", en: "Checking the records…", ja: "記録を確認中…" },
   "cmd.placeholder": {

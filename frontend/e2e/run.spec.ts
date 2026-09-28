@@ -61,7 +61,7 @@ test("작업 지시에 사진·영상을 붙이면 올라가고, 로그가 무�
   async ({ page, request }) => {
     const req = unique("간단한 계산기를 만들어주세요");
     await gotoOffice(page);
-    await page.getByRole("textbox", { name: "무엇을 만들까요?" }).fill(req);
+    await page.getByRole("textbox", { name: "지시 · 질문" }).fill(req);
     const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
     await page.getByLabel("첨부", { exact: true }).setInputFiles([
       { name: "shot.png", mimeType: "image/png", buffer: png },

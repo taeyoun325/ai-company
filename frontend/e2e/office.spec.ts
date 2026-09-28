@@ -54,7 +54,9 @@ for (const width of [1024, 1280, 1600]) {
 }
 
 test("지시창 — '현황 보고'가 기록을 읽어 답한다", async ({ page }) => {
-  await page.getByRole("button", { name: "현황 보고" }).click();
+  // 빠른 질문 칩은 없앴다 — 입력에 그대로 쓰고 보낸다.
+  await page.getByRole("textbox", { name: "지시 · 질문" }).fill("현황 보고");
+  await page.getByRole("button", { name: "보내기", exact: true }).click();
   const log = page.getByRole("log", { name: "대표 지시창" });
   await expect(log).toContainText("현황 보고");          // 대표가 한 말
   await expect(log.getByText("비서실").first()).toBeVisible();   // 비서실의 답

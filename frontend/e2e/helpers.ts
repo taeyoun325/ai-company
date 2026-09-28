@@ -33,12 +33,12 @@ export async function waitStatus(request: APIRequestContext, requirement: string
 
 export async function gotoOffice(page: Page) {
   await page.goto("/");
-  await expect(page.getByRole("textbox", { name: "무엇을 만들까요?" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "지시 · 질문" })).toBeVisible();
 }
 
 /** 화면에서 AUTO 로 일을 맡긴다. `gates` 는 켤 승인 단계의 이름(화면 글자). */
 export async function handToAuto(page: Page, requirement: string, gates: string[] = []) {
-  await page.getByRole("textbox", { name: "무엇을 만들까요?" }).fill(requirement);
+  await page.getByRole("textbox", { name: "지시 · 질문" }).fill(requirement);
   for (const g of gates) {
     await page.getByRole("checkbox", { name: new RegExp(g) }).check();
   }
