@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import sys
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app import approvals
@@ -43,7 +43,20 @@ from app import usage
 from app import workspace
 from app.agents import core as agent_core
 
-router = APIRouter(tags=["local-tools"])
+def _require_local_tools() -> None:
+    """로컬 환경을 건드리는 기능의 공통 관문 (§18 · app/deploy.py).
+
+    **라우터 전체에** 건다 (DAY 26). 전에는 라우트마다 손으로 불렀고, 이
+    주석도 "하나를 빠뜨리면 그 하나가 통째로 구멍이 된다"고 적고 있었는데 —
+    실제로 11개가 빠져 있었다(권한 모드 바꾸기 · 승인 · 예약 실행 · 타임라인 ·
+    초기화). SaaS 로 띄운 서버에서 **로그인 없이** 열렸다. 폰으로 보려고 서버를
+    공인 주소에 열다가 찾았다. 이제 이 파일에 라우트를 더하면 저절로 막힌다.
+    """
+    if (reason := deploy.allow_local_tools()) is not None:
+        raise HTTPException(403, reason)
+
+
+router = APIRouter(tags=["local-tools"], dependencies=[Depends(_require_local_tools)])
 
 
 class OpenReq(BaseModel):
@@ -82,14 +95,6 @@ class SchedulePatch(BaseModel):
     enabled: bool | None = None
 
 
-def _require_local_tools() -> None:
-    """로컬 환경을 건드리는 기능의 공통 관문 (§18 · app/deploy.py).
-
-    이 검사를 라우트마다 손으로 넣지 않고 한 함수로 모은 이유: 라우트가
-    늘어날 때 하나를 빠뜨리면, 그 하나가 통째로 구멍이 된다.
-    """
-    if (reason := deploy.allow_local_tools()) is not None:
-        raise HTTPException(403, reason)
 
 
 # ── 작업 폴더 ───────────────────────────────────────────────────────

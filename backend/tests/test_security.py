@@ -515,3 +515,22 @@ def test_a_project_cannot_grow_without_end(tmp_path, monkeypatch):
         assert pfs.write("src/a.py", "a" * 800, "developer")["created"] is False
     finally:
         pfs.release()
+
+
+def test_every_local_tool_route_is_closed_on_saas(monkeypatch):
+    """옛 로컬 도구의 라우트는 **전부** SaaS 에서 막힌다 (DAY 26).
+
+    라우트마다 손으로 관문을 불렀더니 19개 중 11개가 빠져 있었다 — 권한 모드
+    바꾸기 · 승인 · 예약 실행이 SaaS 서버에서 로그인 없이 열렸다. 라우터에 건
+    관문이 새 라우트까지 덮는지를 라우트 목록 전체로 본다."""
+    from fastapi.testclient import TestClient
+    from app import main
+    from app.api import local_tools
+    monkeypatch.setenv("DEPLOY_MODE", "saas")
+    c = TestClient(main.app)
+    routes = [(m, r.path) for r in local_tools.router.routes for m in r.methods]
+    assert len(routes) >= 19
+    for method, path in routes:
+        url = path.replace("{aid}", "x").replace("{sid}", "x")
+        r = c.request(method, url, json={})
+        assert r.status_code == 403, f"{method} {path} 가 SaaS 에서 열려 있다 ({r.status_code})"
