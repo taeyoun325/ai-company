@@ -12,10 +12,12 @@
  */
 import { createContext, useContext } from "react";
 
-export const StackCtx = createContext<{ inCard: boolean; active: boolean }>({
+export const StackCtx = createContext<{ inCard: boolean; active: boolean; wheel?: boolean }>({
   inCard: false,
   active: true,
 });
+// `wheel: false` — 긴 페이지 안에 박혀 있다(로그인 전 랜딩의 설명 미리보기).
+// 휠은 그 페이지를 내려야 한다 — 설명 탭이 휠로 장을 넘기지 않는다.
 
 export function useStack() {
   return useContext(StackCtx);

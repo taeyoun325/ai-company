@@ -158,7 +158,7 @@ export default function GuidePage() {
 
   // ←/→ 로 넘긴다. 입력칸에 쓰는 중이면 건드리지 않는다. 탭 카드 덱에서
   // 옆 자리에 비켜 있을 때는 듣지 않는다 — 가운데 카드의 키를 뺏는다.
-  const { active: onStage } = useStack();
+  const { active: onStage, wheel: wheelFlips = true } = useStack();
   useEffect(() => {
     if (!onStage) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -225,7 +225,7 @@ export default function GuidePage() {
       </div>
 
       {/* ── 무대 — 여기만 바뀐다 ──────────────────────────────────── */}
-      <div className="relative min-h-0 flex-1 overflow-hidden" onWheel={onWheel}
+      <div className="relative min-h-0 flex-1 overflow-hidden" onWheel={wheelFlips ? onWheel : undefined}
         style={{ perspective: 1400 }}>
         <AnimatePresence initial={false} custom={dir} mode="popLayout">
           <Slide key={tab} tab={tab} dir={dir} reduced={!!reduced}

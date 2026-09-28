@@ -29,6 +29,8 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import GuidePage from "@/app/guide/page";
+import { StackCtx } from "@/lib/stack";
 import { PipelineFigure } from "./PipelineFigure";
 import { Icon, iconOfAgent } from "./icons";
 import { Button, Filled, Panel } from "./ui";
@@ -173,6 +175,18 @@ export function Landing({ children }: { children: ReactNode }) {
           {t("hero.cta")}
         </Button>
       </div>
+
+      {/* ── 설명 미리보기 — 로그인 전에도 설명 탭을 그대로 넘겨 본다 ── */}
+      <section className="mt-16" data-reveal-group>
+        <h2 className="text-lg font-semibold" data-reveal>{t("landing.guide")}</h2>
+        <p className="mt-1 text-xs text-dim" data-reveal>{t("landing.guideNote")}</p>
+        <div className="mt-4 h-[min(680px,78vh)] overflow-hidden rounded-2xl border border-line
+          bg-[color:var(--bg)]" data-reveal>
+          <StackCtx.Provider value={{ inCard: false, active: true, wheel: false }}>
+            <GuidePage />
+          </StackCtx.Provider>
+        </div>
+      </section>
 
       {/* ── 우리가 다르게 하는 것 ──────────────────────────── */}
       <section className="mt-16" data-reveal-group>

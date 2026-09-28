@@ -174,6 +174,12 @@ const S = {
   },
 
   // ── 랜딩: 왜 이렇게 만들었나 ──────────────────────────────────
+  "landing.guide": { ko: "먼저 둘러보기", en: "Take a look first", ja: "まず見てみる" },
+  "landing.guideNote": {
+    ko: "가입하기 전에 이 회사가 일하는 순서를 여덟 장으로 넘겨 보세요 — 로그인한 뒤의 '설명' 탭과 같은 화면입니다.",
+    en: "Flip through how this company works in eight chapters before signing up — the same screen as the Guide tab after you log in.",
+    ja: "登録する前に、この会社の働き方を 8 章でめくってみてください — ログイン後の「説明」タブと同じ画面です。",
+  },
   "why.title": { ko: "왜 이렇게 만들었나", en: "Why it is built this way", ja: "なぜこう作ったか" },
   "why.order": { ko: "순서는 코드가 정한다", en: "Code decides the order", ja: "順序はコードが決める" },
   "why.order.body": {

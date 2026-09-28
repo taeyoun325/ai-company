@@ -21,6 +21,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 
 import { useLang } from "@/lib/i18n";
+import { GALAXY_DEEP, Galaxy } from "./Galaxy";
 import { Landing } from "./Landing";
 import { Button, ErrorBox, Panel, Warning } from "./ui";
 import { useAuth } from "@/lib/useAuth";
@@ -56,10 +57,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
     // 레이아웃이 창 높이에 고정돼 있다(DAY 22). 랜딩은 긴 화면이라
     // 자기 스크롤을 가져야 한다 — 없으면 아래 절반이 영영 안 보인다.
     return (
-      <div className="h-full overflow-y-auto">
-        <Landing>
-          <LoginScreen />
-        </Landing>
+      // 로그인한 뒤의 탭 카드 덱과 같은 은하 위에 세운다 — 들어오기 전과 후가 한 회사다.
+      // 은하는 스크롤 칸 **바깥**에 깔아 내려도 제자리에 있다.
+      <div className="relative h-full overflow-hidden" style={{ background: GALAXY_DEEP }}>
+        <Galaxy />
+        <div className="relative h-full overflow-y-auto">
+          <Landing>
+            <LoginScreen />
+          </Landing>
+        </div>
       </div>
     );
   }
