@@ -52,6 +52,7 @@ import { useErrorText, useLang } from "@/lib/i18n";
 import { T, animate, stagger, withScope } from "@/lib/motion";
 import { useSessionFlag, useSticky, useStickyNumber } from "@/lib/sticky";
 import type { AskAnswer, CreditStatus, ProviderStatus } from "@/lib/types";
+import { useMedia } from "@/lib/media";
 import { useLoader } from "@/lib/useLoader";
 import { useOffice } from "@/lib/useOffice";
 import { foldState, useStream } from "@/lib/useStream";
@@ -71,6 +72,8 @@ const LOG_SPLIT_MIN = 440;
  * 로그(최소 300) + 오른쪽 칸(기본 336) 이 들어가는 폭이다.
  */
 const WIDE_MIN = 1640;
+/** 이보다 좁으면 폰처럼 — 평면도 · 직원 목록 없이 지시창과 작업 로그만. */
+const PHONE_MAX = 720;
 
 /** 사무실을 다시 읽어야 하는 이벤트 — 사람의 자리나 상태가 바뀌는 것들. */
 const PULSE_TYPES = new Set(["phase", "gate", "awaiting", "done", "handoff"]);
@@ -241,12 +244,24 @@ export default function OfficePage() {
   );
   const [logWidthDrag, setLogWidthDrag] = useState<number | null>(null);
   const [wide, setWide] = useState(false);
+  // 폰에서는 평면도 · 직원 목록을 그리지 않고 작업 로그(지시창 · 로그)만 둔다 —
+  // 좁은 화면에서 직원 카드 다섯 장이 지시창을 한참 아래로 밀었다.
+  // 창 폭이 아니라 **이 화면이 받은 폭**으로 가른다 — 창은 넓어도 탭 카드 덱이
+  // 좁은 칸을 줄 수 있다(창 크기 · 확대 비율에 따라).
+  const narrowWindow = !useMedia("(min-width: 768px)");
+  const [narrowBox, setNarrowBox] = useState(false);
+  const phone = narrowWindow || narrowBox;
+  const showFloor = !phone;
+  const showLog = true;
   // 그리기 전에 한 번 재고(useLayoutEffect), 그 뒤로는 크기가 바뀔 때마다.
   // 배치 폭(offsetWidth)으로 잰다 — 탭 카드 덱이 줄여(zoom) 그려도 배치는 그대로다.
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
-    const check = () => setWide(el.offsetWidth >= WIDE_MIN);
+    const check = () => {
+      setWide(el.offsetWidth >= WIDE_MIN);
+      setNarrowBox(el.offsetWidth < PHONE_MAX);
+    };
     check();
     const ro = new ResizeObserver(check);
     ro.observe(el);
@@ -415,7 +430,8 @@ export default function OfficePage() {
             </div>
           )}
 
-          {/* 머리 — 회사 이름 · 지금 프로젝트 · 집중 모드 */}
+          {/* 머리 — 회사 이름 · 지금 프로젝트 · 집중 모드 (폰에서는 평면도와 함께 뺀다) */}
+          {showFloor && (
           <div data-enter className="flex flex-wrap items-center gap-2 px-1">
             <h1 className="text-[13px] font-semibold tracking-tight">{t("office.title")}</h1>
             {run && (
@@ -452,6 +468,7 @@ export default function OfficePage() {
               )}
             </span>
           </div>
+          )}
 
           {/* ⑦ 대표 승인 — 결정할 일이 있으면 맨 위 */}
           {slug && snap && snap.approvals.length > 0 && (
@@ -461,7 +478,7 @@ export default function OfficePage() {
             </div>
           )}
 
-          {snap ? (
+          {!showFloor ? null : snap ? (
             <div data-enter className="space-y-2">
               <ScenarioStrip steps={snap.scenario} />
               <OfficeFloor snap={snap} events={stream.events} focus={focus}
@@ -478,10 +495,10 @@ export default function OfficePage() {
             <div className="glass glass-lit p-4"><Skeleton lines={8} /></div>
           )}
 
-          {!wide && orders}
+          {!wide && showLog && orders}
 
           {/* 좁은 화면에는 오른쪽 레일이 없다 — 점수·태스크·로그를 여기로 내린다. */}
-          {(slug || stream.events.length > 0) && (
+          {showLog && (slug || stream.events.length > 0 || phone) && (
             <div data-enter className="space-y-3 lg:hidden">
               <Panel title={t("proj.score")}>
                 <ScorePanel score={folded.score} detail={folded.scoreDetail}
