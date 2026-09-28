@@ -24,8 +24,8 @@ import { useAuth } from "@/lib/useAuth";
 import { NavLink } from "./ui";
 
 export function LangSwitch({
-  compact = false, vertical = false,
-}: { compact?: boolean; vertical?: boolean }) {
+  compact = false, vertical = false, tight = false,
+}: { compact?: boolean; vertical?: boolean; tight?: boolean }) {
   const { lang, setLang, t } = useLang();
 
   return (
@@ -44,7 +44,7 @@ export function LangSwitch({
             onClick={() => setLang(l)}
             aria-pressed={on}
             title={LANG_LABEL[l]}
-            className={`rounded-md px-2 py-1 text-[11px] font-medium transition
+            className={`rounded-md ${tight ? "px-1.5" : "px-2"} py-1 text-[11px] font-medium transition
               ${on ? "text-bg" : "text-muted hover:text-fg"}`}
             style={on ? { background: "var(--accent)" } : undefined}
           >

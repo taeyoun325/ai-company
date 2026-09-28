@@ -162,8 +162,10 @@ const LINE_EVERY_MS = 1300;
 
 export function OfficeFloor({
   snap, events, focus, meetingCall, selected, onSelect, arrivalKey, still = false,
-  onMove,
+  onMove, plan = false,
 }: {
+  /** 좁아도 목록 대신 **평면도**를 그린다 — 폰의 '사무실' 화면. 세로로 길게 세운다. */
+  plan?: boolean;
   snap: OfficeSnapshot;
   events: BusEvent[];
   focus: boolean;
@@ -350,8 +352,9 @@ export function OfficeFloor({
       {/* `@container` — 말풍선이 자리 폭(17%)을 넘지 않게 `cqw` 로 잰다 (DAY 26).
           고정 132px 이면 1280px 화면에서 옆자리 말풍선과 겹쳤다. */}
       <div ref={floorRef}
-        className="@container glass glass-lit relative hidden aspect-[16/10] min-h-[380px]
-        w-full overflow-hidden sm:block" role="group" aria-label={t("office.floor.alt")}>
+        className={`@container glass glass-lit relative w-full overflow-hidden ${plan
+          ? "block aspect-[3/4]" : "hidden aspect-[16/10] min-h-[380px] sm:block"}`}
+        role="group" aria-label={t("office.floor.alt")}>
         <Rooms approval={!!approval} t={t} dropTarget={drag?.over ?? null}
           dragging={!!drag} />
 
@@ -420,7 +423,7 @@ export function OfficeFloor({
       </div>
 
       {/* 좁은 화면 — 부서별 목록 */}
-      <ul className="glass glass-lit divide-y divide-line sm:hidden">
+      <ul className={`glass glass-lit divide-y divide-line sm:hidden ${plan ? "hidden" : ""}`}>
         {approval && (
           <li className="px-3 py-2 text-xs" style={{ color: "var(--st-approval)" }}>
             {t("office.meeting.approval", { title: approval.title })}

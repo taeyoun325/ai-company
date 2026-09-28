@@ -115,7 +115,7 @@ def _add(e: Employee) -> Employee:
 
 
 _add(Employee(
-    id="strategist", name="한지수", role="전략가", provider="claude", kind="plan",
+    id="strategist", name="Claude", role="전략가", provider="claude", kind="plan",
     desc="요구사항을 인수기준과 작업 그래프로 바꾼다. 파일은 쓰지 않는다.",
     writes=(), reads=AREAS, max_tokens=16000, temperature=0.3, effort="xhigh",
     system=_COMMON + (
@@ -134,7 +134,7 @@ _add(Employee(
 ))
 
 _add(Employee(
-    id="developer", name="박도현", role="개발자", provider="claude", kind="build",
+    id="developer", name="Claude Code", role="개발자", provider="claude", kind="build",
     desc="코드를 쓴다. src/ 에만 쓸 수 있고 tests/ 는 읽지도 못한다.",
     writes=(SRC,), reads=(SRC, DOCS, DESIGN), max_tokens=32000, temperature=0.1,
     effort="xhigh",
@@ -151,7 +151,7 @@ _add(Employee(
 ))
 
 _add(Employee(
-    id="analyst", name="최유나", role="분석가", provider="gemini", kind="verify",
+    id="analyst", name="Gemini", role="분석가", provider="gemini", kind="verify",
     desc="다른 회사 모델로 교차검증한다. tests/ 에만 쓰고 코드는 읽기만 한다.",
     writes=(TESTS,), reads=AREAS, max_tokens=16000, temperature=0.0, effort="high",
     system=_COMMON + (
@@ -167,7 +167,7 @@ _add(Employee(
 ))
 
 _add(Employee(
-    id="writer", name="이서준", role="작가", provider="openai", kind="write",
+    id="writer", name="GPT", role="작가", provider="openai", kind="write",
     desc="문서·카피를 쓴다. docs/ 에만 쓴다.",
     writes=(DOCS,), reads=(SRC, DOCS, DESIGN), max_tokens=16000, temperature=0.6,
     effort="medium",
@@ -180,7 +180,7 @@ _add(Employee(
 ))
 
 _add(Employee(
-    id="designer", name="정하린", role="디자이너", provider="gemini", kind="design",
+    id="designer", name="Gemini Vision", role="디자이너", provider="gemini", kind="design",
     desc="화면과 비주얼을 명세한다. design/ 에만 쓴다.",
     writes=(DESIGN,), reads=(SRC, DOCS, DESIGN), max_tokens=16000, temperature=0.5,
     effort="medium",

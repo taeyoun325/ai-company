@@ -16,6 +16,9 @@ export const StackCtx = createContext<{
   inCard: boolean; active: boolean; wheel?: boolean; preview?: boolean;
   /** 휠로 첫 장 앞 · 끝 장 뒤로 넘기려 했다(-1 · 1). 전체 화면 미리보기가 닫힌다. */
   onEdge?: (dir: 1 | -1) => void;
+  /** 폰에서 사무실 카드가 무엇을 보이나 — 평면도(floor)냐 지시창 · 작업 로그(log)냐.
+   *  덱 아래 줄의 '사무실' · '작업 로그' 단추가 고른다. */
+  officeView?: "floor" | "log";
 }>({
   inCard: false,
   active: true,

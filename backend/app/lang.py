@@ -1129,7 +1129,7 @@ _M: dict[str, dict[str, str]] = {
     "sec.approve.done": {"ko": "결재 처리했습니다 — '{title}'. 바로 이어서 진행합니다.", "en": "Approved — '{title}'. Continuing right away.", "ja": "決裁しました — 「{title}」。すぐに続けます。"},
     "sec.approve.note": {"ko": "다만 지금은 바로 이어가지 못했습니다: {note}", "en": "It couldn't resume right away, though: {note}", "ja": "ただし、すぐには再開できませんでした: {note}"},
     "sec.help": {
-        "ko": "이렇게 물어보세요: '현황 보고' · '왜 늦어져?' · '박도현 뭐해?' · '회의 소집' · '지금 브리핑' · '집중 모드' · '승인할게'",
+        "ko": "이렇게 물어보세요: '현황 보고' · '왜 늦어져?' · 'Claude Code 뭐해?' · '회의 소집' · '지금 브리핑' · '집중 모드' · '승인할게'",
         "en": "Try: 'status report' · 'why so slow?' · 'what is the developer doing?' · 'call a meeting' · 'brief me' · 'focus mode' · 'approve it'",
         "ja": "こう聞いてください: 「現況報告」·「なぜ遅い?」·「開発者は何してる?」·「会議招集」·「今ブリーフィング」·「集中モード」·「承認します」",
     },

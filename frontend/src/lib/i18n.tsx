@@ -1154,7 +1154,7 @@ const S = {
   },
   "cmd.thinking": { ko: "기록 확인 중…", en: "Checking the records…", ja: "記録を確認中…" },
   "cmd.placeholder": {
-    ko: "예: 왜 늦어져? · 박도현 뭐해? · 승인할게",
+    ko: "예: 왜 늦어져? · Claude Code 뭐해? · 승인할게",
     en: "e.g. why so slow? · what is the designer doing? · approve it",
     ja: "例: なぜ遅い? · 開発者は何してる? · 承認します",
   },

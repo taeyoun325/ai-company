@@ -151,8 +151,8 @@ def test_discarding_the_plan_stops_the_run():
 
 
 # ── 대표 지시창 ─────────────────────────────────────────────────────
-NAMES = {"strategist": "한지수", "developer": "박도현", "analyst": "최유나",
-         "writer": "이서준", "designer": "정하린"}
+NAMES = {"strategist": "Claude", "developer": "Claude Code", "analyst": "Gemini",
+         "writer": "GPT", "designer": "Gemini Vision"}
 
 
 @pytest.mark.parametrize("text,intent,who", [
@@ -161,7 +161,7 @@ NAMES = {"strategist": "한지수", "developer": "박도현", "analyst": "최유
     ("왜 늦어져?", "why", None),
     ("why so slow?", "why", None),
     ("なぜ遅い?", "why", None),
-    ("박도현 뭐해?", "whois", "developer"),
+    ("Claude Code 뭐해?", "whois", "developer"),
     ("what is the designer doing", "whois", "designer"),
     ("검증팀 뭐해", "whois", "analyst"),
     ("회의 소집", "meeting", None),
@@ -227,7 +227,7 @@ def test_no_empty_answers():
     """사규 §4 ⑤ — 내용 없는 답변 금지."""
     slug = engine.start("계산기")
     _settle(slug)
-    for q in ("현황 보고", "왜 늦어져?", "박도현 뭐해?", "회의 소집",
+    for q in ("현황 보고", "왜 늦어져?", "Claude Code 뭐해?", "회의 소집",
               "지금 브리핑", "집중 모드", "승인할게", "?"):
         for line in secretary.answer(q, "local", slug)["lines"]:
             assert line["text"].strip()

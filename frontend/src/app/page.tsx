@@ -53,6 +53,7 @@ import { T, animate, stagger, withScope } from "@/lib/motion";
 import { useSessionFlag, useSticky, useStickyNumber } from "@/lib/sticky";
 import type { AskAnswer, CreditStatus, ProviderStatus } from "@/lib/types";
 import { useMedia } from "@/lib/media";
+import { useStack } from "@/lib/stack";
 import { useLoader } from "@/lib/useLoader";
 import { useOffice } from "@/lib/useOffice";
 import { foldState, useStream } from "@/lib/useStream";
@@ -251,8 +252,10 @@ export default function OfficePage() {
   const narrowWindow = !useMedia("(min-width: 768px)");
   const [narrowBox, setNarrowBox] = useState(false);
   const phone = narrowWindow || narrowBox;
-  const showFloor = !phone;
-  const showLog = true;
+  // 폰에서 덱 아래 줄의 '사무실' 을 누르면 평면도, '작업 로그' 를 누르면 지시창 · 로그.
+  const { officeView } = useStack();
+  const showFloor = !phone || officeView === "floor";
+  const showLog = !phone || officeView !== "floor";
   // 그리기 전에 한 번 재고(useLayoutEffect), 그 뒤로는 크기가 바뀔 때마다.
   // 배치 폭(offsetWidth)으로 잰다 — 탭 카드 덱이 줄여(zoom) 그려도 배치는 그대로다.
   useLayoutEffect(() => {
@@ -483,7 +486,7 @@ export default function OfficePage() {
               <ScenarioStrip steps={snap.scenario} />
               <OfficeFloor snap={snap} events={stream.events} focus={focus}
                 meetingCall={meetingCall} selected={selected} onSelect={setSelected}
-                onMove={moveTeam}
+                onMove={moveTeam} plan={phone}
                 arrivalKey={arrivalKey} />
               {picked && (
                 <EmployeeCard e={picked} items={snap.integrations}

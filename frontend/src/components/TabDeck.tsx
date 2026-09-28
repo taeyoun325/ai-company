@@ -156,6 +156,8 @@ function Deck() {
   const [seen, setSeen] = useState(pathIdx);
   const [dir, setDir] = useState<1 | -1>(1);
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
+  // 폰: 사무실 카드 하나를 '사무실(평면도)' · '작업 로그' 두 단추로 나눠 본다.
+  const [officeView, setOfficeView] = useState<"floor" | "log">("log");
   const [mounted, setMounted] = useState<ReadonlySet<number>>(
     () => new Set([Math.max(0, pathIdx)]));
   const stage = useRef<HTMLElement>(null);
@@ -278,14 +280,20 @@ function Deck() {
             const slot = slotOf(i - active);
             return (
               <Card key={tab.id} tab={tab} slot={slot} pos={slots[slot]} dir={dir} box={box}
-                narrow={narrow} live={mounted.has(i)} />
+                narrow={narrow} live={mounted.has(i)}
+                officeView={narrow && tab.id === "office" ? officeView : undefined} />
             );
           })}
 
           <LayoutGroup id="deck">
             {narrow ? (
-              <BottomBar active={active} go={go} deep={GALAXY_DEEP} names={names} n={n}
-                prevLabel={t("deck.prev")} nextLabel={t("deck.next")} />
+              <BottomBar active={active} go={go} deep={GALAXY_DEEP} names={names}
+                officeView={officeView}
+                pickOffice={(v) => {
+                  setOfficeView(v);
+                  go(0);
+                }}
+                floorLabel={t("office.title")} logLabel={t("office.log")} />
             ) : (
               <>
                 <LeftRail active={active} go={go} deep={GALAXY_DEEP} names={names} n={n} />
@@ -304,7 +312,7 @@ function Deck() {
 
 /** 탭 카드 한 장. 요소는 그대로 두고 자리만 바꾼다 — 화면 상태가 남는다. */
 function Card({
-  tab, slot, pos, dir, box, narrow, live,
+  tab, slot, pos, dir, box, narrow, live, officeView,
 }: {
   tab: (typeof TABS)[number];
   slot: Slot;
@@ -314,6 +322,7 @@ function Card({
   narrow: boolean;
   /** 화면을 띄웠나. 아직이면 빈 틀만 — 가운데로 오면 덱이 띄운다. */
   live: boolean;
+  officeView?: "floor" | "log";
 }) {
   const center = slot === "center";
   const order: Slot[] = dir === 1
@@ -369,7 +378,7 @@ function Card({
           }}
         >
           {live && (
-            <StackCtx.Provider value={{ inCard: true, active: center }}>
+            <StackCtx.Provider value={{ inCard: true, active: center, officeView }}>
               <Page />
             </StackCtx.Provider>
           )}
@@ -486,35 +495,62 @@ function RightRail({
   );
 }
 
-/** 폰: 여백이 없으니 탭 · 이전/다음 · 언어 · 사용자를 아래 한 줄에. */
+/** 폰: 여백이 없으니 아래 한 줄에. 번호(04/04)는 두지 않는다.
+ *  사무실 카드는 둘로 나눠 본다 — '사무실'(직원 평면도) · '작업 로그'(지시창 · 로그). */
 function BottomBar({
-  active, go, deep, names, n, prevLabel, nextLabel,
+  active, go, deep, names, officeView, pickOffice, floorLabel, logLabel,
 }: {
   active: number;
   go: (i: number) => void;
   deep: string;
   names: string[];
-  n: number;
-  prevLabel: string;
-  nextLabel: string;
+  officeView: "floor" | "log";
+  pickOffice: (v: "floor" | "log") => void;
+  floorLabel: string;
+  logLabel: string;
 }) {
+  const items: { key: string; icon: IconName; label: string; on: boolean; pick: () => void }[] = [
+    { key: "floor", icon: "building", label: floorLabel,
+      on: active === 0 && officeView === "floor", pick: () => pickOffice("floor") },
+    { key: "log", icon: "req", label: logLabel,
+      on: active === 0 && officeView === "log", pick: () => pickOffice("log") },
+    ...TABS.slice(1).map((x, j) => ({
+      key: x.id, icon: x.icon, label: names[j + 1], on: active === j + 1,
+      pick: () => go(j + 1),
+    })),
+  ];
   return (
-    <div className="absolute inset-x-0 bottom-0 z-50 flex select-none items-center gap-1.5
-      px-2"
+    // 375px 폭에 다섯 탭 · 언어 · 계정이 다 들어가야 한다 — 계정 단추가 화면 밖으로
+    // 밀려 반만 보였다. 단추를 조금 줄이고 틈을 좁혔다.
+    <div className="absolute inset-x-0 bottom-0 z-50 flex select-none items-center gap-1
+      px-1.5"
       style={{ height: BAR }}>
-      <TabPills active={active} go={go} deep={deep} names={names} vertical={false} />
-      <motion.button type="button" className={`${ROUND} ml-auto hidden min-[400px]:grid`}
-        onClick={() => go(active - 1)} disabled={active === 0} aria-label={prevLabel}>
-        <span aria-hidden className="leading-none">←</span>
-      </motion.button>
-      <Counter active={active} n={n} />
-      <motion.button type="button" className={`${ROUND} hidden min-[400px]:grid`}
-        onClick={() => go(active + 1)} disabled={active === n - 1} aria-label={nextLabel}>
-        <span aria-hidden className="leading-none">→</span>
-      </motion.button>
-      <div className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap
-        min-[400px]:ml-0">
-        <LangSwitch compact />
+      <nav className="flex shrink-0 items-center gap-0.5 rounded-full bg-black/25 p-1
+        backdrop-blur-md">
+        {items.map((x) => (
+          <button
+            key={x.key}
+            type="button"
+            onClick={x.pick}
+            aria-current={x.on ? "page" : undefined}
+            aria-label={x.label}
+            title={x.label}
+            className="relative grid size-9 place-items-center rounded-full transition-colors"
+            style={{ color: x.on ? deep : "rgba(255,255,255,0.85)" }}
+          >
+            {x.on && (
+              <motion.span
+                layoutId="deck-pill"
+                className="absolute inset-0 rounded-full bg-white"
+                transition={{ type: "spring", stiffness: 380, damping: 32 }}
+              />
+            )}
+            <Icon name={x.icon} size={17} className="relative" />
+          </button>
+        ))}
+      </nav>
+      <div className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap">
+        <LangSwitch compact tight />
         <UserMenu compact />
       </div>
     </div>

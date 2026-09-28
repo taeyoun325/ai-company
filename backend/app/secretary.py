@@ -63,15 +63,19 @@ def parse(text: str, names: dict[str, str]) -> tuple[str, str | None]:
     t = (text or "").strip()
     low = t.lower()
     who = None
+    # **가장 길게 맞는** 이름을 고른다. 기본 이름이 모델 이름이 되면서(DAY 28)
+    # "Claude" 가 "Claude Code" 안에, "Gemini" 가 "Gemini Vision" 안에 들어간다 —
+    # 처음 맞는 사람을 고르면 "Claude Code 뭐해?" 에 전략가가 답했다.
+    best = 0
     for eid, name in names.items():
         role_words = {eid, name.lower(), lang.t(f"role.{eid}").lower()}
         for loc in lang.LANGS:
             with lang.bind(loc):
                 role_words.add(lang.t(f"role.{eid}").lower())
                 role_words.add(lang.t(f"office.dept.{office.DEPT[eid]}").lower())
-        if any(w and w in low for w in role_words):
-            who = eid
-            break
+        hit = max((len(w) for w in role_words if w and w in low), default=0)
+        if hit > best:
+            best, who = hit, eid
     if who and any(re.search(p, low) for p in _DOING):
         return "whois", who
     for intent in ("approve", "unfocus", "focus", "meeting", "brief", "why",

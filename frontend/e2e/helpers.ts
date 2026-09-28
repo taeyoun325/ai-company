@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
-export const EMPLOYEES = ["한지수", "박도현", "최유나", "이서준", "정하린"];
+export const EMPLOYEES = ["Claude", "Claude Code", "Gemini", "GPT", "Gemini Vision"];
 
 /** 한 시험이 만든 프로젝트를 다른 시험의 것과 가르는 꼬리표. */
 export function unique(base: string): string {

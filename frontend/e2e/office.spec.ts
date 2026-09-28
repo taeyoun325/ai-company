@@ -24,7 +24,7 @@ test("Mock 으로 돈다는 사실을 숨기지 않는다", async ({ page }) => 
 });
 
 test("자리는 키보드만으로 고를 수 있다 (DAY 22: 마우스로만 됐다)", async ({ page }) => {
-  const seat = page.getByRole("button", { name: /^박도현:/ });
+  const seat = page.getByRole("button", { name: /^Claude Code:/ });
   await seat.focus();
   await expect(seat).toBeFocused();
   await page.keyboard.press("Enter");
@@ -120,7 +120,7 @@ test.describe("팀 배치", () => {
 
   test("키보드로는 직원 카드의 소속 팀 목록에서 옮긴다", async ({ page, request }) => {
     await gotoOffice(page);
-    const seat = page.getByRole("button", { name: /^정하린:/ });
+    const seat = page.getByRole("button", { name: /^Gemini Vision:/ });
     await seat.focus();
     await page.keyboard.press("Enter");
     await page.getByLabel("소속 팀").selectOption("qa");
