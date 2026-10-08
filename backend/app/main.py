@@ -241,12 +241,16 @@ def state(request: Request, run: str | None = None):
     다른 스레드에서 처리되기 때문이다(§14).
     """
     run = _my_run(request, run)
+    owner = auth.owner_of(request)
+    # 직원 모델은 테넌트마다 다르다(agents/staff.py) — 그 테넌트로 묶어서 읽는다.
+    with tenant.bind(owner):
+        staff_rows = employees.status(run)
     return {
         "workspace": workspace.summary(),
         "permission": approvals.mode_info(),
         # 지시서 §8 의 직원 5명. subagents 는 이전 제품의 보조 에이전트이고
         # 다른 것이다 — 화면이 둘을 섞으면 누가 일하는지 알 수 없게 된다.
-        "employees": employees.status(run),
+        "employees": staff_rows,
         "agents": subagents.roster(),
         "models": config.MODEL_OF,
         "keys_ready": secrets_broker.ready(),
@@ -1057,11 +1061,12 @@ def update_employee(employee_id: str, req: StaffReq, request: Request):
 
 
 @app.get("/api/employees/{employee_id}")
-def get_employee(employee_id: str):
+def get_employee(employee_id: str, request: Request):
     if not roles.exists(employee_id):
         raise HTTPException(404, lang.t("err.noEmployee", id=employee_id))
     e = roles.get(employee_id)
-    row = e.info()
+    with tenant.bind(auth.owner_of(request)):
+        row = e.info()
     row["mock"] = employees.is_mock(e)
     row["system"] = e.system        # 무엇을 시켰는지 CEO 가 볼 수 있어야 한다
     row["worst_case_usd"] = round(employees.worst_case_cost(employee_id), 4)
@@ -1069,18 +1074,24 @@ def get_employee(employee_id: str):
 
 
 @app.post("/api/employees/{employee_id}/model")
-def set_employee_model(employee_id: str, req: ModelReq2):
-    """직원 한 명의 모델만 바꾼다 (§7).
+def set_employee_model(employee_id: str, req: ModelReq2, request: Request):
+    """직원 한 명의 모델만 바꾼다 (§7) — **이 테넌트의** 직원만.
 
-    단가를 모르는 모델은 거부한다 — 비용이 0 으로 잡히면 예산 상한(§18)이
-    그 직원에게는 걸리지 않는다.
+    전에는 프로세스 전체의 표를 바꿔서, SaaS 에서 한 고객의 선택이 모든
+    고객에게 적용됐다. 이제 인사 기록(agents/staff.py)에 테넌트별로 남는다.
+    빈 문자열이면 기본 모델로 돌아간다.
+
+    단가를 모르는 모델 · 다른 회사 모델은 거부한다(staff.set_model 참조).
     """
     if not roles.exists(employee_id):
         raise HTTPException(404, lang.t("err.noEmployee", id=employee_id))
-    if req.model not in config.PRICES:
-        raise HTTPException(400, lang.t("err.modelNotPriced", model=req.model))
-    roles.set_model(employee_id, req.model)
-    return {"ok": True, "employee": roles.get(employee_id).info()}
+    owner = auth.owner_of(request)
+    try:
+        staff.set_model(owner, employee_id, req.model)
+    except staff.BadModel as e:
+        raise HTTPException(400, str(e))
+    with tenant.bind(owner):
+        return {"ok": True, "employee": roles.get(employee_id).info()}
 
 
 # ── 첨부 자료 ───────────────────────────────────────────────────────

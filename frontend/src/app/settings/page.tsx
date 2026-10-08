@@ -19,9 +19,15 @@
  * 위쪽은 **이 서버를 운영하는 사람**의 키이고, 서버 배포(saas)에서는
  * 잠긴다 — 그 화면이 열려 있으면 로그인한 아무나 운영자 키를 덮어쓴다.
  * 아래 `ByokPanel` 은 **내 키**이고 저장소부터 다르다.
+ *
+ * ## 결제는 두 번째 칸
+ *
+ * 내 키 → 결제(요금제 · 크레딧) → 운영자 키 → 공급자 → 모델 순이다. 덱이
+ * `/pricing` 이나 `#billing` 으로 들어오면 결제 칸까지 내려 준다.
  */
 import { useEffect, useRef, useState } from "react";
 
+import { Billing } from "@/components/Billing";
 import { ByokPanel } from "@/components/ByokPanel";
 import { Button, ErrorBox, MockBadge, Panel, Screen, Skeleton, Warning }
   from "@/components/ui";
@@ -29,6 +35,7 @@ import { useErrorText, useLang } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { T, revealFrom, stagger, withScope } from "@/lib/motion";
 import type { ByokStatus, Employee, ProviderStatus, Settings } from "@/lib/types";
+import { useStack } from "@/lib/stack";
 import { useLoader } from "@/lib/useLoader";
 
 export default function SettingsPage() {
@@ -43,6 +50,28 @@ export default function SettingsPage() {
     return { settings: s, providers: st.providers, employees: st.employees, byok: b };
   });
   const root = useRef<HTMLDivElement>(null);
+  const billing = useRef<HTMLElement>(null);
+  const { anchor } = useStack();
+  const scrolled = useRef<number | null>(null);
+
+  // 결제 칸으로 내려간다 — 덱이 `/pricing` 링크를 받았을 때(anchor), 또는
+  // 처음부터 그 주소로 들어왔을 때. 같은 요청에 두 번 내려가지 않는다(데이터를
+  // 다시 읽을 때마다 끌려 내려가면 위쪽 키를 고칠 수 없다).
+  useEffect(() => {
+    const el = billing.current;
+    if (!el || !data) return;
+    const n = anchor?.id === "billing" ? anchor.n
+      : window.location.pathname === "/pricing" || window.location.hash === "#billing" ? 0
+        : null;
+    if (n === null || scrolled.current === n) return;
+    scrolled.current = n;
+    const box = el.closest<HTMLElement>(".overflow-y-auto");
+    if (!box) return;
+    // 덱은 카드를 CSS zoom 으로 줄여 그린다. 화면 좌표를 그 비율로 되돌린다.
+    const zoom = box.getBoundingClientRect().height / box.offsetHeight || 1;
+    const dy = (el.getBoundingClientRect().top - box.getBoundingClientRect().top) / zoom;
+    box.scrollTo({ top: box.scrollTop + dy - 8, behavior: "smooth" });
+  }, [data, anchor]);
   // 패널이 한꺼번에 뜨면 어디부터 볼지가 사라진다(pricing/page.tsx 와
   // 같은 이유). 처음 데이터가 들어올 때 한 번만, 줄줄이 등장한다.
   useEffect(() => {
@@ -138,6 +167,14 @@ export default function SettingsPage() {
       )}
 
       <div data-reveal><ByokPanel status={byok} reload={load} /></div>
+
+      <section ref={billing} id="billing" aria-labelledby="billing-title"
+        className="space-y-3 pt-2">
+        <h2 id="billing-title" className="px-1 text-[13px] font-semibold tracking-tight">
+          {t("set.billing")}
+        </h2>
+        <Billing />
+      </section>
 
       <Panel data-reveal title={t("set.operatorKeys")}>
         <p className="mb-3 text-xs text-dim">

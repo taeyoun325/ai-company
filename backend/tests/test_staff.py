@@ -326,3 +326,50 @@ def test_api_moves_an_employee_and_the_office_shows_it():
     assert c.patch("/api/employees/writer", json={"team": ""}).status_code == 200
     office = c.get("/api/office").json()
     assert next(e for e in office["employees"] if e["id"] == "writer")["dept"] == "docs"
+
+
+# ── 직원 모델은 테넌트의 인사 기록이다 ─────────────────────────────────
+def _as(owner: str):
+    return tenant.bind(owner, tenant.Posture(owner=owner))
+
+
+def test_model_choice_stays_with_its_tenant():
+    """한 고객이 고른 모델이 다른 고객의 직원을 바꾸면 안 된다 — 전에는 프로세스
+    전체에 한 벌이라 SaaS 에서 그랬다."""
+    default = roles.get("developer").model
+    staff.set_model(OWNER, "developer", "claude-sonnet-5-5")
+    with _as(OWNER):
+        assert roles.get("developer").model == "claude-sonnet-5-5"
+    with _as(OTHER):
+        assert roles.get("developer").model == default
+    assert roles.get("developer").model == default      # 테넌트 밖은 기본값
+
+
+def test_seat_keeps_its_company():
+    """분석가(Gemini) 자리에 Claude 를 앉히면 교차검증이 같은 회사끼리가 된다."""
+    with pytest.raises(staff.BadModel):
+        staff.set_model(OWNER, "analyst", "claude-opus-5-5")
+    with pytest.raises(staff.BadModel):
+        staff.set_model(OWNER, "developer", "단가없는모델")
+
+
+def test_empty_model_returns_to_default():
+    default = roles.get("strategist").model
+    staff.set_model(OWNER, "strategist", "claude-haiku-5-5")
+    staff.set_model(OWNER, "strategist", "")
+    with _as(OWNER):
+        assert roles.get("strategist").model == default
+    assert staff.overlay(OWNER)["strategist"]["chosen_model"] is None
+
+
+def test_state_endpoint_shows_the_tenants_model(tmp_path, monkeypatch):
+    """사무실 · 작업장은 /api/state 를 읽는다. 거기가 테넌트 밖에서 읽으면
+    고른 모델이 저장돼도 화면에는 기본값이 그대로 남는다(실제로 그랬다)."""
+    from fastapi.testclient import TestClient
+    from app import main
+    c = TestClient(main.app)
+    r = c.post("/api/employees/developer/model", json={"model": "claude-sonnet-5-5"})
+    assert r.status_code == 200
+    dev = next(e for e in c.get("/api/state").json()["employees"] if e["id"] == "developer")
+    assert dev["model"] == "claude-sonnet-5-5"
+    assert c.post("/api/employees/developer/model", json={"model": ""}).status_code == 200

@@ -101,18 +101,22 @@ function tokenize(line: string, lang: string): Token[] {
   return out;
 }
 
+// 차콜 테마: 강조색(--accent)이 흰색이라 예약어를 그 색으로 칠하면 본문과
+// 구별되지 않았다. 코드 전용 토큰(--code-*)으로 밝기 · 굵기를 가른다. 본문
+// 색(--code-fg)은 코드를 감싸는 칸이 건다.
 const COLORS: Record<TokenKind, string> = {
-  plain: "var(--fg)",
+  plain: "var(--code-fg)",
   comment: "var(--dim)",
   string: "var(--ok)",
   number: "var(--warn)",
-  keyword: "var(--accent)",
-  func: "var(--accent-2)",
-  heading: "var(--accent)",
+  keyword: "var(--code-kw)",
+  func: "var(--code-fn)",
+  heading: "var(--code-kw)",
   bold: "var(--fg)",
   code: "var(--ok)",
   punct: "var(--muted)",
 };
+const BOLD = new Set<TokenKind>(["keyword", "heading", "bold"]);
 
 /** 한 줄을 강조된 조각들로. `lang` 이 `null` 이면 강조 없이 그대로. */
 export function highlightLine(line: string, lang: string | null) {
@@ -129,6 +133,7 @@ export function highlightLine(line: string, lang: string | null) {
   return merged.map((t, i) =>
     t.kind === "plain"
       ? t.text
-      : <span key={i} style={{ color: COLORS[t.kind] }}>{t.text}</span>,
+      : <span key={i} style={{ color: COLORS[t.kind],
+          fontWeight: BOLD.has(t.kind) ? 600 : undefined }}>{t.text}</span>,
   );
 }

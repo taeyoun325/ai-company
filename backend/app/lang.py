@@ -793,6 +793,14 @@ _M: dict[str, dict[str, str]] = {
         "ja": "単価表にないモデルです: {model}。pricing.json に単価を先に登録して"
               "ください — 単価が分からないとコスト上限が効きません。",
     },
+    "err.modelWrongProvider": {
+        "ko": "이 자리에는 {provider} 모델만 앉힐 수 있습니다: {model}. 자리마다 "
+              "회사가 정해져 있어야 교차검증이 다른 회사끼리 이뤄집니다.",
+        "en": "Only {provider} models can sit in this seat: {model}. Each seat keeps "
+              "its company so cross-checks stay between different companies.",
+        "ja": "この席には {provider} のモデルしか座れません: {model}。席ごとに会社が"
+              "決まっていることで、相互検証が別の会社同士で行われます。",
+    },
     "err.noKey": {"ko": "등록된 키가 없습니다", "en": "No key is registered",
                   "ja": "登録された鍵がありません"},
     "err.loginRequired": {"ko": "로그인이 필요합니다.", "en": "Sign in first.",

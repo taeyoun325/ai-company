@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * 탭 카드 덱 — 사무실 · 요금제 · 설정 · 설명 네 화면을 **카드**로 세운다.
+ * 탭 카드 덱 — 사무실 · 작업장 · 설정 · 설명 네 화면을 **카드**로 세운다.
+ * 결제(요금제)는 설정 카드의 두 번째 칸이다 — `/pricing` 은 그리로 돌린다.
  * 가운데 카드가 지금 쓰는 탭이고, 넘기면 옆 탭 카드가 궤도를 따라 날아와
  * 선다(설명 탭 '직원' 장의 쇼케이스와 같은 움직임).
  *
@@ -65,14 +66,16 @@ import { StackCtx } from "@/lib/stack";
 // 받는 동안은 빈 카드 — 카드 틀과 배경이 이미 있어 깜빡임이 없다.
 const blank = () => <div className="h-full" />;
 const OfficePage = dynamic(() => import("@/app/page"), { loading: blank });
-const PricingPage = dynamic(() => import("@/app/pricing/page"), { loading: blank });
+const WorkshopPage = dynamic(() => import("@/app/workshop/page"), { loading: blank });
 const SettingsPage = dynamic(() => import("@/app/settings/page"), { loading: blank });
 const GuidePage = dynamic(() => import("@/app/guide/page"), { loading: blank });
 
 /** 순서가 곧 넘기는 순서다. */
 const TABS: readonly {
-  id: "office" | "pricing" | "settings" | "guide";
+  id: "office" | "workshop" | "settings" | "guide";
   href: string; nav: Key; icon: IconName;
+  /** 이 카드로 돌리는 다른 주소 → 카드 안에서 내려갈 칸(id). */
+  aliases?: Record<string, string>;
   Page: ComponentType;
   /** 이 화면을 이 높이의 창인 것처럼 그린 뒤 카드에 맞춰 줄인다. 사무실은
    *  지시창의 '시작' 버튼까지 다 보이려면 1220px 가 들지만(실측) 그러면
@@ -82,10 +85,11 @@ const TABS: readonly {
 }[] = [
   { id: "office", href: "/", nav: "nav.office", icon: "building",
     Page: OfficePage, designH: 1100 },
-  { id: "pricing", href: "/pricing", nav: "nav.pricing", icon: "card",
-    Page: PricingPage, designH: 1000 },
+  // 사무실 옆 칸 — 사무실과 코드 창을 한 화면에. 코드 창은 높을수록 좋다.
+  { id: "workshop", href: "/workshop", nav: "nav.workshop", icon: "developer",
+    Page: WorkshopPage, designH: 1000 },
   { id: "settings", href: "/settings", nav: "nav.settings", icon: "gear",
-    Page: SettingsPage, designH: 1000 },
+    Page: SettingsPage, designH: 1000, aliases: { "/pricing": "billing" } },
   { id: "guide", href: "/guide", nav: "nav.guide", icon: "book",
     Page: GuidePage, designH: 1000 },
 ];
@@ -97,7 +101,13 @@ const MIN_ZOOM = 0.64;
 const BAR = 64;
 
 function tabOf(path: string): number {
-  return TABS.findIndex((t) => t.href === path);
+  return TABS.findIndex((t) => t.href === path || (t.aliases && path in t.aliases));
+}
+
+/** 이 주소가 카드 안의 어느 칸을 가리키나 — `/pricing` → 설정의 `billing`. */
+function anchorOf(path: string, hash: string): string | null {
+  for (const t of TABS) if (t.aliases && path in t.aliases) return t.aliases[path];
+  return hash.length > 1 ? hash.slice(1) : null;
 }
 
 /** 이 주소에서 덱이 서는가 — 앱 머리가 자기를 숨길지 여기에 묻는다. */
@@ -158,6 +168,9 @@ function Deck() {
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
   // 폰: 사무실 카드 하나를 '사무실(평면도)' · '작업 로그' 두 단추로 나눠 본다.
   const [officeView, setOfficeView] = useState<"floor" | "log">("log");
+  // 링크가 카드 안의 칸을 가리키면(`/pricing` → 결제) 그 카드가 내려간다. n 은
+  // 같은 칸을 다시 눌러도 다시 내려가게 하는 번호다.
+  const [anchor, setAnchor] = useState<{ id: string; n: number } | null>(null);
   const [mounted, setMounted] = useState<ReadonlySet<number>>(
     () => new Set([Math.max(0, pathIdx)]));
   const stage = useRef<HTMLElement>(null);
@@ -224,6 +237,11 @@ function Deck() {
       if (i < 0) return;
       e.preventDefault();
       go(i);
+      const at = anchorOf(a.pathname, a.hash);
+      if (at) {
+        setAnchor((p) => ({ id: at, n: (p?.n ?? 0) + 1 }));
+        window.history.replaceState(null, "", `${TABS[i].href}#${at}`);
+      }
     };
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
@@ -281,7 +299,8 @@ function Deck() {
             return (
               <Card key={tab.id} tab={tab} slot={slot} pos={slots[slot]} dir={dir} box={box}
                 narrow={narrow} live={mounted.has(i)}
-                officeView={narrow && tab.id === "office" ? officeView : undefined} />
+                officeView={narrow && tab.id === "office" ? officeView : undefined}
+                anchor={anchor} />
             );
           })}
 
@@ -312,7 +331,7 @@ function Deck() {
 
 /** 탭 카드 한 장. 요소는 그대로 두고 자리만 바꾼다 — 화면 상태가 남는다. */
 function Card({
-  tab, slot, pos, dir, box, narrow, live, officeView,
+  tab, slot, pos, dir, box, narrow, live, officeView, anchor,
 }: {
   tab: (typeof TABS)[number];
   slot: Slot;
@@ -323,6 +342,7 @@ function Card({
   /** 화면을 띄웠나. 아직이면 빈 틀만 — 가운데로 오면 덱이 띄운다. */
   live: boolean;
   officeView?: "floor" | "log";
+  anchor: { id: string; n: number } | null;
 }) {
   const center = slot === "center";
   const order: Slot[] = dir === 1
@@ -378,7 +398,7 @@ function Card({
           }}
         >
           {live && (
-            <StackCtx.Provider value={{ inCard: true, active: center, officeView }}>
+            <StackCtx.Provider value={{ inCard: true, active: center, officeView, anchor }}>
               <Page />
             </StackCtx.Provider>
           )}
@@ -520,8 +540,9 @@ function BottomBar({
     })),
   ];
   return (
-    // 375px 폭에 다섯 탭 · 언어 · 계정이 다 들어가야 한다 — 계정 단추가 화면 밖으로
-    // 밀려 반만 보였다. 단추를 조금 줄이고 틈을 좁혔다.
+    // 375px 폭에 다섯 칸(사무실 · 작업 로그 · 작업장 · 설정 · 설명) · 언어 · 계정이
+    // 다 들어가야 한다 — 계정 단추가 화면 밖으로 밀려 반만 보였다. 단추를 조금
+    // 줄이고 틈을 좁혔다.
     <div className="absolute inset-x-0 bottom-0 z-50 flex select-none items-center gap-1
       px-1.5"
       style={{ height: BAR }}>

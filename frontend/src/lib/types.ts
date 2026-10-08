@@ -153,6 +153,11 @@ export interface TaskRow {
   title: string;
   assignee: string;
   status: "todo" | "doing" | "done" | "awaiting";
+  /** 작업장 슬롯판 (engine._board) — 맡은 파일 · 선행 태스크 · 완료 조건(규격).
+   *  옛 실행 기록에는 없다. */
+  files?: string[];
+  deps?: string[];
+  done_when?: string;
 }
 
 /** 파일 한 판본. 옛 판본에는 경위가 없어서 빈 값으로 온다 (DAY 22). */

@@ -220,7 +220,7 @@ function FileActions({ path, content }: { path: string; content: string }) {
 function CodeLines({ text, lang }: { text: string; lang: string | null }) {
   const lines = text.split("\n");
   return (
-    <code className="grid" style={{ gridTemplateColumns: "auto 1fr" }}>
+    <code className="grid" style={{ gridTemplateColumns: "auto 1fr", color: "var(--code-fg)" }}>
       {lines.map((line, i) => (
         <span key={i} className="contents">
           <span className="select-none pr-3 text-right text-dim">{i + 1}</span>

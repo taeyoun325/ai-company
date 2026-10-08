@@ -105,7 +105,7 @@ export function CommandWindow({
                 style={{ color: `var(--${r.who}, var(--muted))` }} />
             </span>
             <div className={`min-w-0 max-w-[85%] rounded-xl px-3 py-1.5 text-[13px] ${
-              r.who === "ceo" ? "grad-accent text-white" : "bg-panel2"}`}>
+              r.who === "ceo" ? "grad-accent" : "bg-panel2"}`}>
               {r.who !== "ceo" && (
                 <p className="text-[10px] font-semibold"
                   style={{ color: `var(--${r.who}, var(--muted))` }}>

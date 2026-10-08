@@ -41,8 +41,8 @@ export function AppHeader() {
       >
         <Link href="/" className="mr-3 flex items-center gap-2.5">
           <span
-            className="grid size-8 place-items-center rounded-xl text-white
-              shadow-[0_4px_14px_rgba(109,141,255,0.4)] grad-accent"
+            className="grid size-8 place-items-center rounded-xl
+              shadow-[0_4px_14px_rgba(0,0,0,0.5)] grad-accent"
           >
             <Icon name="building" size={18} />
           </span>

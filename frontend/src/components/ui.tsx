@@ -81,7 +81,7 @@ export function Button({
     default:
       "border-line bg-panel2 hover:border-[color:var(--line-strong)] backdrop-blur",
     primary:
-      "grad-accent border-transparent text-white shadow-[0_4px_16px_rgba(109,141,255,0.35)] hover:brightness-110",
+      "grad-accent border-transparent shadow-[0_4px_16px_rgba(0,0,0,0.5)] hover:brightness-110",
     danger: "border-transparent bg-bad text-white hover:brightness-110",
     ghost: "border-transparent bg-transparent text-muted hover:text-fg",
   };

@@ -10,8 +10,9 @@
  *
  * 1. **결재함** — 대표 결정이 필요하면 맨 위에 선다. 승인 · 수정 요청 ·
  *    보류 · 폐기. 한 번에 하나씩.
- * 2. **하루 시나리오** — 출근부터 비서실 브리핑까지 12단계 중 지금 어디인가.
- *    ★ 은 대표 승인 지점이다.
+ * 2. ~~하루 시나리오~~ — 12단계 띠는 대표 요청으로 뺐다(작업 로그 · 평면도의
+ *    상태와 같은 말을 한 번 더 하는 줄이었다). 서버는 여전히 단계를 계산한다
+ *    (지시창의 '현황 보고'가 쓴다).
  * 3. **평면도** — 부서 자리 · 회의실 · 대표실 · 비서실 · 휴게실. 직원은
  *    상태 다섯 가지(완료 · 진행 중 · 승인 대기 · 연동 대기 · 대기)로
  *    색과 말풍선을 달고, 상태가 바뀐 이유를 한 줄 달고 있다.
@@ -44,7 +45,6 @@ import { ApprovalDesk } from "@/components/office/ApprovalDesk";
 import { CommandWindow } from "@/components/office/CommandWindow";
 import { EmployeeCard } from "@/components/office/EmployeeCard";
 import { type MeetingCall, OfficeFloor } from "@/components/office/OfficeFloor";
-import { ScenarioStrip } from "@/components/office/ScenarioStrip";
 import { AttachButton, AttachTray, useAttachments } from "@/components/Attachments";
 import { Button, ErrorBox, Panel, Skeleton, Warning, num } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -483,7 +483,6 @@ export default function OfficePage() {
 
           {!showFloor ? null : snap ? (
             <div data-enter className="space-y-2">
-              <ScenarioStrip steps={snap.scenario} />
               <OfficeFloor snap={snap} events={stream.events} focus={focus}
                 meetingCall={meetingCall} selected={selected} onSelect={setSelected}
                 onMove={moveTeam} plan={phone}

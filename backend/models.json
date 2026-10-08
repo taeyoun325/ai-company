@@ -3,8 +3,12 @@
   "_형식": "provider -> { default, models: [ {id, label, tier} ] }. tier 는 화면이 '빠름/균형/최고'를 표시하는 데 쓴다.",
   "providers": {
     "claude": {
-      "default": "claude-opus-5",
+      "default": "claude-opus-5-5",
       "models": [
+        { "id": "claude-opus-5-5", "label": "Opus 5.5", "tier": "max" },
+        { "id": "claude-sonnet-5-5", "label": "Sonnet 5.5", "tier": "balanced" },
+        { "id": "claude-haiku-5-5", "label": "Haiku 5.5", "tier": "fast" },
+        { "id": "claude-fable-5-1", "label": "Fable 5.1", "tier": "max" },
         { "id": "claude-opus-5",   "label": "Opus 5",   "tier": "max" },
         { "id": "claude-sonnet-5", "label": "Sonnet 5", "tier": "balanced" },
         { "id": "claude-haiku-4-5","label": "Haiku 4.5","tier": "fast" }

@@ -19,6 +19,9 @@ export const StackCtx = createContext<{
   /** 폰에서 사무실 카드가 무엇을 보이나 — 평면도(floor)냐 지시창 · 작업 로그(log)냐.
    *  덱 아래 줄의 '사무실' · '작업 로그' 단추가 고른다. */
   officeView?: "floor" | "log";
+  /** 링크가 이 카드 안의 칸을 가리켰다(`/pricing` → 설정의 결제 칸). n 이 바뀔 때마다
+   *  그 칸으로 내려간다. */
+  anchor?: { id: string; n: number } | null;
 }>({
   inCard: false,
   active: true,

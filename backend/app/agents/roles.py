@@ -57,11 +57,22 @@ class Employee:
 
     @property
     def model(self) -> str:
-        """기본 모델은 제공자 카탈로그에서 온다.
+        """이 자리가 지금 쓰는 모델.
+
+        순서: **테넌트가 고른 모델**(인사 기록, agents/staff.py) → 운영자가
+        환경변수로 박은 모델 → 제공자 카탈로그의 기본값.
 
         직원마다 모델을 박아두면 모델을 바꾸는 일이 코드 수정이 된다.
-        환경변수로 개별 지정하는 길은 config 쪽에 열려 있다.
+        테넌트는 `tenant.bind` 블록 안에서만 안다 — 밖(기동 점검 등)에서는
+        운영자 값과 기본값만 본다.
         """
+        from app import tenant
+        from app.agents import staff
+        posture = tenant.current()
+        if posture is not None:
+            chosen = staff.model_of(posture.owner, self.id)
+            if chosen and config.is_priced(chosen):
+                return chosen
         return _MODEL_OVERRIDE.get(self.id) or config.default_model(self.provider)
 
     def info(self) -> dict:

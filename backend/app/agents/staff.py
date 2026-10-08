@@ -115,6 +115,12 @@ def team_of(owner: str, employee_id: str) -> str:
     return HOME_TEAM.get(employee_id, "etc")
 
 
+def model_of(owner: str, employee_id: str) -> str | None:
+    """이 테넌트가 이 자리에 고른 모델. 고른 적이 없으면 None — 기본값을 따른다."""
+    value = _row(owner, employee_id).get("model")
+    return value if isinstance(value, str) and value else None
+
+
 def active_ids(owner: str) -> list[str]:
     return [i for i in roles.ids() if is_active(owner, i)]
 
@@ -163,6 +169,49 @@ def set_active(owner: str, employee_id: str, active: bool) -> None:
         _save()
 
 
+class BadModel(ValueError):
+    """이 자리에 앉힐 수 없는 모델 — 단가를 모르거나, 다른 회사 모델이다."""
+
+
+def set_model(owner: str, employee_id: str, model: str | None) -> None:
+    """이 테넌트의 이 자리 모델을 바꾼다. 비우면 기본값으로 돌아간다.
+
+    ## 왜 테넌트마다인가
+
+    전에는 프로세스 전체에 한 벌(roles._MODEL_OVERRIDE)이었다. 로컬 도구에서는
+    맞았지만 SaaS 에서는 **한 고객이 고른 모델이 모든 고객의 직원을 바꿨다.**
+    이름 · 팀처럼 인사 기록에 둔다.
+
+    ## 왜 같은 회사 모델만인가
+
+    자리는 제공자(claude · gemini · openai)에 묶여 있다. 분석가 자리에 Claude 를
+    앉히면 교차검증이 같은 회사끼리가 된다 — 이 제품의 핵심 논리가 조용히
+    사라진다. 그래서 그 자리 제공자의 카탈로그에 있는 모델만 받는다.
+
+    단가를 모르는 모델도 받지 않는다 — 비용이 0 으로 잡히면 예산 상한(§18)이
+    그 직원에게는 걸리지 않는다.
+    """
+    from app import lang
+    if not roles.exists(employee_id):
+        raise KeyError(f"없는 직원: {employee_id}")
+    model = (model or "").strip()
+    if model:
+        e = roles.get(employee_id)
+        if not config.is_priced(model):
+            raise BadModel(lang.t("err.modelNotPriced", model=model))
+        allowed = {m.get("id") for m in config.models_of(e.provider)}
+        if model not in allowed and model != config.default_model(e.provider):
+            raise BadModel(lang.t("err.modelWrongProvider", model=model,
+                                  provider=e.provider))
+    with _lock:
+        row = _load().setdefault(owner, {}).setdefault(employee_id, {})
+        if model:
+            row["model"] = model
+        else:
+            row.pop("model", None)
+        _save()
+
+
 class UnknownTeam(ValueError):
     """없는 팀으로 옮기려 했다."""
 
@@ -200,6 +249,8 @@ def overlay(owner: str) -> dict[str, dict]:
             "fire_reason": fire_reason(i),
             "team": team_of(owner, i),
             "home_team": HOME_TEAM.get(i, "etc"),
+            # "model" 은 info() 의 지금 쓰는 모델이다 — 덮어쓰지 않게 이름을 달리한다.
+            "chosen_model": model_of(owner, i),
         }
         for i in roles.ids()
     }

@@ -158,6 +158,13 @@ export interface MeetingCall {
 }
 
 const HANDOFF_MEETING_MS = 5500;
+/**
+ * 이보다 위(평면도 높이의 %)에 선 사람은 말풍선을 **아래로** 연다.
+ *
+ * 평면도는 `overflow-hidden` 이라 위로 연 말풍선이 가장자리에서 잘렸다 — 회의실
+ * 첫 줄(y 12) · 대표실 · 비서실(y 19)이 그랬다(대표가 찾았다). 위 칸 사람만 뒤집는다.
+ */
+const TOP_EDGE = 24;
 const LINE_EVERY_MS = 1300;
 
 export function OfficeFloor({
@@ -572,7 +579,8 @@ function Speech({ at, text, who, name }: {
     <span key={text}
       className="bubble absolute z-30 w-[220px] rounded-xl border px-2.5 py-1.5
         text-[11px] leading-snug shadow-lg"
-      style={{ left: `${at.x}%`, top: `calc(${at.y}% - 64px)`,
+      style={{ left: `${at.x}%`,
+               top: at.y < TOP_EDGE ? `calc(${at.y}% + 36px)` : `calc(${at.y}% - 64px)`,
                transform: "translateX(-50%)", background: "var(--panel-solid)",
                borderColor: `var(--${who}, var(--line-strong))` }}>
       <b className="mr-1" style={{ color: `var(--${who}, var(--muted))` }}>{name}</b>
@@ -623,7 +631,7 @@ function Token({ e, at, mode, line, self, now, snapNow, selected, onClick,
         <span key={speech}
           className={`bubble absolute left-1/2 z-30 w-[220px] rounded-xl border
             px-2.5 py-1.5 text-left text-[11px] leading-snug shadow-lg
-            ${mode === "meeting" && at.y > 20 ? "top-full mt-1" : "-top-14"}`}
+            ${at.y < TOP_EDGE || mode === "meeting" ? "top-full mt-1" : "-top-14"}`}
           style={{ background: "var(--panel-solid)",
                    borderColor: `var(--${e.id}, var(--line-strong))` }}>
           <span className="line-clamp-2 text-fg">{speech}</span>
@@ -631,8 +639,9 @@ function Token({ e, at, mode, line, self, now, snapNow, selected, onClick,
       )}
       {mode !== "away" && !speech && !quiet && (
         <span key={bubble}
-          className={`bubble absolute -top-9 left-1/2 truncate rounded-lg border
-            px-2 py-0.5 text-[10px] shadow ${self ? "italic" : "font-medium"}`}
+          className={`bubble absolute left-1/2 truncate rounded-lg border
+            px-2 py-0.5 text-[10px] shadow ${self ? "italic" : "font-medium"}
+            ${at.y < TOP_EDGE ? "top-full mt-1" : "-top-9"}`}
           style={{
             maxWidth: `min(132px, ${Math.max(4, width - 1)}cqw)`,
             background: "var(--panel-solid)",

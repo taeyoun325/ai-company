@@ -7,7 +7,8 @@
  * 바뀌면 화려하지만, 사무실 · 요금제 · 설정 · 설명이 한 회사라는 느낌이 흐려진다.
  * 탭은 가운데 카드와 뒤의 큰 아이콘으로 구별한다.
  *
- * 층: 짙은 남보라 바탕 → 성운 셋(보라 · 자홍 · 파랑, 흐리게) → 별 두 겹.
+ * 층: 검정 바탕 → 성운 셋(차콜 · 회색 빛, 흐리게) → 별 두 겹. 차콜 + 블랙
+ * 테마라 색을 뺐다 — 모양(성운 · 띠 · 별)은 그대로다.
  *
  * 가볍게: 성운은 한 겹만 아주 천천히(90초) 돈다. 별은 그림 한 장(반복 무늬)이고
  * 두 겹 중 하나만 깜빡인다. 둘 다 CSS 애니메이션(globals.css 의 anim-*)이라
@@ -17,7 +18,7 @@
  */
 
 /** 바탕색. 덱 알약의 글자색 등 '짙은 색' 자리에도 쓴다. */
-export const GALAXY_DEEP = "#1b1140";
+export const GALAXY_DEEP = "#141414";
 
 // 별 — 여러 크기의 점을 반복 무늬로. 두 겹의 칸 크기를 어긋나게 해 되풀이가
 // 눈에 띄지 않게 한다.
@@ -25,32 +26,32 @@ const STARS_A =
   "radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,0.9), transparent 60%)," +
   "radial-gradient(1px 1px at 68% 42%, rgba(255,255,255,0.75), transparent 60%)," +
   "radial-gradient(1.5px 1.5px at 38% 72%, rgba(255,255,255,0.85), transparent 60%)," +
-  "radial-gradient(1px 1px at 84% 86%, rgba(210,220,255,0.8), transparent 60%)," +
+  "radial-gradient(1px 1px at 84% 86%, rgba(230,230,230,0.8), transparent 60%)," +
   "radial-gradient(1px 1px at 24% 52%, rgba(255,255,255,0.6), transparent 60%)," +
-  "radial-gradient(1.2px 1.2px at 92% 12%, rgba(255,230,250,0.8), transparent 60%)";
+  "radial-gradient(1.2px 1.2px at 92% 12%, rgba(240,240,240,0.8), transparent 60%)";
 const STARS_B =
   "radial-gradient(1.6px 1.6px at 30% 30%, rgba(255,255,255,0.95), transparent 60%)," +
-  "radial-gradient(1px 1px at 75% 65%, rgba(200,215,255,0.9), transparent 60%)," +
+  "radial-gradient(1px 1px at 75% 65%, rgba(220,220,220,0.9), transparent 60%)," +
   "radial-gradient(1.3px 1.3px at 55% 90%, rgba(255,255,255,0.8), transparent 60%)," +
-  "radial-gradient(1px 1px at 8% 80%, rgba(255,220,245,0.85), transparent 60%)";
+  "radial-gradient(1px 1px at 8% 80%, rgba(235,235,235,0.85), transparent 60%)";
 
 export function Galaxy() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden
       style={{
         background:
-          `radial-gradient(120% 90% at 50% 110%, #2a1466 0%, transparent 60%),` +
-          `linear-gradient(160deg, #0d0826 0%, ${GALAXY_DEEP} 45%, #0a0a2a 100%)`,
+          `radial-gradient(120% 90% at 50% 110%, #262626 0%, transparent 60%),` +
+          `linear-gradient(160deg, #050505 0%, ${GALAXY_DEEP} 45%, #070707 100%)`,
       }}>
       {/* 성운 — 크게 흐린 빛 세 덩이. 한 겹으로 묶어 천천히 돌린다. */}
       <div
         className="anim-galaxy absolute -inset-[25%]"
         style={{
           background:
-            "radial-gradient(32% 28% at 30% 35%, rgba(139,92,246,0.45), transparent 100%)," +
-            "radial-gradient(28% 24% at 70% 30%, rgba(236,72,153,0.30), transparent 100%)," +
-            "radial-gradient(34% 30% at 62% 72%, rgba(59,130,246,0.34), transparent 100%)," +
-            "radial-gradient(22% 20% at 22% 78%, rgba(45,212,191,0.18), transparent 100%)",
+            "radial-gradient(32% 28% at 30% 35%, rgba(255,255,255,0.10), transparent 100%)," +
+            "radial-gradient(28% 24% at 70% 30%, rgba(160,160,160,0.08), transparent 100%)," +
+            "radial-gradient(34% 30% at 62% 72%, rgba(90,90,90,0.16), transparent 100%)," +
+            "radial-gradient(22% 20% at 22% 78%, rgba(200,200,200,0.06), transparent 100%)",
         }}
       />
       {/* 은하수 띠 — 비스듬한 옅은 빛. */}
@@ -58,8 +59,8 @@ export function Galaxy() {
         className="absolute inset-0 opacity-60"
         style={{
           background:
-            "linear-gradient(115deg, transparent 30%, rgba(196,181,253,0.10) 45%," +
-            " rgba(244,114,182,0.08) 52%, transparent 68%)",
+            "linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.06) 45%," +
+            " rgba(255,255,255,0.04) 52%, transparent 68%)",
         }}
       />
       {/* 별 두 겹 — 하나는 가만히, 하나는 천천히 깜빡인다. */}

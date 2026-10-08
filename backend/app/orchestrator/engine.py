@@ -1166,8 +1166,14 @@ def _board(run: _Run) -> list[dict]:
             status = ("done" if s in run.done
                       else "awaiting" if s in run.awaiting
                       else "doing" if t.id in running else "todo")
+            # 작업장 화면(슬롯판)이 쓰는 칸 — 이 태스크가 맡은 파일 · 먼저 끝나야 할
+            # 태스크 · 기계가 판정할 완료 조건(= 슬롯의 규격). 반려 횟수는 싣지
+            # 않는다 — 진행 기록(progress)은 태스크가 끝나면 지워져서 0 으로
+            # 돌아간다. 화면이 REVIEW 인계(판정 fail)를 세어 낸다.
             rows.append({"id": t.id, "title": t.title,
-                         "assignee": _assignee(t, quiet=True), "status": status})
+                         "assignee": _assignee(t, quiet=True), "status": status,
+                         "files": list(t.files), "deps": list(t.deps),
+                         "done_when": t.done_when})
         active = [{"task": t.id, "title": t.title,
                    "assignee": _assignee(t, quiet=True)}
                   for t in run.running.values()]

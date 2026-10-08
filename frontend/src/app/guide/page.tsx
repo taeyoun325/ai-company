@@ -66,15 +66,16 @@ const STAFF = [
 ] as const;
 
 /** 직원 장 쇼케이스의 누빈 그림 색(바탕 · 밝은 면 · 그림자). 위 표와 따로 둔다 —
- *  위 표는 한 줄 한 사람 모양 그대로 test_repo_files 가 읽는다. */
+ *  위 표는 한 줄 한 사람 모양 그대로 test_repo_files 가 읽는다.
+ *  차콜 + 블랙 테마: 바탕 · 그림자는 모두 차콜이고, 직원 색은 잉크(ink)에만 남는다. */
 const TINT: Record<(typeof STAFF)[number]["id"], {
   bg: string; hi: string; deep: string; ink: readonly [string, string];
 }> = {
-  strategist: { bg: "#2b47c4", hi: "#a9c0ff", deep: "#16287a", ink: ["#22d3ee", "#4f6bff"] },
-  analyst: { bg: "#9c5a0c", hi: "#ffd27a", deep: "#5c3405", ink: ["#ffe600", "#ff7a00"] },
-  developer: { bg: "#0c6e51", hi: "#77ecc0", deep: "#053f2e", ink: ["#b6ff3b", "#00d68f"] },
-  writer: { bg: "#a8316d", hi: "#ffaed8", deep: "#661a41", ink: ["#ff9ec7", "#ff1f7a"] },
-  designer: { bg: "#6439bd", hi: "#dcb8ff", deep: "#3c1f7a", ink: ["#f472ff", "#8b3dff"] },
+  strategist: { bg: "#1f1f1f", hi: "#a9c0ff", deep: "#0f0f0f", ink: ["#22d3ee", "#4f6bff"] },
+  analyst: { bg: "#1f1f1f", hi: "#ffd27a", deep: "#0f0f0f", ink: ["#ffe600", "#ff7a00"] },
+  developer: { bg: "#1f1f1f", hi: "#77ecc0", deep: "#0f0f0f", ink: ["#b6ff3b", "#00d68f"] },
+  writer: { bg: "#1f1f1f", hi: "#ffaed8", deep: "#0f0f0f", ink: ["#ff9ec7", "#ff1f7a"] },
+  designer: { bg: "#1f1f1f", hi: "#dcb8ff", deep: "#0f0f0f", ink: ["#f472ff", "#8b3dff"] },
 };
 
 const MODELS = ["Claude", "Gemini", "GPT"] as const;
@@ -149,18 +150,21 @@ export default function GuidePage() {
     if (focus) tabRefs.current[next]?.focus();
   }, []);
 
+  // ←/→ 로 넘긴다. 입력칸에 쓰는 중이면 건드리지 않는다. 탭 카드 덱에서
+  // 옆 자리에 비켜 있을 때는 듣지 않는다 — 가운데 카드의 키를 뺏는다.
+  const { active: onStage, wheel: wheelFlips = true, onEdge } = useStack();
+
   // 지금 장을 주소에 남긴다 — **렌더 밖에서.** 상태를 고치는 함수 안에서
   // 주소를 바꾸면 Next 라우터가 렌더 도중에 갱신돼 경고가 난다(DAY 26 에 겪음).
+  // 덱 옆자리에 비켜 있을 때는 주소를 건드리지 않는다 — 그때 주소는 가운데
+  // 카드의 것이다(설정의 #billing 을 #intro 로 덮어썼다).
   useEffect(() => {
+    if (!onStage) return;
     if (tab === "intro" && !window.location.hash) return;
     if (window.location.hash !== `#${tab}`) {
       window.history.replaceState(null, "", `#${tab}`);
     }
-  }, [tab]);
-
-  // ←/→ 로 넘긴다. 입력칸에 쓰는 중이면 건드리지 않는다. 탭 카드 덱에서
-  // 옆 자리에 비켜 있을 때는 듣지 않는다 — 가운데 카드의 키를 뺏는다.
-  const { active: onStage, wheel: wheelFlips = true, onEdge } = useStack();
+  }, [tab, onStage]);
   useEffect(() => {
     if (!onStage) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -410,8 +414,8 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
           </div>
           <motion.button data-item data-reveal type="button" onClick={() => go(1)}
             whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}
-            className="mt-8 rounded-xl px-4 py-2 text-sm font-medium text-white grad-accent
-              shadow-[0_4px_14px_rgba(109,141,255,0.35)]">
+            className="mt-8 rounded-xl px-4 py-2 text-sm font-medium grad-accent
+              shadow-[0_4px_14px_rgba(0,0,0,0.5)]">
             {t("guide.tab.flow")} →
           </motion.button>
         </div>
@@ -430,7 +434,7 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
                 <li key={n} data-item data-reveal
                   className="flex gap-2.5 rounded-xl border border-line bg-panel p-2.5">
                   <span className="grid size-5 shrink-0 place-items-center rounded-full
-                    text-[10px] font-bold text-white grad-accent">{n}</span>
+                    text-[10px] font-bold grad-accent">{n}</span>
                   <span className="min-w-0">
                     <span className="block text-[13px] font-semibold">
                       {t(`guide.step.${n}` as Key)}
@@ -612,7 +616,7 @@ function CtaLink({ href, primary = false, children }: {
   return (
     <Link href={href}
       className={`rounded-xl px-4 py-2 text-sm font-medium transition ${primary
-        ? "grad-accent text-white shadow-[0_4px_14px_rgba(109,141,255,0.35)]"
+        ? "grad-accent shadow-[0_4px_14px_rgba(0,0,0,0.5)]"
         : "border border-line bg-panel text-fg hover:border-accent"}`}>
       {children}
     </Link>
