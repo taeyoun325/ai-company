@@ -9,8 +9,6 @@ Claude Code와 같은 틀이다: 사용자가 말을 걸면 에이전트가 도�
 """
 import threading
 
-from anthropic import beta_tool
-
 from app import approvals
 from app import attachments
 from app import bus
@@ -29,7 +27,9 @@ _thread: threading.Thread | None = None
 history: list[dict] = []
 
 
-@beta_tool
+# `anthropic` 은 여기서 부르지 않는다 — 이 파일은 app.main 이 기동 때 읽고, SDK 를 부르는
+# 데만 서버 기동이 1~3초 늘었다(키 없이 도는 Mock 에서는 아예 안 쓴다). 도구로 감싸는 일은
+# 도구 목록을 처음 만들 때(_tools) 한다.
 def call_agent(role: str, task: str, files: str = "") -> str:
     """보조 에이전트를 부른다.
 
@@ -94,13 +94,25 @@ def _system_prompt() -> str:
     return "\n".join(lines)
 
 
+_call_agent_tool = None
+
+
+def _agent_tool():
+    """`call_agent` 를 SDK 도구로 — 처음 쓸 때 한 번만 감싼다."""
+    global _call_agent_tool
+    if _call_agent_tool is None:
+        from anthropic import beta_tool
+        _call_agent_tool = beta_tool(call_agent)
+    return _call_agent_tool
+
+
 def _tools():
     from app.tools import agent_tools
     if approvals.mode == "plan":
         # 계획 모드에서는 변경 도구를 아예 넘기지 않는다.
         # 게이트가 막긴 하지만, 애초에 안 보이는 편이 모델을 헷갈리지 않게 한다.
-        return [*agent_tools.READ_TOOLS, call_agent]
-    return [*agent_tools.ALL_TOOLS, call_agent]
+        return [*agent_tools.READ_TOOLS, _agent_tool()]
+    return [*agent_tools.ALL_TOOLS, _agent_tool()]
 
 
 def busy() -> bool:
