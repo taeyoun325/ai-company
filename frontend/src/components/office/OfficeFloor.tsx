@@ -41,6 +41,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { type Key, useLang } from "@/lib/i18n";
+import { useStack } from "@/lib/stack";
 import type { BusEvent, OfficeEmployee, OfficeSnapshot } from "@/lib/types";
 import { Icon, iconOfAgent } from "../icons";
 import { MockBadge } from "../ui";
@@ -257,10 +258,17 @@ export function OfficeFloor({
     target.addEventListener("pointercancel", cancel);
   };
   const [now, setNow] = useState(() => Date.now());
+  // 1초 시계(응답 대기 초 · 회의 말풍선)는 사무실 카드가 **가운데일 때만** 돈다. 덱은 네
+  // 카드를 다 띄워 두므로, 비켜 있는 사무실이 매초 평면도 전체를 다시 그리면 다른 카드를
+  // 보거나 넘기는 동안 폰이 그만큼 버벅인다.
+  const { active: onStage } = useStack();
   useEffect(() => {
+    if (!onStage) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [onStage]);
 
   // ── 출근 ───────────────────────────────────────────────────────
   const [arriving, setArriving] = useState(false);

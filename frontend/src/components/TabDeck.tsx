@@ -49,7 +49,8 @@
 import { LayoutGroup, MotionConfig, motion } from "motion/react";
 import { usePathname } from "next/navigation";
 import {
-  useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode,
+  useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ComponentType,
+  type ReactNode,
   type WheelEvent,
 } from "react";
 
@@ -132,12 +133,15 @@ const SLOTS: Record<"wide" | "narrow", Record<Slot, Pos>> = {
     prev: { dx: -0.46, dy: 0.4, scale: 0.2, rotate: -10, opacity: 0, z: 30 },
     gone: { dx: -0.58, dy: 0.64, scale: 0.12, rotate: -16, opacity: 0, z: 10 },
   },
+  // 폰: 궤도 대신 옆으로 미는 한 장 넘기기. 화면 가득한 카드 두 장이 동시에 커졌다
+  // 줄었다 돌면 폰이 매 프레임 카드 전체를 다시 그려 넘길 때마다 버벅였다(대표가 짚었다 —
+  // "창을 바꿀 때만 버벅거림"). 옆으로 옮기는 것(translateX)만은 그린 것을 그대로 민다.
   narrow: {
-    queued: { dx: 0.58, dy: -0.54, scale: 0.1, rotate: 16, opacity: 0, z: 10 },
-    next: { dx: 0.44, dy: -0.4, scale: 0.2, rotate: 10, opacity: 0, z: 20 },
+    queued: { dx: 1.1, dy: 0, scale: 1, rotate: 0, opacity: 0, z: 10 },
+    next: { dx: 1, dy: 0, scale: 1, rotate: 0, opacity: 0, z: 20 },
     center: { dx: 0, dy: 0, scale: 1, rotate: 0, opacity: 1, z: 38 },
-    prev: { dx: -0.44, dy: 0.38, scale: 0.2, rotate: -10, opacity: 0, z: 30 },
-    gone: { dx: -0.6, dy: 0.62, scale: 0.12, rotate: -16, opacity: 0, z: 10 },
+    prev: { dx: -1, dy: 0, scale: 1, rotate: 0, opacity: 0, z: 30 },
+    gone: { dx: -1.1, dy: 0, scale: 1, rotate: 0, opacity: 0, z: 10 },
   },
 };
 
@@ -315,7 +319,9 @@ function Deck() {
           aria-label="AI COMPANY"
         >
           <Galaxy />
-          <Backdrop s={s} dir={dir} />
+          {/* 뒤의 큰 아이콘(화면의 95%)이 돌며 커지는 연출 — 폰에서는 뺀다. 넘길 때마다
+              화면 가득한 그림을 1.1초 동안 다시 그렸다. */}
+          {!narrow && <Backdrop s={s} dir={dir} />}
 
           {box && TABS.map((tab, i) => {
             const slot = slotOf(i - active);
@@ -372,6 +378,15 @@ function Card({
     ? ["gone", "prev", "center", "next", "queued"]
     : ["queued", "next", "center", "prev", "gone"];
   const Page = tab.Page;
+  // 넘길 때마다 네 화면이 통째로 다시 그려졌다 — 카드가 다시 그려질 때마다 `<Page />` 가
+  // 새 요소로, 컨텍스트 값이 새 객체로 만들어져서다. 요소와 값을 붙들어 두면 화면은
+  // 정말로 바뀐 것(가운데인가 · 폰의 사무실 보기 · 내려갈 칸)이 있을 때만 다시 그린다.
+  const page = useMemo(() => <Page />, [Page]);
+  // '가운데가 됐다'는 알림은 미뤄도 된다 — 받는 화면(연결 · 시계 · 등장 연출)이 꽤 무거워서,
+  // 급하게 전하면 카드가 미끄러지는 첫 프레임들을 잡아먹었다(폰에서 넘길 때 100~170ms).
+  const stageActive = useDeferredValue(center);
+  const ctx = useMemo(() => ({ inCard: true, active: stageActive, officeView, anchor }),
+    [stageActive, officeView, anchor]);
   // 폰은 원래 한 줄씩 쌓아 스크롤하는 화면이다. 거기서까지 줄이면 글자만 작아진다.
   const zoom = Math.min(1, Math.max(narrow ? 0.9 : MIN_ZOOM, box.h / tab.designH));
   // 좁으면 카드를 아래 조작 줄만큼 위로 올린다.
@@ -390,6 +405,9 @@ function Card({
         marginLeft: Math.round(-box.w / 2),
         marginTop: Math.round(-box.h / 2 - lift),
         zIndex: pos.z,
+        // 카드를 제 층으로 올려 둔다 — 움직이는 동안 안의 글자 · 그림을 다시 그리지 않고
+        // 그려 둔 것을 옮긴다.
+        willChange: "transform, opacity",
       }}
       initial={false}
       animate={{
@@ -399,7 +417,11 @@ function Card({
         visibility: "visible",
         transitionEnd: center ? undefined : { visibility: "hidden" },
       }}
-      transition={{
+      transition={narrow ? {
+        // 폰은 짧고 곧게 — 출렁이는 스프링은 그만큼 오래 다시 그린다.
+        type: "tween", duration: 0.32, ease: [0.22, 1, 0.36, 1],
+        opacity: { duration: center ? 0.24 : 0.18 },
+      } : {
         type: "spring", stiffness: 85, damping: 18, mass: 1,
         delay: order.indexOf(slot) * 0.05,
         // 옆 자리는 보이지 않는 길목이다. 빠질 때는 빨리 흐려지고, 들어올 때는
@@ -410,7 +432,8 @@ function Card({
       <div
         inert={!center}
         className="h-full w-full overflow-hidden rounded-2xl border border-white/15
-          text-[color:var(--fg)] shadow-[0_40px_90px_-30px_rgba(0,0,0,0.8)]"
+          text-[color:var(--fg)] shadow-[0_40px_90px_-30px_rgba(0,0,0,0.8)]
+          [@media(pointer:coarse)]:shadow-none"
         style={{ background: "var(--bg)" }}
       >
         <div
@@ -421,8 +444,8 @@ function Card({
           }}
         >
           {live && (
-            <StackCtx.Provider value={{ inCard: true, active: center, officeView, anchor }}>
-              <Page />
+            <StackCtx.Provider value={ctx}>
+              {page}
             </StackCtx.Provider>
           )}
         </div>
