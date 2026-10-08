@@ -3,7 +3,8 @@
 #
 #   sh deploy/cloudrun/deploy.sh setup     # 처음 한 번: API·버킷·저장소·서비스 계정·비밀
 #   sh deploy/cloudrun/deploy.sh build     # 이미지 (Cloud Build — 로컬 docker 불필요)
-#   sh deploy/cloudrun/deploy.sh deploy    # Cloud Run 서비스 + Firebase Hosting
+#   sh deploy/cloudrun/deploy.sh deploy    # Cloud Run 서비스 + Firebase Hosting (설정 전부 다시 쓴다)
+#   sh deploy/cloudrun/deploy.sh release   # 새 이미지만 + Hosting 캐시 비우기 (설정은 그대로)
 #
 # 저장소 루트에서 실행한다. gcloud 로그인과 firebase 로그인이 필요하다.
 set -eu
@@ -73,8 +74,18 @@ deploy)
     --set-secrets "BYOK_SECRET=byok-secret:latest"
   firebase deploy --only hosting --project "$PROJECT"
   ;;
+release)
+  # 코드만 바뀐 평소 배포. `deploy` 는 환경변수를 --set-env-vars 로 **통째로 다시 쓴다** —
+  # 운영 중에 넣은 값(OPERATOR_EMAILS · PROVIDER_MODE · 키 연결)이 기본값으로 돌아간다.
+  # 여기서는 이미지만 바꾸고 나머지 설정은 건드리지 않는다.
+  gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" --image "$IMAGE" --quiet
+  # Hosting 은 정적 페이지 HTML 을 1년(s-maxage) 붙들고 있다. 새 이미지는 CSS · JS 조각
+  # 이름이 바뀌므로, 옛 HTML 이 남으면 **없는 파일을 불러 화면이 통째로 깨진다**
+  # (2026-10-08 실제로 깨졌다 — 이미지만 바꾸고 이 줄을 빼먹었다). 릴리스가 캐시를 비운다.
+  firebase deploy --only hosting --project "$PROJECT"
+  ;;
 *)
-  sed -n '2,9p' "$0"
+  sed -n '2,10p' "$0"
   exit 2
   ;;
 esac

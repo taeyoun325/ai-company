@@ -205,7 +205,14 @@ MANUAL 은 만료 시각이 있는 임대로 잡는다(잠근 인스턴스가 �
 
 ## 7. Cloud Run + Firebase Hosting 배치 (DAY 27)
 
-`deploy/cloudrun/` — `sh deploy/cloudrun/deploy.sh setup|build|deploy`.
+`deploy/cloudrun/` — `sh deploy/cloudrun/deploy.sh setup|build|deploy|release`.
+
+**평소 배포는 `build` → `release` 다.** `deploy` 는 환경변수를 통째로 다시 쓰므로 운영 중에
+넣은 값(`OPERATOR_EMAILS` · `PROVIDER_MODE` · 키 연결)이 되돌아간다 — 서비스를 처음 만들거나
+설정을 바꿀 때만 쓴다. `release` 는 이미지만 바꾸고 **Hosting 을 다시 릴리스해 CDN 캐시를
+비운다.** 비우지 않으면 1년짜리 캐시(`s-maxage=31536000`)에 남은 옛 HTML 이 새 이미지에 없는
+CSS · JS 조각을 불러 화면이 깨진다(2026-10-08 실측 — 주소는 200 인데 화면은 "Loading…").
+배포 뒤 확인은 HTML 의 200 이 아니라 **그 HTML 이 부르는 CSS 가 200 인지**로 한다.
 주소는 `https://ai-company-1c4da.web.app`(Hosting → Cloud Run)과 Cloud Run
 자체 주소 둘이다. **실행으로 검증했다** — 아래 수치는 전부 실측이다.
 
