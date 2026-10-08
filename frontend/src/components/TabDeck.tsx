@@ -95,6 +95,8 @@ const TABS: readonly {
 ];
 
 const WHEEL_LOCK_MS = 750;
+/** 높이만 바뀔 때(폰 주소창) 이만큼 조용해진 뒤에 카드를 다시 맞춘다. */
+const HEIGHT_SETTLE_MS = 220;
 /** 이보다 작게는 줄이지 않는다 — 글자가 못 읽을 만큼 작아진다. */
 const MIN_ZOOM = 0.64;
 /** 좁은 상자(폰): 아래 조작 줄 높이. */
@@ -215,13 +217,34 @@ function Deck() {
     window.history.replaceState(null, "", TABS[i].href);
   }, [active]);
 
+  // 무대 크기. 폰에서는 **높이만** 바뀌는 일이 잦다 — 주소창이 스크롤에 따라 접히고
+  // 펴지는 동안 높이가 매 프레임 바뀐다. 그때마다 카드 크기 · 확대 비율을 다시 계산하면
+  // 카드가 덜덜 떨렸다(대표가 폰 화면 녹화로 짚었다 — "지지직거림"). 폭이 그대로이고
+  // 높이만 바뀌면 움직임이 멈춘 뒤 한 번만 맞춘다. 폭이 바뀌면(회전 · 창 크기) 바로 맞춘다.
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) =>
-      setStageSize({ w: e.contentRect.width, h: e.contentRect.height }));
+    let applied: { w: number; h: number } | null = null;
+    let timer = 0;
+    const apply = (next: { w: number; h: number }) => {
+      applied = next;
+      setStageSize(next);
+    };
+    const ro = new ResizeObserver(([e]) => {
+      const next = { w: e.contentRect.width, h: e.contentRect.height };
+      window.clearTimeout(timer);
+      if (!applied || Math.abs(applied.w - next.w) > 1) {
+        apply(next);
+        return;
+      }
+      if (Math.abs(applied.h - next.h) < 1) return;
+      timer = window.setTimeout(() => apply(next), HEIGHT_SETTLE_MS);
+    });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      window.clearTimeout(timer);
+      ro.disconnect();
+    };
   }, []);
 
   // 탭 주소로 가는 링크는 페이지를 옮기지 않고 카드를 돌린다. Next 의 Link 는

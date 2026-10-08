@@ -433,6 +433,22 @@ svg [tabindex]:focus-visible {
   50% { transform: translateY(-14px) rotate(-2.2deg); }
 }
 .anim-galaxy { animation: galaxy-drift 90s linear infinite; }
+
+/*
+  터치 기기(폰 · 태블릿)에서는 유리 흐림과 배경 움직임을 끈다.
+
+  폰 녹화에서 화면이 "지지직" 떨렸다. 흐림(backdrop-filter)은 뒤에 깔린 은하 층을
+  매 프레임 다시 흐리게 그리고, 은하는 90초짜리 회전 · 별 깜빡임으로 계속 움직인다 —
+  카카오톡 같은 앱 안 브라우저에서는 이 합성이 따라오지 못해 화면이 깨져 보인다.
+  면 색 자체가 이미 어둡고 반투명이라(맨 위 '유리' 규칙) 흐림이 없어도 글은 읽힌다.
+*/
+@media (pointer: coarse) {
+  *, *::before, *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .anim-galaxy, .anim-twinkle { animation: none; }
+}
 .anim-twinkle { animation: twinkle 4.5s ease-in-out infinite; }
 .anim-hint { animation: scroll-hint 1.6s ease-in-out infinite; }
 .anim-float { animation: float-y 5.5s ease-in-out infinite; }
