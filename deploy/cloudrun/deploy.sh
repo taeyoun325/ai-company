@@ -81,8 +81,32 @@ release)
   gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" --image "$IMAGE" --quiet
   # Hosting 은 정적 페이지 HTML 을 1년(s-maxage) 붙들고 있다. 새 이미지는 CSS · JS 조각
   # 이름이 바뀌므로, 옛 HTML 이 남으면 **없는 파일을 불러 화면이 통째로 깨진다**
-  # (2026-10-08 실제로 깨졌다 — 이미지만 바꾸고 이 줄을 빼먹었다). 릴리스가 캐시를 비운다.
-  firebase deploy --only hosting --project "$PROJECT"
+  # (2026-10-08 실제로 깨졌다 — 이미지만 바꾸고 릴리스를 빼먹었다). 릴리스가 캐시를 비운다.
+  #
+  # 비우는 **때**도 중요하다. 넘겨받는 몇 초 동안 옛 인스턴스가 대답하면 비운 직후 그 옛
+  # HTML 이 다시 1년짜리로 붙는다(2026-10-09 실제로 '/' 가 그랬다). 그래서 Cloud Run 자체
+  # 주소가 같은 CSS 를 연달아 내줄 때까지 기다린 뒤 비우고, Hosting 쪽 CSS 가 200 인지
+  # 확인해 아니면 다시 비운다.
+  ORIGIN=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION"     --format "value(status.url)")
+  css_of() { curl -s "$1/" | grep -o '/_next/static/chunks/[a-z0-9_]*\.css' | head -1; }
+  want=""; same=0
+  for _ in $(seq 1 60); do
+    now=$(css_of "$ORIGIN")
+    if [ -n "$now" ] && [ "$now" = "$want" ]; then same=$((same + 1)); else want=$now; same=0; fi
+    [ "$same" -ge 4 ] && break
+    sleep 2
+  done
+  echo "새 이미지의 CSS: $want"
+  for try in 1 2 3; do
+    firebase deploy --only hosting --project "$PROJECT"
+    sleep 5
+    got=$(css_of "https://$PROJECT.web.app")
+    code=$(curl -s -o /dev/null -w '%{http_code}' "https://$PROJECT.web.app$got")
+    echo "Hosting: $got -> $code"
+    [ "$got" = "$want" ] && [ "$code" = "200" ] && break
+    echo "옛 HTML 이 남았다 — 다시 비운다 ($try/3)"
+    sleep 10
+  done
   ;;
 *)
   sed -n '2,10p' "$0"
