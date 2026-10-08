@@ -32,8 +32,16 @@
  *
  * ## 과장하지 않는다
  *
- * 랜딩과 같은 원칙이다. 할 수 있는 것만 쓰고, 못 하는 것은 마지막 장
- * "지금 상태"에 그대로 적는다(`honest.*` — 랜딩과 같은 문장).
+ * 랜딩과 같은 원칙이다. 할 수 있는 것만 쓴다. '지금 상태' 장(못 하는 것 ·
+ * 믿어도 되는 근거)은 대표 요청으로 뺐다(2026-10-08) — 같은 사실은 랜딩의
+ * `honest.*` 패널과 화면 곳곳의 MOCK 배지가 계속 말한다.
+ *
+ * ## 방향 (2026-10 재구성)
+ *
+ * 제품의 모양이 "오더 → 하나의 작업장(플레이스)에서 슬롯을 동시에 채움 → 다른
+ * 회사 모델의 검수 → 통과한 것만 납품"으로 정리되면서 장을 다시 짰다:
+ * 소개(화면 네 장) · 흐름(오더 → 설계도 → 검수 기준 → 동시 제작 → 검수대 →
+ * 통합) · 직원(작업장 자리 · 버전) · 작업장 · 대표 승인 · 사무실 · 돈(+ 시작 버튼).
  */
 import {
   AnimatePresence, motion, useMotionValue, useReducedMotion, useTransform,
@@ -45,9 +53,9 @@ import {
   type WheelEvent,
 } from "react";
 
-import { PipelineFigure } from "@/components/PipelineFigure";
+import { RunFlow } from "@/components/RunFlow";
 import { Showcase, type ShowItem } from "@/components/Showcase";
-import { Icon, iconOfAgent } from "@/components/icons";
+import { Icon, type IconName, iconOfAgent } from "@/components/icons";
 import { STATE_COLOR } from "@/components/office/OfficeFloor";
 import { Filled } from "@/components/ui";
 import { type Key, useLang } from "@/lib/i18n";
@@ -96,10 +104,18 @@ const STATES: OfficeEmployee["state"][] = ["done", "working", "approval", "integ
 const COMMANDS = ["cmd.status", "cmd.why", "cmd.meeting", "cmd.brief", "cmd.focus",
                   "cmd.approve"] as const;
 
-const PROOFS = ["order", "tests", "cross", "cost"] as const;
+/** 화면 네 장 — 탭 카드 덱(components/TabDeck)과 같은 순서 · 아이콘. */
+const SCREENS = [
+  { id: "office", nav: "nav.office", icon: "building" },
+  { id: "workshop", nav: "nav.workshop", icon: "developer" },
+  { id: "settings", nav: "nav.settings", icon: "gear" },
+  { id: "guide", nav: "nav.guide", icon: "book" },
+] as const;
+
+const WS_PARTS = ["board", "code", "follow", "version", "phone"] as const;
 
 /** 장 순서. id 는 주소(#id)에 남는다. */
-const TABS = ["intro", "flow", "staff", "gates", "office", "money", "safety", "honest"] as const;
+const TABS = ["intro", "flow", "staff", "workshop", "gates", "office", "money"] as const;
 type Tab = (typeof TABS)[number];
 
 // 넘기기로 칠 끌기 — 이만큼 끌었거나, 이만큼 빠르게 튕겼으면.
@@ -358,7 +374,8 @@ function StaffOrbit() {
     icon: iconOfAgent(e.id),
     ...TINT[e.id],
     name: t(`role.${e.id}` as Key),
-    sub: `${e.who} · ${t("guide.writes")}: ${e.writes ?? t("guide.writes.none")}`,
+    sub: `${e.who} · ${t("guide.staff.seat")}: ${t(`ws.seat.${e.id}` as Key)} · `
+      + `${t("guide.writes")}: ${e.writes ?? t("guide.writes.none")}`,
     body: t(`staff.${e.id}` as Key),
   }));
   const who = Object.fromEntries(STAFF.map((e) => [e.id, e.who]));
@@ -379,7 +396,7 @@ function StaffOrbit() {
       </div>
       <p data-item data-reveal className="mt-3 text-center text-[11px] leading-relaxed
         text-dim">
-        {t("staff.note")} {t("guide.teams")} {t("office.card.teamHint")}
+        {t("staff.note")} {t("guide.staff.versions")}
       </p>
     </>
   );
@@ -406,11 +423,15 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
             <Filled text={t("guide.lead")} strong={t("guide.lead.strong")} />
           </p>
           <p data-item data-reveal className="mt-8 text-sm font-semibold">
-            {t("guide.modes.title")}
+            {t("guide.screens.title")}
           </p>
-          <div className="mx-auto mt-3 grid max-w-3xl gap-3 text-left sm:grid-cols-2">
-            <Card title={t("office.auto")} icon="play">{t("guide.auto.body")}</Card>
-            <Card title={t("office.manual")} icon="person">{t("guide.manual.body")}</Card>
+          <div className="mx-auto mt-3 grid max-w-4xl gap-2.5 text-left sm:grid-cols-2
+            lg:grid-cols-4">
+            {SCREENS.map((sc) => (
+              <Card key={sc.id} title={t(sc.nav)} icon={sc.icon}>
+                {t(`guide.screen.${sc.id}` as Key)}
+              </Card>
+            ))}
           </div>
           <motion.button data-item data-reveal type="button" onClick={() => go(1)}
             whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}
@@ -425,14 +446,13 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
       return (
         <>
           <Heading title={t("guide.flow.title")} lead={t("guide.flow.lead")} />
-          <div className="grid items-center gap-4 lg:grid-cols-[1.15fr_1fr]">
-            <div data-item data-reveal className="rounded-2xl border border-line bg-panel p-3">
-              <PipelineFigure />
-            </div>
-            <ol className="grid gap-2 sm:grid-cols-2">
+          <div className="space-y-3">
+            <div data-item data-reveal><RunFlow /></div>
+            <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {STEPS.map((n) => (
                 <li key={n} data-item data-reveal
                   className="flex gap-2.5 rounded-xl border border-line bg-panel p-2.5">
+                  {/* 그림의 칸과 같은 순서다 — 숫자로 이어 읽는다. */}
                   <span className="grid size-5 shrink-0 place-items-center rounded-full
                     text-[10px] font-bold grad-accent">{n}</span>
                   <span className="min-w-0">
@@ -452,6 +472,28 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
 
     case "staff":
       return <StaffOrbit />;
+
+    case "workshop":
+      return (
+        <>
+          <Heading title={t("guide.ws.title")} lead={t("guide.ws.lead")} />
+          <div className="grid items-start gap-4 lg:grid-cols-[1fr_1.15fr]">
+            <SampleBoard />
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {WS_PARTS.map((k) => (
+                <li key={k} data-item data-reveal
+                  className={`rounded-xl border border-line bg-panel p-3 ${
+                    k === "phone" ? "sm:col-span-2" : ""}`}>
+                  <p className="text-sm font-semibold">{t(`guide.ws.${k}` as Key)}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted">
+                    {t(`guide.ws.${k}.body` as Key)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      );
 
     case "gates":
       return (
@@ -514,6 +556,17 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
                   </span>
                 ))}
               </div>
+              <h3 className="mt-4 text-sm font-semibold">{t("guide.modes.title")}</h3>
+              <dl className="mt-2 space-y-1.5 text-xs">
+                <div>
+                  <dt className="font-semibold">{t("office.auto")}</dt>
+                  <dd className="text-muted">{t("guide.auto.body")}</dd>
+                </div>
+                <div>
+                  <dt className="font-semibold">{t("office.manual")}</dt>
+                  <dd className="text-muted">{t("guide.manual.body")}</dd>
+                </div>
+              </dl>
             </div>
           </div>
         </>
@@ -522,7 +575,7 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
     case "money":
       return (
         <>
-          <Heading title={t("guide.money.title")} />
+          <Heading title={t("guide.money.title")} lead={t("guide.money.where")} />
           <ul className="grid gap-2.5 sm:grid-cols-2">
             {(["credits", "before", "plans", "byok"] as const).map((k, i) => (
               <li key={k} data-item data-reveal
@@ -535,42 +588,12 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
               </li>
             ))}
           </ul>
-        </>
-      );
-
-    case "safety":
-      return (
-        <>
-          <Heading title={t("why.title")} />
-          <div className="grid gap-3 sm:grid-cols-2">
-            {PROOFS.map((k) => (
-              <div key={k} data-item data-reveal className="rounded-xl border border-line bg-panel p-4">
-                <p className="text-sm font-semibold">{t(`why.${k}` as Key)}</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-muted">
-                  {t(`why.${k}.body` as Key)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </>
-      );
-
-    case "honest":
-      return (
-        <>
-          <Heading title={t("honest.title")} />
-          <ul data-item data-reveal className="space-y-2 rounded-2xl border border-line bg-panel
-            p-5 text-sm leading-relaxed text-muted">
-            <li>· {t("honest.files")}</li>
-            <li>· <Filled text={t("honest.injection")} strong={t("honest.injection.strong")} /></li>
-            <li style={{ color: "var(--warn)" }}>· {t("honest.noRealRun")}</li>
-            <li style={{ color: "var(--warn)" }}>· {t("honest.noBilling")}</li>
-          </ul>
           {!preview && (
           <div data-item data-reveal className="mt-8 text-center">
             <h2 className="text-lg font-semibold">{t("guide.cta.title")}</h2>
             <div className="mt-3 flex flex-wrap justify-center gap-2">
               <CtaLink href="/" primary>{t("guide.cta.office")}</CtaLink>
+              <CtaLink href="/workshop">{t("guide.cta.workshop")}</CtaLink>
               <CtaLink href="/pricing">{t("guide.cta.pricing")}</CtaLink>
               <CtaLink href="/settings">{t("guide.cta.keys")}</CtaLink>
             </div>
@@ -579,6 +602,55 @@ function Chapter({ tab, go }: { tab: Tab; go: (i: number) => void }) {
         </>
       );
   }
+}
+
+
+/**
+ * '작업장' 장의 예시 슬롯판. 실제 작업장과 **같은 말(ws.*) · 같은 상태 색**을
+ * 쓴다 — 설명과 화면이 다른 말을 하면 읽은 사람은 둘이 같은 것인지부터 의심한다.
+ * 파일 이름은 예시이고, 그 사실을 머리에 적는다.
+ */
+function SampleBoard() {
+  const { t } = useLang();
+  const rows: { id: string; label: string; file: string; who: string;
+    st: "passed" | "writing" | "review" | "todo"; extra?: string }[] = [
+    { id: "plan", label: t("ws.slot.plan"), file: t("ws.slot.planFile"), who: "strategist",
+      st: "passed" },
+    { id: "t1", label: "t1", file: "src/calc.py", who: "developer", st: "passed",
+      extra: t("ws.rework", { n: 1 }) },
+    { id: "t2", label: "t2", file: "docs/README.md", who: "writer", st: "review" },
+    { id: "t3", label: "t3", file: "design/screen.md", who: "designer", st: "writing" },
+  ];
+  const color = { passed: "var(--st-done)", writing: "var(--st-working)",
+                  review: "var(--st-integration)", todo: "var(--dim)" };
+  return (
+    <div data-item data-reveal className="rounded-2xl border border-line bg-panel p-3">
+      <p className="mb-2 flex items-center gap-2 px-1 text-[12px] font-semibold text-muted">
+        {t("ws.board")}
+        <span className="rounded px-1.5 py-0.5 text-[10px] font-normal"
+          style={{ background: "var(--panel-2)" }}>{t("guide.ws.sample")}</span>
+      </p>
+      <ul className="space-y-1">
+        {rows.map((r) => (
+          <li key={r.id} className="grid grid-cols-[3.6rem_minmax(0,1fr)_auto] items-center
+            gap-2 rounded-lg px-2 py-1.5 text-[12px]">
+            <span className="flex items-center gap-1.5 font-semibold">
+              <span className={`size-2 shrink-0 rounded-full ${r.st === "writing"
+                ? "animate-pulse" : ""}`} style={{ background: color[r.st] }} aria-hidden />
+              <span className="truncate">{r.label}</span>
+            </span>
+            <span className="truncate font-mono text-[11px]">{r.file}</span>
+            <span className="flex flex-col items-end text-[10px]">
+              <span style={{ color: `var(--${r.who})` }}>{t(`role.${r.who}` as Key)}</span>
+              <span style={{ color: color[r.st] }}>
+                {t(`ws.slot.${r.st}` as Key)}{r.extra && ` · ${r.extra}`}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function Heading({ title, lead }: { title: string; lead?: string }) {
@@ -597,7 +669,7 @@ function Heading({ title, lead }: { title: string; lead?: string }) {
 }
 
 function Card({ title, icon, children }: {
-  title: string; icon: "play" | "person"; children: ReactNode;
+  title: string; icon: IconName; children: ReactNode;
 }) {
   return (
     <div data-item data-reveal className="rounded-xl border border-line bg-panel p-4">

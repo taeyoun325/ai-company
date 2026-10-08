@@ -192,7 +192,7 @@ export default function ProjectsPage() {
                       {LABEL[p.status] ? t(LABEL[p.status]) : p.status}
                     </span>
                   </div>
-                  <p className="truncate text-xs text-dim" title={p.requirement}>
+                  <p data-record className="truncate text-xs text-dim" title={p.requirement}>
                     {p.requirement}
                   </p>
                 </div>

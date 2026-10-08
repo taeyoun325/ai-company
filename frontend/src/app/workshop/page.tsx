@@ -131,11 +131,15 @@ export default function WorkshopPage() {
   const { data: state, reload: reloadState } = useLoader("state", () => api.state());
   const { data: settings } = useLoader("settings-catalog", () => api.settings());
   const stream = useStream(active && slug ? slug : undefined);
-  const folded = foldState(stream.events);
-  const lanes = useMemo(() => foldLanes(stream.events), [stream.events]);
+  // 이 실행의 사건만 — 흐름에는 앞 실행의 사건이 섞여 올 수 있다. 섞이면 슬롯 id
+  // (t1 · t2 …)가 실행마다 같아서 반려 횟수가 실행 수만큼 쌓였다(화면 시험이 찾았다).
+  const events = useMemo(
+    () => stream.events.filter((e) => !e.run || e.run === slug), [stream.events, slug]);
+  const folded = foldState(events);
+  const lanes = useMemo(() => foldLanes(events), [events]);
   // 결재를 기다리는 실행은 돌지 않는다 — 새 오더를 막지도, '멈추기'를 띄우지도
   // 않는다(승인은 사무실 결재함에서). 그걸 '도는 중'으로 읽어서 시작 단추가 사라졌다.
-  const running = !!slug && stream.events.length > 0 && !folded.done && !lanes.awaiting;
+  const running = !!slug && events.length > 0 && !folded.done && !lanes.awaiting;
 
   // 가운데로 올 때마다 지금 도는 실행을 찾는다 — 사무실에서 맡긴 일도 여기서 보인다.
   useEffect(() => {
@@ -298,10 +302,10 @@ export default function WorkshopPage() {
       <h2 className="border-b border-line px-3 py-2 text-[12px] font-semibold tracking-tight
         text-muted">{t("ws.log")}</h2>
       <div className="min-h-0 flex-1" data-testid="ws-log">
-        {stream.events.length === 0 ? (
+        {events.length === 0 ? (
           <p className="py-3 text-center text-[12px] text-dim">{t("ws.logEmpty")}</p>
         ) : (
-          <ChatLog events={stream.events} roster={stream.roster}
+          <ChatLog events={events} roster={stream.roster}
             connected={stream.connected} polling={stream.polling}
             slug={slug} className="h-full" />
         )}

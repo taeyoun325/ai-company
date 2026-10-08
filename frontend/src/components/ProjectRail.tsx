@@ -244,7 +244,8 @@ export function ProjectRail({
                       "mock-project" 처럼 겹치고, 다섯 줄이 같은 글자가
                       된다. 무엇을 시켰는지가 그 줄의 진짜 이름이다. */}
                   {!same && (
-                    <span className="mt-0.5 block truncate text-[11px]
+                    // data-record — 대표가 쓴 요구사항이다. 쓴 언어 그대로 남는다.
+                    <span data-record className="mt-0.5 block truncate text-[11px]
                       text-muted" aria-hidden>
                       {req}
                     </span>

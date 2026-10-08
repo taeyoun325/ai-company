@@ -61,7 +61,7 @@ export function RecentResults({ bare = false }: { bare?: boolean }) {
               className="block rounded-lg px-2 py-1.5 transition hover:bg-panel2"
             >
               <span className="flex items-baseline gap-2">
-                <span className="min-w-0 flex-1 truncate text-[12px]">
+                <span data-record className="min-w-0 flex-1 truncate text-[12px]">
                   {(p.requirement ?? "").trim() || p.name || p.slug}
                 </span>
                 {/* 완성도는 이 제품의 점수판이다. 숫자를 먼저 읽게 둔다. */}

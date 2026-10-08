@@ -1,7 +1,7 @@
 /**
  * 설명 탭 (DAY 26) — 한 화면에서 장을 넘긴다. 스크롤하지 않는다.
  *
- * 지키는 것: 헤더에서 닿는다 · 여덟 장이 **한 화면에 들어간다** · 탭/키/버튼/끌기로
+ * 지키는 것: 헤더에서 닿는다 · 일곱 장이 **한 화면에 들어간다** · 탭/키/버튼/끌기로
  * 넘어간다 · 주소(#장)로 바로 열린다 · 새 장의 조각이 올라온다(anime.js) · 말이
  * 사무실과 같다 · 세 언어 모두 새지 않는다 · 움직임을 줄여도 쓸 수 있다.
  */
@@ -10,7 +10,7 @@ import type { Page } from "@playwright/test";
 
 import { EMPLOYEES, i18nKeys } from "./helpers";
 
-const TABS = ["intro", "flow", "staff", "gates", "office", "money", "safety", "honest"];
+const TABS = ["intro", "flow", "staff", "workshop", "gates", "office", "money"];
 
 const selected = (page: Page) => page.locator("[role=tab][aria-selected=true]");
 const panel = (page: Page) => page.locator("[role=tabpanel]");
@@ -32,7 +32,7 @@ test("탭 카드 덱의 '설명' 탭에서 열린다", async ({ page }) => {
   await expect(page.getByRole("tab")).toHaveCount(TABS.length);
 });
 
-test("여덟 장이 모두 한 화면에 들어간다 — 페이지도 장도 스크롤되지 않는다", async ({ page }) => {
+test("일곱 장이 모두 한 화면에 들어간다 — 페이지도 장도 스크롤되지 않는다", async ({ page }) => {
   await page.goto("/guide");
   for (const id of TABS) {
     await open(page, id);
@@ -51,12 +51,12 @@ test("탭 · ←/→ 키 · 다음/이전 버튼으로 넘기고, 주소에 장�
   await open(page, "staff");
   await expect(page).toHaveURL(/#staff$/);
   await page.keyboard.press("ArrowRight");
-  await expect(selected(page)).toHaveAttribute("id", "tab-gates");
+  await expect(selected(page)).toHaveAttribute("id", "tab-workshop");
   await page.keyboard.press("ArrowLeft");
   await expect(selected(page)).toHaveAttribute("id", "tab-staff");
   // '다음 직원'(직원 장의 쇼케이스) · '다음 탭'(탭 카드 덱)과 헷갈리지 않게 정확히.
   await page.getByRole("button", { name: "다음", exact: true }).click();
-  await expect(selected(page)).toHaveAttribute("id", "tab-gates");
+  await expect(selected(page)).toHaveAttribute("id", "tab-workshop");
   // 개발 서버에서는 Next 의 왼쪽 아래 배지가 '이전' 버튼 위에 떠 클릭을 가로챈다
   // (개발 모드에만 있다). 키보드로 누른다 — 버튼이 하는 일은 같다.
   await page.getByRole("button", { name: "이전", exact: true }).focus();
@@ -65,8 +65,8 @@ test("탭 · ←/→ 키 · 다음/이전 버튼으로 넘기고, 주소에 장�
   // 탭 목록 안에서는 ARIA 탭 패턴 — End 로 마지막 장.
   await page.locator("#tab-staff").focus();
   await page.keyboard.press("End");
-  await expect(selected(page)).toHaveAttribute("id", "tab-honest");
-  await expect(page.locator("#tab-honest")).toBeFocused();
+  await expect(selected(page)).toHaveAttribute("id", "tab-money");
+  await expect(page.locator("#tab-money")).toBeFocused();
 });
 
 test("주소의 #장 으로 바로 열린다", async ({ page }) => {
@@ -131,7 +131,7 @@ test("승인 지점·상태·결정은 사무실과 같은 말을 쓴다", async
 });
 
 test("마지막 장의 시작 버튼이 사무실로 간다", async ({ page }) => {
-  await page.goto("/guide#honest");
+  await page.goto("/guide#money");
   await page.getByRole("link", { name: "사무실로 가기" }).click();
   await expect(page.getByRole("textbox", { name: "지시 · 질문" })).toBeVisible();
 });
@@ -142,7 +142,7 @@ const KEYS = i18nKeys();
 for (const lang of ["en", "ja"] as const) {
   test.describe(lang, () => {
     test.use({ lang });
-    test(`여덟 장 모두 번역 키가 새지 않고 한국어가 남지 않는다`, async ({ page }) => {
+    test(`일곱 장 모두 번역 키가 새지 않고 한국어가 남지 않는다`, async ({ page }) => {
       await page.goto("/guide");
       for (const id of TABS) {
         await open(page, id);

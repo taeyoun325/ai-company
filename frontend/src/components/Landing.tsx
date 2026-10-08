@@ -32,7 +32,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 
 import GuidePage from "@/app/guide/page";
 import { StackCtx } from "@/lib/stack";
-import { PipelineFigure } from "./PipelineFigure";
+import { RunFlow } from "./RunFlow";
 import { Icon, iconOfAgent } from "./icons";
 import { Button, Filled, Panel } from "./ui";
 import { api } from "@/lib/api";
@@ -159,7 +159,7 @@ export function Landing({ children }: { children: ReactNode }) {
       {/* ── 흐름 도형 ──────────────────────────────────────── */}
       <section className="hero-figure mt-8" data-reveal>
         <div className="rounded-2xl border border-line bg-panel p-4 sm:p-6">
-          <PipelineFigure />
+          <RunFlow />
           <p className="mt-2 text-center text-[11px] text-dim">
             {t("hero.figureNote")}
           </p>

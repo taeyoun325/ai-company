@@ -32,7 +32,7 @@ test("오더가 실제 실행이 되고, 사무실 직원이 슬롯을 맡아 �
   await waitStatus(request, req, "done");
 
   const board = page.getByTestId("ws-board");
-  await expect(page.getByText("통합 · 검수 끝")).toBeVisible();
+  await expect(page.getByText("최종 검수 끝")).toBeVisible();
   const t1 = board.getByRole("button").filter({ hasText: /^t1/ });
   await expect(t1).toContainText("통과");
   // Mock 대본은 첫 구현을 일부러 틀린다(0 나눗셈) — 실제 pytest 가 실패하고
